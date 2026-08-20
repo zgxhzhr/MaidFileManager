@@ -3,13 +3,6 @@ plugins {
     id 'net.neoforged.moddev.legacyforge'
 }
 
-mixin {
-    add(sourceSets.main, "${mod_id}.refmap.json")
-
-    config("${mod_id}.mixins.json")
-    config("${mod_id}.forge.mixins.json")
-}
-
 legacyForge {
     version = "${minecraft_version}-${forge_version}"
 
@@ -47,12 +40,10 @@ sourceSets.main.resources.srcDir 'src/generated/resources'
 
 dependencies {
     compileOnly project(":common")
-    annotationProcessor("org.spongepowered:mixin:0.8.5-SNAPSHOT:processor")
+    // 车万女仆编译期依赖：仅引用其 API，运行时由玩家自行安装
+    compileOnly files(rootProject.file(tlm_jar_path))
 }
 
 jar {
     finalizedBy('reobfJar')
-    manifest.attributes([
-            "MixinConfigs": "${mod_id}.mixins.json,${mod_id}.forge.mixins.json"
-    ])
 }

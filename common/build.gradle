@@ -17,6 +17,8 @@ legacyForge {
 dependencies {
     compileOnly group: 'org.spongepowered', name: 'mixin', version: '0.8.5'
     implementation group: 'com.google.code.findbugs', name: 'jsr305', version: '3.0.1'
+    // 车万女仆编译期依赖：仅引用其 API，运行时由玩家自行安装
+    compileOnly files(rootProject.file(tlm_jar_path))
 }
 
 configurations {

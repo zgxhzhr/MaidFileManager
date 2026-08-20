@@ -24,3 +24,12 @@ mandatory = true
 versionRange = "${minecraft_version_range}"
 ordering = "NONE"
 side = "BOTH"
+[[dependencies.${mod_id}]]
+modId = "touhou_little_maid"
+mandatory = true
+# 注意：TLM 的版本字符串常带前缀（如 1.5.3-forge+mc1.20.1），
+# Forge Maven 版本比较器无法把带 "+mc1.20.1" 构建元数据的版本纳入 [1.5.0,) 范围，
+# 故在此使用 * 表示"任意版本都接受"，实际功能仅依赖 TLM 存在 EntityMaid 等类。
+versionRange = "*"
+ordering = "AFTER"
+side = "BOTH"

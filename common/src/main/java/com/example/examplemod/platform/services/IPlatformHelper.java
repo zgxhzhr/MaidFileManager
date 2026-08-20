@@ -1,5 +1,7 @@
 package com.example.examplemod.platform.services;
 
+import java.nio.file.Path;
+
 public interface IPlatformHelper {
 
     /**
@@ -30,7 +32,29 @@ public interface IPlatformHelper {
      * @return The name of the environment type.
      */
     default String getEnvironmentName() {
-
         return isDevelopmentEnvironment() ? "development" : "production";
     }
+
+    /**
+     * 获取指定 modId 的版本字符串，未加载返回空字符串。
+     *
+     * @param modId 模组 ID
+     * @return 版本字符串
+     */
+    String getModVersion(String modId);
+
+    /**
+     * 获取当前 Minecraft 版本字符串。
+     *
+     * @return MC 版本号
+     */
+    String getMcVersion();
+
+    /**
+     * 获取 Minecraft 运行根目录（即 .minecraft 目录），maid_files 文件夹应放在此处，
+     * 方便用户在切换整合包时直接拷贝。
+     *
+     * @return 游戏根目录的绝对路径
+     */
+    Path getGameDir();
 }
