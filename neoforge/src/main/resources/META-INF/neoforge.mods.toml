@@ -1,0 +1,32 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="MIT"
+[[mods]]
+modId="maid_file_manager"
+version="${version}"
+displayName="Maid File Manager"
+authors="..."
+description='''
+女仆数据导入导出管理器，跨版本兼容 1.20.1 / 1.21+
+'''
+
+[[dependencies.maid_file_manager]]
+    modId="neoforge"
+    mandatory=true
+    versionRange="[4,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.maid_file_manager]]
+    modId="touhou_little_maid"
+    mandatory=true
+    versionRange="*"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.maid_file_manager]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.21,1.22)"
+    ordering="NONE"
+    side="BOTH"
