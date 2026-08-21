@@ -66,6 +66,96 @@ public final class MaidTransferService {
     }
 
     /**
+     * 通过反射从 Level 获取 RegistryAccess（MC 1.20.1+ 才有 Level.registryAccess()，MC 1.20 没有）。
+     * 如果当前运行时没有 RegistryAccess 类或 Level 没有该方法，返回 null。
+     */
+    private static Object getRegistryAccess(Level level) {
+        if (level == null) {
+            return null;
+        }
+        try {
+            Class<?> raClass = Class.forName("net.minecraft.core.RegistryAccess");
+            try {
+                java.lang.reflect.Method m = level.getClass().getMethod("registryAccess");
+                Object ra = m.invoke(level);
+                if (raClass.isInstance(ra)) {
+                    return ra;
+                }
+            } catch (NoSuchMethodException ignored) {
+                // MC 1.20 没有 Level.registryAccess()
+            }
+        } catch (ClassNotFoundException ignored) {
+            // 运行时（MC 1.20）没有 RegistryAccess 类
+        } catch (Throwable t) {
+            Constants.LOG.debug("[maid_file_manager] getRegistryAccess failed: {}", t.toString());
+        }
+        return null;
+    }
+
+    /**
+     * 反射双版本调用 EntityMaid.saveWithoutId：
+     * 优先 MC 1.20.1+ 签名 saveWithoutId(RegistryAccess, CompoundTag)，
+     * 失败回退 MC 1.20 签名 saveWithoutId(CompoundTag)。
+     */
+    private static CompoundTag invokeSaveWithoutId(EntityMaid maid, Object registryAccess, CompoundTag tag) {
+        // 先试带 RegistryAccess 的 1.20.1+ 签名
+        if (registryAccess != null) {
+            try {
+                Class<?> raClass = Class.forName("net.minecraft.core.RegistryAccess");
+                java.lang.reflect.Method m = EntityMaid.class.getMethod("saveWithoutId", raClass, CompoundTag.class);
+                Object result = m.invoke(maid, registryAccess, tag);
+                if (result instanceof CompoundTag ct) {
+                    return ct;
+                }
+            } catch (ClassNotFoundException ignored) {
+                // fallthrough
+            } catch (NoSuchMethodException ignored) {
+                // fallthrough
+            } catch (Throwable t) {
+                Constants.LOG.warn("[maid_file_manager] invokeSaveWithoutId(RegistryAccess) failed, try fallback: {}",
+                        t.toString());
+            }
+        }
+        // 回退：单参 CompoundTag（MC 1.20 签名）
+        return maid.saveWithoutId(tag);
+    }
+
+    /**
+     * 反射双版本调用 EntityMaid.load：
+     * 优先 MC 1.20.1+ 签名 load(RegistryAccess, CompoundTag)，
+     * 失败回退 MC 1.20 签名 load(CompoundTag)。
+     */
+    private static void invokeLoadMaid(EntityMaid maid, Object registryAccess, CompoundTag tag) {
+        if (registryAccess != null) {
+            try {
+                Class<?> raClass = Class.forName("net.minecraft.core.RegistryAccess");
+                java.lang.reflect.Method m = EntityMaid.class.getMethod("load", raClass, CompoundTag.class);
+                m.invoke(maid, registryAccess, tag);
+                return;
+            } catch (ClassNotFoundException ignored) {
+                // fallthrough
+            } catch (NoSuchMethodException ignored) {
+                // fallthrough
+            } catch (java.lang.reflect.InvocationTargetException ite) {
+                // 真实执行异常，不是"方法不存在"，重新抛出保留根因
+                Throwable cause = ite.getCause() != null ? ite.getCause() : ite;
+                if (cause instanceof RuntimeException re) {
+                    throw re;
+                }
+                if (cause instanceof Error er) {
+                    throw er;
+                }
+                throw new RuntimeException("load(RegistryAccess, CompoundTag) failed", cause);
+            } catch (Throwable t) {
+                Constants.LOG.warn("[maid_file_manager] invokeLoadMaid(RegistryAccess) failed, try fallback: {}",
+                        t.toString());
+            }
+        }
+        // 回退：单参 CompoundTag（MC 1.20 签名）
+        maid.load(tag);
+    }
+
+    /**
      * 导入时校验并修正女仆属性：
      * <ul>
      *   <li>血量上限超过 80 时截断到 80</li>
@@ -266,7 +356,8 @@ public final class MaidTransferService {
         }
         try {
             String modelId = maid.getModelId();
-            CompoundTag fullNbt = maid.saveWithoutId(new CompoundTag());
+            Object registryAccess = getRegistryAccess(maid.level());
+            CompoundTag fullNbt = invokeSaveWithoutId(maid, registryAccess, new CompoundTag());
             clearInventoryItems(fullNbt, EntityMaid.MAID_INVENTORY_TAG);
             clearInventoryItems(fullNbt, EntityMaid.MAID_BAUBLE_INVENTORY_TAG);
             clearInventoryItems(fullNbt, EntityMaid.MAID_HIDE_INVENTORY_TAG);
@@ -317,13 +408,14 @@ public final class MaidTransferService {
 
         Level level = player.level();
         EntityMaid maid = new EntityMaid(level);
+        Object registryAccess = getRegistryAccess(level);
         try {
             int sourceVersion = data.getDataVersion() > 0
                     ? data.getDataVersion()
                     : NbtVersion.fromMcVersion(data.getSourceMcVersion());
             int targetVersion = NbtVersion.currentRuntime();
             CompoundTag migratedData = NbtMigration.migrate(data.getData(), sourceVersion, targetVersion);
-            maid.load(migratedData);
+            invokeLoadMaid(maid, registryAccess, migratedData);
         } catch (Exception e) {
             Constants.LOG.error("[maid_file_manager] 导入女仆时加载 NBT 失败", e);
             return Component.translatable("maid_file_manager.import.fail.exception", e.getMessage());
@@ -396,13 +488,14 @@ public final class MaidTransferService {
 
         Level level = player.level();
         EntityMaid maid = new EntityMaid(level);
+        Object registryAccess = getRegistryAccess(level);
         try {
             int sourceVersion = data.getDataVersion() > 0
                     ? data.getDataVersion()
                     : NbtVersion.fromMcVersion(data.getSourceMcVersion());
             int targetVersion = NbtVersion.currentRuntime();
             CompoundTag migratedData = NbtMigration.migrate(data.getData(), sourceVersion, targetVersion);
-            maid.load(migratedData);
+            invokeLoadMaid(maid, registryAccess, migratedData);
         } catch (Exception e) {
             Constants.LOG.error("[maid_file_manager] 导入女仆时加载 NBT 失败", e);
             return Component.translatable("maid_file_manager.import.fail.exception", e.getMessage());
