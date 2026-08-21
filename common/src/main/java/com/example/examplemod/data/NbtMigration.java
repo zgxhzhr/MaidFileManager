@@ -50,13 +50,15 @@ public final class NbtMigration {
 
     public static CompoundTag migrate(CompoundTag data, int sourceVersion, int targetVersion) {
         if (data == null) return null;
-        if (sourceVersion == targetVersion
-                || sourceVersion == NbtVersion.UNKNOWN
+        // 版本未知时一律不动，避免误伤
+        if (sourceVersion == NbtVersion.UNKNOWN
                 || targetVersion == NbtVersion.UNKNOWN) {
-            // 同版本：只做一次防御性清理（万一导出没清干净），不强制删。
             return data;
         }
 
+        // -------- 运行时状态清理：同版本/跨版本一律执行 --------
+        // 防止源端残留的 ActiveEffects/Attributes modifier 在导入端复活异常 buff
+        // 或引发 modifier UUID 冲突
         // ---------- 跨版本：直接删除所有易变物品容器标签 ----------
         for (String tag : new String[] {
             "MaidInventory", "MaidBaubleInventory", "MaidHideInventory", "MaidTaskInventory",
@@ -94,15 +96,18 @@ public final class NbtMigration {
         Constants.LOG.info("[maid_file_manager] NbtMigration removed {} runtime state/inventory tags from source NBT",
                 RUNTIME_STATE_TAGS_TO_REMOVE.length);
 
-        // ---------- 双向转换 TLM 跨版本改名的核心 NBT 键名 ----------
-        renameCommonTags(data, sourceVersion, targetVersion);
+        // -------- 以下仅在真正跨版本时执行 --------
+        if (sourceVersion != targetVersion) {
+            // ---------- 双向转换 TLM 跨版本改名的核心 NBT 键名 ----------
+            renameCommonTags(data, sourceVersion, targetVersion);
 
-        // ---------- 定向迁移 ----------
-        if (sourceVersion <= NbtVersion.MC_1_20_1 && targetVersion >= NbtVersion.MC_1_21) {
-            migrate1201To121(data);
-        }
-        if (sourceVersion >= NbtVersion.MC_1_21 && targetVersion <= NbtVersion.MC_1_20_1) {
-            migrate121To1201(data);
+            // ---------- 定向迁移 ----------
+            if (sourceVersion <= NbtVersion.MC_1_20_1 && targetVersion >= NbtVersion.MC_1_21) {
+                migrate1201To121(data);
+            }
+            if (sourceVersion >= NbtVersion.MC_1_21 && targetVersion <= NbtVersion.MC_1_20_1) {
+                migrate121To1201(data);
+            }
         }
         return data;
     }

@@ -16,7 +16,7 @@
       ],
       "vmArgs": [
         "@E:\\Mod\\maid_file_manager-neoforge-1.21.1\\neoforge\\build\\moddev\\clientRunVmArgs.txt",
-        "-Dfml.modFolders\u003dmaid_file_manager%%E:\\Mod\\maid_file_manager-neoforge-1.21.1\\neoforge\\bin\\main"
+        "-Dfml.modFolders\u003dexamplemod%%E:\\Mod\\maid_file_manager-neoforge-1.21.1\\neoforge\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\neoforge\\run",
       "console": "internalConsole",
@@ -37,7 +37,7 @@
       ],
       "vmArgs": [
         "@E:\\Mod\\maid_file_manager-neoforge-1.21.1\\neoforge\\build\\moddev\\dataRunVmArgs.txt",
-        "-Dfml.modFolders\u003dmaid_file_manager%%E:\\Mod\\maid_file_manager-neoforge-1.21.1\\neoforge\\bin\\main"
+        "-Dfml.modFolders\u003dexamplemod%%E:\\Mod\\maid_file_manager-neoforge-1.21.1\\neoforge\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\neoforge\\run",
       "console": "internalConsole",
@@ -58,7 +58,7 @@
       ],
       "vmArgs": [
         "@E:\\Mod\\maid_file_manager-neoforge-1.21.1\\neoforge\\build\\moddev\\serverRunVmArgs.txt",
-        "-Dfml.modFolders\u003dmaid_file_manager%%E:\\Mod\\maid_file_manager-neoforge-1.21.1\\neoforge\\bin\\main"
+        "-Dfml.modFolders\u003dexamplemod%%E:\\Mod\\maid_file_manager-neoforge-1.21.1\\neoforge\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\neoforge\\run",
       "console": "internalConsole",
