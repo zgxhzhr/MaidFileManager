@@ -14,11 +14,14 @@ public interface IMaidFileNetwork {
     /** 请求服务端返回附近属于当前玩家的女仆列表 */
     void sendRequestMaidList();
 
-    /** 请求服务端导出指定 entityId 的女仆（服务端返回 MaidFileData） */
-    void sendExportMaid(int entityId);
+    /** 请求服务端批量导出指定 entityId 列表的女仆；removeAfter=true 表示导出成功后在世界中移除女仆 */
+    void sendExportMaids(List<Integer> entityIds, boolean removeAfterExport);
 
-    /** 发送要导入的女仆文件数据给服务端 */
+    /** 发送要导入的女仆文件数据给服务端（单条） */
     void sendImportFile(MaidFileData data);
+
+    /** 批量发送要导入的女仆文件数据给服务端 */
+    void sendImportFiles(List<MaidFileData> dataList);
 
     /**
      * 全局网络实现持有者，由 Forge/Fabric 在初始化时设置。
@@ -46,7 +49,7 @@ public interface IMaidFileNetwork {
     interface ClientHandler {
         void onMaidListReceived(List<MaidInfo> list);
 
-        void onExportResultReceived(MaidFileData data);
+        void onExportResultReceived(List<MaidFileData> dataList);
 
         void onFeedbackReceived(Component message);
     }

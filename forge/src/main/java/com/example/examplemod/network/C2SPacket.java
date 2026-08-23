@@ -9,8 +9,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraftforge.network.NetworkEvent;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -52,10 +54,16 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     handleRequestMaidList(player);
                 } else if (MaidFilePackets.ID_EXPORT_MAID.equals(id)) {
                     handleExportMaid(player, data.readInt());
+                } else if (MaidFilePackets.ID_EXPORT_BATCH.equals(id)) {
+                    List<Integer> ids = MaidFilePackets.readIntList(data);
+                    boolean removeAfter = data.readBoolean();
+                    handleExportBatch(player, ids, removeAfter);
                 } else if (MaidFilePackets.ID_REQUEST_FILE_LIST.equals(id)) {
                     handleRequestFileList(player);
                 } else if (MaidFilePackets.ID_IMPORT_FILE.equals(id)) {
                     handleImportFile(player, data);
+                } else if (MaidFilePackets.ID_IMPORT_BATCH.equals(id)) {
+                    handleImportBatch(player, data);
                 } else {
                     Constants.LOG.warn("[maid_file_manager] 未知的 C2S 包: {}", id);
                 }
@@ -114,6 +122,53 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         buf.writeComponent(feedback);
         ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_FEEDBACK, buf);
         Constants.LOG.info("[maid_file_manager] handleImportFile: result sent to client");
+    }
+
+    private static void handleExportBatch(ServerPlayer player, List<Integer> ids, boolean removeAfter) {
+        Constants.LOG.info("[maid_file_manager] handleExportBatch: player={} count={} removeAfter={}",
+                player.getName().getString(), ids.size(), removeAfter);
+        List<MaidFileData> results = new ArrayList<>(ids.size());
+        int removedCount = 0;
+        for (Integer entityId : ids) {
+            if (entityId == null) continue;
+            MaidFileData data = MaidTransferService.exportMaidToData(player, entityId);
+            if (data != null) {
+                results.add(data);
+                if (removeAfter) {
+                    Entity e = player.level().getEntity(entityId);
+                    if (e != null) {
+                        e.discard();
+                        removedCount++;
+                        Constants.LOG.info("[maid_file_manager] handleExportBatch: discarded entityId={}", entityId);
+                    }
+                }
+            }
+        }
+        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        MaidFilePackets.writeMaidFileDataList(buf, results);
+        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_EXPORT_BATCH_RESULT, buf);
+        Constants.LOG.info("[maid_file_manager] handleExportBatch: DONE sent={} removed={}", results.size(), removedCount);
+    }
+
+    private static void handleImportBatch(ServerPlayer player, FriendlyByteBuf data) {
+        List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(data);
+        Constants.LOG.info("[maid_file_manager] handleImportBatch: player={} count={}",
+                player.getName().getString(), list.size());
+        int ok = 0, fail = 0;
+        for (MaidFileData d : list) {
+            if (d == null) { fail++; continue; }
+            Component fb = MaidTransferService.importMaidFromData(player, d);
+            // importMaidFromData 返回的 feedback 如果成功消息则 ok++，否则 fail++
+            if (fb != null && fb.getString().contains("成功")) {
+                ok++;
+            } else {
+                fail++;
+            }
+        }
+        Component summary = Component.literal(String.format(java.util.Locale.ROOT,
+                "批量导入完成：成功 %d 个，失败 %d 个", ok, fail));
+        sendFeedback(player, summary);
+        Constants.LOG.info("[maid_file_manager] handleImportBatch: DONE ok={} fail={}", ok, fail);
     }
 
     private static void sendFeedback(ServerPlayer player, Component message) {

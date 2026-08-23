@@ -43,8 +43,12 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                 List<MaidInfo> list = MaidFilePackets.readMaidInfoList(data);
                 handler.onMaidListReceived(list);
             } else if (MaidFilePackets.ID_EXPORT_RESULT.equals(id)) {
+                // 兼容旧单条导出：包装成 singleton list
                 MaidFileData maidData = MaidFilePackets.readMaidFileData(data);
-                handler.onExportResultReceived(maidData);
+                handler.onExportResultReceived(maidData == null ? new java.util.ArrayList<>() : java.util.Collections.singletonList(maidData));
+            } else if (MaidFilePackets.ID_EXPORT_BATCH_RESULT.equals(id)) {
+                List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(data);
+                handler.onExportResultReceived(list);
             } else if (MaidFilePackets.ID_FEEDBACK.equals(id)) {
                 Component msg = data.readComponent();
                 handler.onFeedbackReceived(msg);
