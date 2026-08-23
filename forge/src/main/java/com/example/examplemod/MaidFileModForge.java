@@ -6,6 +6,7 @@ import com.example.examplemod.network.C2SPacket;
 import com.example.examplemod.network.ForgeNetwork;
 import com.example.examplemod.network.IMaidFileNetwork;
 import com.example.examplemod.network.S2CPacket;
+import com.example.examplemod.service.MaidTransferService;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
@@ -55,6 +56,9 @@ public class MaidFileModForge {
         modBus.addListener(this::onCommonSetup);
         modBus.addListener(this::onRegisterKeyMappings);
 
+        // 服务端 tick 监听器（用于监控导入实体的持久化状态）
+        MinecraftForge.EVENT_BUS.addListener(this::onServerTick);
+
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modBus.addListener(this::onClientSetup);
             MinecraftForge.EVENT_BUS.addListener(this::onClientTick);
@@ -97,6 +101,16 @@ public class MaidFileModForge {
             Constants.LOG.info("[maid_file_manager] Hotkey consumed — opening MaidFileManagerScreen");
             mc.setScreen(new MaidFileManagerScreen());
         }
+    }
+
+    /**
+     * 服务端 tick 事件：用于监控导入实体的持久化状态。
+     */
+    private void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
+        MaidTransferService.onServerTick();
     }
 
     /**

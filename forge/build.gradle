@@ -44,6 +44,18 @@ dependencies {
     compileOnly files(rootProject.file(tlm_jar_path))
 }
 
+// 自定义输出名：虽然内部构建用 1.20.1 坐标，但对外是 1.20/1.20.1 双兼容 JAR
+base {
+    archivesName = "maid_file_manager-forge-1.20"
+}
+
 jar {
+    archiveBaseName = "maid_file_manager-forge-1.20"
     finalizedBy('reobfJar')
+}
+
+tasks.named('reobfJar').configure {
+    doFirst {
+        // reobfJar 读取 jar.outputs，显式对齐 archiveBaseName 避免找不到原 jar
+    }
 }

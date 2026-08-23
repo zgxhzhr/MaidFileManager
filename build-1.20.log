@@ -1,0 +1,752 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.11/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:extractPluginRequests UP-TO-DATE
+> Task :buildSrc:generatePluginAdapters UP-TO-DATE
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:compileGroovyPlugins UP-TO-DATE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+
+> Configure project :fabric
+Fabric Loom: 1.9.2
+
+> Task :common:clean
+> Task :fabric:clean
+> Task :forge:clean
+
+> Task :common:createMinecraftArtifacts
+Loaded 98 artifacts from E:\Mod\maid_file_manager-forge-1.20\common\build\tmp\createMinecraftArtifacts\nfrt_artifact_manifest.properties
+[1m*** Started working on [4mdownloadJson[0m[0m
+ [1m[92mDONE [0m Completed [4mdownloadJson[0m in 0.03s
+[1m*** Started working on [4mdownloadServer[0m[0m
+[1m*** Started working on [4mdownloadClientMappings[0m[0m
+[1m*** Started working on [4mdownloadClient[0m[0m
+[1m*** Started working on [4mlistLibraries[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mlistLibraries[0m in 0.01s
+ [1m[92mDONE [0m Completed [4mdownloadClientMappings[0m in 0.04s
+ [1m[92mDONE [0m Completed [4mdownloadClient[0m in 0.04s
+ [1m[92mDONE [0m Completed [4mdownloadServer[0m in 0.04s
+[1m*** Started working on [4mmergeMappings[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mmergeMappings[0m in 0.01s
+[1m*** Started working on [4mcreateMappings[0m[0m
+[1m*** Started working on [4mstripClient[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mcreateMappings[0m in 0.01s
+ [1m[92mREUSE[0m Used cache of [4mstripClient[0m in 0.01s
+[1m*** Started working on [4mextractServer[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mextractServer[0m in 0.01s
+[1m*** Started working on [4mstripServer[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mstripServer[0m in 0.01s
+[1m*** Started working on [4mmerge[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mmerge[0m in 0.01s
+[1m*** Started working on [4mrename[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mrename[0m in 0.01s
+[1m*** Started working on [4mdecompile[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mdecompile[0m in 0.01s
+[1m*** Started working on [4minject[0m[0m
+ [1m[92mREUSE[0m Used cache of [4minject[0m in 0.01s
+[1m*** Started working on [4mpatch[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mpatch[0m in 0.01s
+[1m*** Started working on [4mremapSrgSourcesToOfficial[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mremapSrgSourcesToOfficial[0m in 0.01s
+[1m*** Started working on [4mapplyParchment[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mapplyParchment[0m in 0.01s
+[1m*** Started working on [4mrecompile[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mrecompile[0m in 0.01s
+[1m*** Started working on [4mmergeWithSources[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mmergeWithSources[0m in 0.02s
+Total runtime: 1.38s
+
+
+> Task :common:compileJava
+> Task :common:processResources
+> Task :common:classes
+> Task :common:jarJar NO-SOURCE
+> Task :common:jar
+
+> Task :common:javadoc
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\Constants.java:6: ����: û��ע��
+public class Constants {
+       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\Constants.java:9: ����: û��ע��
+    public static final Logger LOG = LoggerFactory.getLogger(MOD_NAME);
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\Constants.java:7: ����: û��ע��
+    public static final String MOD_ID = "maid_file_manager";
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\Constants.java:8: ����: û��ע��
+    public static final String MOD_NAME = "Maid File Manager";
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:18: ����: entityIdû�� @param
+    void sendExportMaid(int entityId);
+         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:21: ����: dataû�� @param
+    void sendImportFile(MaidFileData data);
+         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:49: ����: û��ע��
+        void onExportResultReceived(MaidFileData data);
+             ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:51: ����: û��ע��
+        void onFeedbackReceived(Component message);
+             ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:47: ����: û��ע��
+        void onMaidListReceived(List<MaidInfo> list);
+             ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:61: ����: û��ע��
+        public static ClientHandler get() {
+                                    ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:65: ����: û��ע��
+        public static void set(ClientHandler handler) {
+                           ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:30: ����: û��ע��
+        public static IMaidFileNetwork get() {
+                                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:34: ����: û��ע��
+        public static void set(IMaidFileNetwork impl) {
+                           ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\platform\services\IPlatformHelper.java:5: ����: û��ע��
+public interface IPlatformHelper {
+       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:57: ����: û��ע��
+    public MaidFileData() {
+           ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:191: ����: û��ע��
+    public CompoundTag getData() {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:207: ����: û��ע��
+    public int getDataVersion() {
+               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:215: ����: û��ע��
+    public String getDisplayName() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:135: ����: û��ע��
+    public long getExportedAt() {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:127: ����: û��ע��
+    public int getFormatVersion() {
+               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:199: ����: û��ע��
+    public String getModelId() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:159: ����: û��ע��
+    public String getModId() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:175: ����: û��ע��
+    public String getOwnerName() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:167: ����: û��ע��
+    public String getOwnerUuid() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:143: ����: û��ע��
+    public String getSourceMcVersion() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:151: ����: û��ע��
+    public String getSourceTlmVersion() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:183: ����: û��ע��
+    public boolean isTamed() {
+                   ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:87: ����: û��ע��
+    public static MaidFileData readFromNbt(CompoundTag root) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:195: ����: û��ע��
+    public void setData(CompoundTag data) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:211: ����: û��ע��
+    public void setDataVersion(int dataVersion) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:219: ����: û��ע��
+    public void setDisplayName(String displayName) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:139: ����: û��ע��
+    public void setExportedAt(long exportedAt) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:131: ����: û��ע��
+    public void setFormatVersion(int formatVersion) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:203: ����: û��ע��
+    public void setModelId(String modelId) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:163: ����: û��ע��
+    public void setModId(String modId) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:179: ����: û��ע��
+    public void setOwnerName(String ownerName) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:171: ����: û��ע��
+    public void setOwnerUuid(String ownerUuid) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:147: ����: û��ע��
+    public void setSourceMcVersion(String sourceMcVersion) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:155: ����: û��ע��
+    public void setSourceTlmVersion(String sourceTlmVersion) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:187: ����: û��ע��
+    public void setTamed(boolean tamed) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:60: ����: û��ע��
+    public CompoundTag writeToNbt() {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:43: ����: gameDirû�� @param
+    public static Path ensureExportsDir(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:43: ����: û�� @return
+    public static Path ensureExportsDir(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:48: ����: gameDirû�� @param
+    public static Path ensureImportsDir(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:48: ����: û�� @return
+    public static Path ensureImportsDir(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:75: ����: û�� @return
+    public static String buildExportFileName(String displayName, String modelId, String ownerUuid, LocalDateTime time) {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:124: ����: java.io.IOExceptionû�� @throws
+    public static String writeMaidFile(Path dir, String displayName, String modelId,
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:141: ����: fileû�� @param
+    public static MaidFileData readMaidFile(Path file) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:141: ����: û�� @return
+    public static MaidFileData readMaidFile(Path file) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:159: ����: dirû�� @param
+    public static List<String> listMaidFiles(Path dir) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:180: ����: fileNameû�� @param
+    public static long parseTimestampFromFileName(String fileName) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:180: ����: û�� @return
+    public static long parseTimestampFromFileName(String fileName) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:209: ����: fileNameû�� @param
+    public static String extractDisplayModelId(String fileName) {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:209: ����: û�� @return
+    public static String extractDisplayModelId(String fileName) {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:227: ����: û��ע��
+    public static Logger logger() {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\client\MaidFileManagerScreen.java:67: ����: û��ע��
+    public MaidFileManagerScreen() {
+           ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:52: ����: dataû�� @param
+    public static byte[] serializeMaidFileData(MaidFileData data) {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:52: ����: û�� @return
+    public static byte[] serializeMaidFileData(MaidFileData data) {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:64: ����: bytesû�� @param
+    public static MaidFileData deserializeMaidFileData(byte[] bytes) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:64: ����: û�� @return
+    public static MaidFileData deserializeMaidFileData(byte[] bytes) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:78: ����: bufû�� @param
+    public static void writeMaidFileData(FriendlyByteBuf buf, MaidFileData data) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:78: ����: dataû�� @param
+    public static void writeMaidFileData(FriendlyByteBuf buf, MaidFileData data) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:89: ����: bufû�� @param
+    public static MaidFileData readMaidFileData(FriendlyByteBuf buf) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:89: ����: û�� @return
+    public static MaidFileData readMaidFileData(FriendlyByteBuf buf) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:100: ����: bufû�� @param
+    public static void writeMaidInfoList(FriendlyByteBuf buf, List<MaidInfo> list) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:100: ����: listû�� @param
+    public static void writeMaidInfoList(FriendlyByteBuf buf, List<MaidInfo> list) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:108: ����: bufû�� @param
+    public static List<MaidInfo> readMaidInfoList(FriendlyByteBuf buf) {
+                                 ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:108: ����: û�� @return
+    public static List<MaidInfo> readMaidInfoList(FriendlyByteBuf buf) {
+                                 ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:33: ����: û��ע��
+    public static final ResourceLocation ID_EXPORT_MAID = id("export_maid");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:39: ����: û��ע��
+    public static final ResourceLocation ID_EXPORT_RESULT = id("export_result");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:38: ����: û��ע��
+    public static final ResourceLocation ID_FEEDBACK = id("feedback");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:37: ����: û��ע��
+    public static final ResourceLocation ID_FILE_LIST = id("file_list");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:40: ����: û��ע��
+    public static final ResourceLocation ID_IMPORT_FILE = id("import_file");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:35: ����: û��ע��
+    public static final ResourceLocation ID_IMPORT_MAID = id("import_maid");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:36: ����: û��ע��
+    public static final ResourceLocation ID_MAID_LIST = id("maid_list");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:34: ����: û��ע��
+    public static final ResourceLocation ID_REQUEST_FILE_LIST = id("request_file_list");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:32: ����: û��ע��
+    public static final ResourceLocation ID_REQUEST_MAID_LIST = id("request_maid_list");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:139: ����: û��ע��
+    public static MaidInfo readMaidInfo(FriendlyByteBuf buf) {
+                           ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:160: ����: û��ע��
+    public static List<String> readStringList(FriendlyByteBuf buf) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:117: ����: û��ע��
+    public static void writeMaidInfo(FriendlyByteBuf buf, MaidInfo info) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:153: ����: û��ע��
+    public static void writeStringList(FriendlyByteBuf buf, List<String> list) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:22: ����: û��ע��
+    public MaidInfo(int entityId, String modelId, String displayName, int favorability,
+           ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:73: ����: û��ע��
+    public String customName() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:45: ����: û��ע��
+    public String displayName() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:37: ����: û��ע��
+    public int entityId() {
+               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:49: ����: û��ע��
+    public int favorability() {
+               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:53: ����: û��ע��
+    public float health() {
+                 ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:57: ����: û��ע��
+    public float maxHealth() {
+                 ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:41: ����: û��ע��
+    public String modelId() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:69: ����: û��ע��
+    public String ownerName() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:65: ����: û��ע��
+    public UUID ownerUuid() {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:61: ����: û��ע��
+    public boolean tamed() {
+                   ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\service\MaidTransferService.java:245: ����: playerû�� @param
+    public static List<MaidInfo> listOwnMaids(ServerPlayer player) {
+                                 ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\service\MaidTransferService.java:245: ����: û�� @return
+    public static List<MaidInfo> listOwnMaids(ServerPlayer player) {
+                                 ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\service\MaidTransferService.java:288: ����: modelIdû�� @param
+    public static String getDisplayName(String modelId) {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\service\MaidTransferService.java:288: ����: û�� @return
+    public static String getDisplayName(String modelId) {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\service\MaidTransferService.java:345: ����: playerû�� @param
+    public static MaidFileData exportMaidToData(ServerPlayer player, int entityId) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\service\MaidTransferService.java:345: ����: entityIdû�� @param
+    public static MaidFileData exportMaidToData(ServerPlayer player, int entityId) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\service\MaidTransferService.java:345: ����: û�� @return
+    public static MaidFileData exportMaidToData(ServerPlayer player, int entityId) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\service\MaidTransferService.java:404: ����: playerû�� @param
+    public static Component importMaidFromData(ServerPlayer player, MaidFileData data) {
+                            ^
+100 ������
+
+> Task :common:javadocJar
+> Task :common:reobfJar
+> Task :common:sourcesJar
+> Task :common:assemble
+> Task :common:compileTestJava NO-SOURCE
+> Task :common:processTestResources NO-SOURCE
+> Task :common:testClasses UP-TO-DATE
+> Task :common:test NO-SOURCE
+> Task :common:check UP-TO-DATE
+> Task :common:build
+
+> Task :forge:createMinecraftArtifacts
+Loaded 129 artifacts from E:\Mod\maid_file_manager-forge-1.20\forge\build\tmp\createMinecraftArtifacts\nfrt_artifact_manifest.properties
+  [33mWARNING: [0mde.oceanlabs.mcp:mcp_config:1.20.1-20230612.114412@zip is not present in the artifact manifest
+[1m*** Started working on [4mdownloadJson[0m[0m
+ [1m[92mDONE [0m Completed [4mdownloadJson[0m in 0.01s
+[1m*** Started working on [4mdownloadClientMappings[0m[0m
+[1m*** Started working on [4mdownloadServer[0m[0m
+[1m*** Started working on [4mdownloadClient[0m[0m
+[1m*** Started working on [4mlistLibraries[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mlistLibraries[0m in 0.00s
+ [1m[92mDONE [0m Completed [4mdownloadClient[0m in 0.03s
+ [1m[92mDONE [0m Completed [4mdownloadClientMappings[0m in 0.03s
+ [1m[92mDONE [0m Completed [4mdownloadServer[0m in 0.03s
+[1m*** Started working on [4mmergeMappings[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mmergeMappings[0m in 0.00s
+[1m*** Started working on [4mcreateMappings[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mcreateMappings[0m in 0.00s
+[1m*** Started working on [4mstripClient[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mstripClient[0m in 0.00s
+[1m*** Started working on [4mextractServer[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mextractServer[0m in 0.00s
+[1m*** Started working on [4mstripServer[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mstripServer[0m in 0.00s
+[1m*** Started working on [4mmerge[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mmerge[0m in 0.00s
+[1m*** Started working on [4mrename[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mrename[0m in 0.00s
+[1m*** Started working on [4mdecompile[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mdecompile[0m in 0.00s
+[1m*** Started working on [4minject[0m[0m
+ [1m[92mREUSE[0m Used cache of [4minject[0m in 0.01s
+[1m*** Started working on [4mpatch[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mpatch[0m in 0.01s
+[1m*** Started working on [4mapplyNeoforgePatches[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mapplyNeoforgePatches[0m in 0.01s
+[1m*** Started working on [4mtransformSources[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mtransformSources[0m in 0.01s
+[1m*** Started working on [4mremapSrgSourcesToOfficial[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mremapSrgSourcesToOfficial[0m in 0.01s
+[1m*** Started working on [4mapplyParchment[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mapplyParchment[0m in 0.01s
+[1m*** Started working on [4mrecompile[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mrecompile[0m in 0.01s
+[1m*** Started working on [4msourcesAndCompiledWithNeoForge[0m[0m
+ [1m[92mREUSE[0m Used cache of [4msourcesAndCompiledWithNeoForge[0m in 0.01s
+Total runtime: 1.22s
+
+
+> Task :forge:compileJava
+> Task :forge:processResources
+> Task :forge:classes
+> Task :forge:jarJar NO-SOURCE
+> Task :forge:jar
+
+> Task :forge:javadoc
+E:\Mod\maid_file_manager-forge-1.20\forge\src\main\java\com\example\examplemod\network\C2SPacket.java:25: ����: û��ע��
+    public static void encode(C2SPacket packet, FriendlyByteBuf buf) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\forge\src\main\java\com\example\examplemod\network\C2SPacket.java:31: ����: û��ע��
+    public static C2SPacket decode(FriendlyByteBuf buf) {
+                            ^
+E:\Mod\maid_file_manager-forge-1.20\forge\src\main\java\com\example\examplemod\network\C2SPacket.java:38: ����: û��ע��
+    public static void handle(C2SPacket packet, Supplier<NetworkEvent.Context> ctxSupplier) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\Constants.java:6: ����: û��ע��
+public class Constants {
+       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\Constants.java:9: ����: û��ע��
+    public static final Logger LOG = LoggerFactory.getLogger(MOD_NAME);
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\Constants.java:7: ����: û��ע��
+    public static final String MOD_ID = "maid_file_manager";
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\Constants.java:8: ����: û��ע��
+    public static final String MOD_NAME = "Maid File Manager";
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:18: ����: entityIdû�� @param
+    void sendExportMaid(int entityId);
+         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:21: ����: dataû�� @param
+    void sendImportFile(MaidFileData data);
+         ^
+E:\Mod\maid_file_manager-forge-1.20\forge\src\main\java\com\example\examplemod\platform\ForgePlatformHelper.java:11: ����: û��ע��
+public class ForgePlatformHelper implements IPlatformHelper {
+       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:49: ����: û��ע��
+        void onExportResultReceived(MaidFileData data);
+             ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:51: ����: û��ע��
+        void onFeedbackReceived(Component message);
+             ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:47: ����: û��ע��
+        void onMaidListReceived(List<MaidInfo> list);
+             ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:61: ����: û��ע��
+        public static ClientHandler get() {
+                                    ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:65: ����: û��ע��
+        public static void set(ClientHandler handler) {
+                           ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:30: ����: û��ע��
+        public static IMaidFileNetwork get() {
+                                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\IMaidFileNetwork.java:34: ����: û��ע��
+        public static void set(IMaidFileNetwork impl) {
+                           ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\platform\services\IPlatformHelper.java:5: ����: û��ע��
+public interface IPlatformHelper {
+       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:57: ����: û��ע��
+    public MaidFileData() {
+           ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:191: ����: û��ע��
+    public CompoundTag getData() {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:207: ����: û��ע��
+    public int getDataVersion() {
+               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:215: ����: û��ע��
+    public String getDisplayName() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:135: ����: û��ע��
+    public long getExportedAt() {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:127: ����: û��ע��
+    public int getFormatVersion() {
+               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:199: ����: û��ע��
+    public String getModelId() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:159: ����: û��ע��
+    public String getModId() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:175: ����: û��ע��
+    public String getOwnerName() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:167: ����: û��ע��
+    public String getOwnerUuid() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:143: ����: û��ע��
+    public String getSourceMcVersion() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:151: ����: û��ע��
+    public String getSourceTlmVersion() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:183: ����: û��ע��
+    public boolean isTamed() {
+                   ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:87: ����: û��ע��
+    public static MaidFileData readFromNbt(CompoundTag root) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:195: ����: û��ע��
+    public void setData(CompoundTag data) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:211: ����: û��ע��
+    public void setDataVersion(int dataVersion) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:219: ����: û��ע��
+    public void setDisplayName(String displayName) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:139: ����: û��ע��
+    public void setExportedAt(long exportedAt) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:131: ����: û��ע��
+    public void setFormatVersion(int formatVersion) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:203: ����: û��ע��
+    public void setModelId(String modelId) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:163: ����: û��ע��
+    public void setModId(String modId) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:179: ����: û��ע��
+    public void setOwnerName(String ownerName) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:171: ����: û��ע��
+    public void setOwnerUuid(String ownerUuid) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:147: ����: û��ע��
+    public void setSourceMcVersion(String sourceMcVersion) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:155: ����: û��ע��
+    public void setSourceTlmVersion(String sourceTlmVersion) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:187: ����: û��ע��
+    public void setTamed(boolean tamed) {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileData.java:60: ����: û��ע��
+    public CompoundTag writeToNbt() {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:43: ����: gameDirû�� @param
+    public static Path ensureExportsDir(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:43: ����: û�� @return
+    public static Path ensureExportsDir(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:48: ����: gameDirû�� @param
+    public static Path ensureImportsDir(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:48: ����: û�� @return
+    public static Path ensureImportsDir(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:75: ����: û�� @return
+    public static String buildExportFileName(String displayName, String modelId, String ownerUuid, LocalDateTime time) {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:124: ����: java.io.IOExceptionû�� @throws
+    public static String writeMaidFile(Path dir, String displayName, String modelId,
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:141: ����: fileû�� @param
+    public static MaidFileData readMaidFile(Path file) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:141: ����: û�� @return
+    public static MaidFileData readMaidFile(Path file) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:159: ����: dirû�� @param
+    public static List<String> listMaidFiles(Path dir) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:180: ����: fileNameû�� @param
+    public static long parseTimestampFromFileName(String fileName) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:180: ����: û�� @return
+    public static long parseTimestampFromFileName(String fileName) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:209: ����: fileNameû�� @param
+    public static String extractDisplayModelId(String fileName) {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:209: ����: û�� @return
+    public static String extractDisplayModelId(String fileName) {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidFileIo.java:227: ����: û��ע��
+    public static Logger logger() {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\client\MaidFileManagerScreen.java:67: ����: û��ע��
+    public MaidFileManagerScreen() {
+           ^
+E:\Mod\maid_file_manager-forge-1.20\forge\src\main\java\com\example\examplemod\MaidFileModForge.java:24: ����: û��ע��
+public class MaidFileModForge {
+       ^
+E:\Mod\maid_file_manager-forge-1.20\forge\src\main\java\com\example\examplemod\MaidFileModForge.java:27: ����: û��ע��
+    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
+                                      ^
+E:\Mod\maid_file_manager-forge-1.20\forge\src\main\java\com\example\examplemod\MaidFileModForge.java:34: ����: û��ע��
+    public MaidFileModForge() {
+           ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:52: ����: dataû�� @param
+    public static byte[] serializeMaidFileData(MaidFileData data) {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:52: ����: û�� @return
+    public static byte[] serializeMaidFileData(MaidFileData data) {
+                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:64: ����: bytesû�� @param
+    public static MaidFileData deserializeMaidFileData(byte[] bytes) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:64: ����: û�� @return
+    public static MaidFileData deserializeMaidFileData(byte[] bytes) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:78: ����: bufû�� @param
+    public static void writeMaidFileData(FriendlyByteBuf buf, MaidFileData data) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:78: ����: dataû�� @param
+    public static void writeMaidFileData(FriendlyByteBuf buf, MaidFileData data) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:89: ����: bufû�� @param
+    public static MaidFileData readMaidFileData(FriendlyByteBuf buf) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:89: ����: û�� @return
+    public static MaidFileData readMaidFileData(FriendlyByteBuf buf) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:100: ����: bufû�� @param
+    public static void writeMaidInfoList(FriendlyByteBuf buf, List<MaidInfo> list) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:100: ����: listû�� @param
+    public static void writeMaidInfoList(FriendlyByteBuf buf, List<MaidInfo> list) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:108: ����: bufû�� @param
+    public static List<MaidInfo> readMaidInfoList(FriendlyByteBuf buf) {
+                                 ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:108: ����: û�� @return
+    public static List<MaidInfo> readMaidInfoList(FriendlyByteBuf buf) {
+                                 ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:33: ����: û��ע��
+    public static final ResourceLocation ID_EXPORT_MAID = id("export_maid");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:39: ����: û��ע��
+    public static final ResourceLocation ID_EXPORT_RESULT = id("export_result");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:38: ����: û��ע��
+    public static final ResourceLocation ID_FEEDBACK = id("feedback");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:37: ����: û��ע��
+    public static final ResourceLocation ID_FILE_LIST = id("file_list");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:40: ����: û��ע��
+    public static final ResourceLocation ID_IMPORT_FILE = id("import_file");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:35: ����: û��ע��
+    public static final ResourceLocation ID_IMPORT_MAID = id("import_maid");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:36: ����: û��ע��
+    public static final ResourceLocation ID_MAID_LIST = id("maid_list");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:34: ����: û��ע��
+    public static final ResourceLocation ID_REQUEST_FILE_LIST = id("request_file_list");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:32: ����: û��ע��
+    public static final ResourceLocation ID_REQUEST_MAID_LIST = id("request_maid_list");
+                                         ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:139: ����: û��ע��
+    public static MaidInfo readMaidInfo(FriendlyByteBuf buf) {
+                           ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:160: ����: û��ע��
+    public static List<String> readStringList(FriendlyByteBuf buf) {
+                               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:117: ����: û��ע��
+    public static void writeMaidInfo(FriendlyByteBuf buf, MaidInfo info) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\network\MaidFilePackets.java:153: ����: û��ע��
+    public static void writeStringList(FriendlyByteBuf buf, List<String> list) {
+                       ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:22: ����: û��ע��
+    public MaidInfo(int entityId, String modelId, String displayName, int favorability,
+           ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:73: ����: û��ע��
+    public String customName() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:45: ����: û��ע��
+    public String displayName() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:37: ����: û��ע��
+    public int entityId() {
+               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:49: ����: û��ע��
+    public int favorability() {
+               ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:53: ����: û��ע��
+    public float health() {
+                 ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:57: ����: û��ע��
+    public float maxHealth() {
+                 ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:41: ����: û��ע��
+    public String modelId() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:69: ����: û��ע��
+    public String ownerName() {
+                  ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:65: ����: û��ע��
+    public UUID ownerUuid() {
+                ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\data\MaidInfo.java:61: ����: û��ע��
+    public boolean tamed() {
+                   ^
+E:\Mod\maid_file_manager-forge-1.20\common\src\main\java\com\example\examplemod\service\MaidTransferService.java:245: ����: playerû�� @param
+    public static List<MaidInfo> listOwnMaids(ServerPlayer player) {
+                                 ^
+100 ������
+
+> Task :forge:javadocJar
+> Task :forge:reobfJar
+> Task :forge:sourcesJar
+> Task :forge:assemble
+> Task :forge:compileTestJava NO-SOURCE
+> Task :forge:processTestResources NO-SOURCE
+> Task :forge:testClasses UP-TO-DATE
+> Task :forge:test NO-SOURCE
+> Task :forge:check UP-TO-DATE
+> Task :forge:build
+
+BUILD SUCCESSFUL in 35s
+26 actionable tasks: 19 executed, 7 up-to-date

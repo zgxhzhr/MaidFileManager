@@ -7,6 +7,8 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
 
+import java.util.List;
+
 /**
  * Forge 客户端网络实现。
  * 实现 {@link IMaidFileNetwork}，通过 Forge SimpleChannel 发送 C2S 包。
@@ -21,11 +23,12 @@ public final class ForgeNetwork implements IMaidFileNetwork {
     }
 
     @Override
-    public void sendExportMaid(int entityId) {
-        LOG.info("[maid_file_manager] C->S: EXPORT_MAID entityId={}", entityId);
+    public void sendExportMaids(List<Integer> entityIds, boolean removeAfterExport) {
+        LOG.info("[maid_file_manager] C->S: EXPORT_BATCH count={} removeAfter={}", entityIds.size(), removeAfterExport);
         FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        buf.writeInt(entityId);
-        sendC2S(MaidFilePackets.ID_EXPORT_MAID, buf);
+        MaidFilePackets.writeIntList(buf, entityIds);
+        buf.writeBoolean(removeAfterExport);
+        sendC2S(MaidFilePackets.ID_EXPORT_BATCH, buf);
     }
 
     @Override
@@ -34,6 +37,14 @@ public final class ForgeNetwork implements IMaidFileNetwork {
         FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
         MaidFilePackets.writeMaidFileData(buf, data);
         sendC2S(MaidFilePackets.ID_IMPORT_FILE, buf);
+    }
+
+    @Override
+    public void sendImportFiles(List<MaidFileData> dataList) {
+        LOG.info("[maid_file_manager] C->S: IMPORT_BATCH count={}", dataList.size());
+        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        MaidFilePackets.writeMaidFileDataList(buf, dataList);
+        sendC2S(MaidFilePackets.ID_IMPORT_BATCH, buf);
     }
 
     private static void sendC2S(ResourceLocation id, FriendlyByteBuf data) {
