@@ -15,6 +15,10 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 public final class MaidFilePayloads {
 
     private MaidFilePayloads() {
@@ -109,6 +113,93 @@ public final class MaidFilePayloads {
         }
     }
 
+    public record ExportBatchPayload(byte[] encoded) implements CustomPacketPayload {
+        public static final Type<ExportBatchPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "export_batch"));
+        public static final StreamCodec<ByteBuf, ExportBatchPayload> STREAM_CODEC =
+                StreamCodec.ofMember(
+                        (p, buf) -> { FriendlyByteBuf fbb = new FriendlyByteBuf(buf); fbb.writeVarInt(p.encoded.length); fbb.writeBytes(p.encoded); },
+                        buf -> { FriendlyByteBuf fbb = new FriendlyByteBuf(buf); int len = fbb.readVarInt(); byte[] arr = new byte[len]; fbb.readBytes(arr); return new ExportBatchPayload(arr); }
+                );
+        private static byte[] encodeExportBatch(List<Integer> ids, boolean removeAfter) {
+            FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+            MaidFilePackets.writeIntList(fbb, ids);
+            fbb.writeBoolean(removeAfter);
+            byte[] out = new byte[fbb.readableBytes()];
+            fbb.getBytes(0, out);
+            return out;
+        }
+        public ExportBatchPayload(List<Integer> ids, boolean removeAfter) {
+            this(encodeExportBatch(ids, removeAfter));
+        }
+        @Override
+        public Type<? extends CustomPacketPayload> type() { return TYPE; }
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                if (ctx.player() instanceof ServerPlayer sp) {
+                    FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
+                    List<Integer> ids = MaidFilePackets.readIntList(fbb);
+                    boolean removeAfter = fbb.readBoolean();
+                    List<MaidFileData> results = new ArrayList<>(ids.size());
+                    int removed = 0;
+                    for (Integer entityId : ids) {
+                        if (entityId == null) continue;
+                        MaidFileData d = MaidTransferService.exportMaidToData(sp, entityId);
+                        if (d != null) {
+                            results.add(d);
+                            if (removeAfter) {
+                                var e = sp.level().getEntity(entityId);
+                                if (e != null) { e.discard(); removed++; }
+                            }
+                        }
+                    }
+                    PacketDistributor.sendToPlayer(sp, new ExportBatchResultPayload(results));
+                    Constants.LOG.info("[maid_file_manager] EXPORT_BATCH handled: ids={}, sent={}, removed={}", ids.size(), results.size(), removed);
+                }
+            });
+        }
+    }
+
+    public record ImportBatchPayload(byte[] encoded) implements CustomPacketPayload {
+        public static final Type<ImportBatchPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "import_batch"));
+        public static final StreamCodec<ByteBuf, ImportBatchPayload> STREAM_CODEC =
+                StreamCodec.ofMember(
+                        (p, buf) -> { FriendlyByteBuf fbb = new FriendlyByteBuf(buf); fbb.writeVarInt(p.encoded.length); fbb.writeBytes(p.encoded); },
+                        buf -> { FriendlyByteBuf fbb = new FriendlyByteBuf(buf); int len = fbb.readVarInt(); byte[] arr = new byte[len]; fbb.readBytes(arr); return new ImportBatchPayload(arr); }
+                );
+        private static byte[] encodeImportBatch(List<MaidFileData> dataList) {
+            FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+            MaidFilePackets.writeMaidFileDataList(fbb, dataList);
+            byte[] out = new byte[fbb.readableBytes()];
+            fbb.getBytes(0, out);
+            return out;
+        }
+        public ImportBatchPayload(List<MaidFileData> dataList) {
+            this(encodeImportBatch(dataList));
+        }
+        @Override
+        public Type<? extends CustomPacketPayload> type() { return TYPE; }
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                if (ctx.player() instanceof ServerPlayer sp) {
+                    FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
+                    List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(fbb);
+                    int ok = 0, fail = 0;
+                    for (MaidFileData d : list) {
+                        if (d == null) { fail++; continue; }
+                        Component fb = MaidTransferService.importMaidFromData(sp, d);
+                        if (fb != null && fb.getString().contains("成功")) ok++; else fail++;
+                    }
+                    Component summary = Component.literal(String.format(java.util.Locale.ROOT,
+                            "批量导入完成：成功 %d 个，失败 %d 个", ok, fail));
+                    PacketDistributor.sendToPlayer(sp, new FeedbackPayload(summary));
+                    Constants.LOG.info("[maid_file_manager] IMPORT_BATCH handled: count={}, ok={}, fail={}", list.size(), ok, fail);
+                }
+            });
+        }
+    }
+
     // ================ S2C 包（服务端 -> 客户端） ================
 
     public record MaidListPayload(java.util.List<com.example.examplemod.data.MaidInfo> list)
@@ -167,7 +258,39 @@ public final class MaidFilePayloads {
                 var handler = IMaidFileNetwork.ClientHandlerHolder.get();
                 if (handler != null) {
                     MaidFileData data = MaidFilePackets.deserializeMaidFileData(bytes);
-                    handler.onExportResultReceived(data);
+                    handler.onExportResultReceived(data == null ? new ArrayList<>() : Collections.singletonList(data));
+                }
+            });
+        }
+    }
+
+    public record ExportBatchResultPayload(byte[] encoded) implements CustomPacketPayload {
+        public static final Type<ExportBatchResultPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "export_batch_result"));
+        public static final StreamCodec<ByteBuf, ExportBatchResultPayload> STREAM_CODEC =
+                StreamCodec.ofMember(
+                        (p, buf) -> { FriendlyByteBuf fbb = new FriendlyByteBuf(buf); fbb.writeVarInt(p.encoded.length); fbb.writeBytes(p.encoded); },
+                        buf -> { FriendlyByteBuf fbb = new FriendlyByteBuf(buf); int len = fbb.readVarInt(); byte[] arr = new byte[len]; fbb.readBytes(arr); return new ExportBatchResultPayload(arr); }
+                );
+        private static byte[] encodeExportBatchResult(List<MaidFileData> dataList) {
+            FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+            MaidFilePackets.writeMaidFileDataList(fbb, dataList);
+            byte[] out = new byte[fbb.readableBytes()];
+            fbb.getBytes(0, out);
+            return out;
+        }
+        public ExportBatchResultPayload(List<MaidFileData> dataList) {
+            this(encodeExportBatchResult(dataList));
+        }
+        @Override
+        public Type<? extends CustomPacketPayload> type() { return TYPE; }
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                var handler = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (handler != null) {
+                    FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
+                    List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(fbb);
+                    handler.onExportResultReceived(list);
                 }
             });
         }

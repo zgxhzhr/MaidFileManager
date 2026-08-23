@@ -32,12 +32,15 @@ import java.util.UUID;
 public final class MaidFilePackets {
     public static final ResourceLocation ID_REQUEST_MAID_LIST = id("request_maid_list");
     public static final ResourceLocation ID_EXPORT_MAID = id("export_maid");
+    public static final ResourceLocation ID_EXPORT_BATCH = id("export_batch");
+    public static final ResourceLocation ID_IMPORT_BATCH = id("import_batch");
     public static final ResourceLocation ID_REQUEST_FILE_LIST = id("request_file_list");
     public static final ResourceLocation ID_IMPORT_MAID = id("import_maid");
     public static final ResourceLocation ID_MAID_LIST = id("maid_list");
     public static final ResourceLocation ID_FILE_LIST = id("file_list");
     public static final ResourceLocation ID_FEEDBACK = id("feedback");
     public static final ResourceLocation ID_EXPORT_RESULT = id("export_result");
+    public static final ResourceLocation ID_EXPORT_BATCH_RESULT = id("export_batch_result");
     public static final ResourceLocation ID_IMPORT_FILE = id("import_file");
 
     private MaidFilePackets() {
@@ -163,6 +166,44 @@ public final class MaidFilePackets {
         List<String> list = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
             list.add(buf.readUtf());
+        }
+        return list;
+    }
+
+    // ---------- 批量导出/导入辅助 ----------
+
+    /** 写 int 列表（entityId 列表） */
+    public static void writeIntList(FriendlyByteBuf buf, List<Integer> list) {
+        buf.writeVarInt(list.size());
+        for (int v : list) {
+            buf.writeInt(v);
+        }
+    }
+
+    /** 读 int 列表（entityId 列表） */
+    public static List<Integer> readIntList(FriendlyByteBuf buf) {
+        int size = buf.readVarInt();
+        List<Integer> list = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            list.add(buf.readInt());
+        }
+        return list;
+    }
+
+    /** 写 MaidFileData 列表 */
+    public static void writeMaidFileDataList(FriendlyByteBuf buf, List<MaidFileData> list) {
+        buf.writeVarInt(list.size());
+        for (MaidFileData d : list) {
+            writeMaidFileData(buf, d);
+        }
+    }
+
+    /** 读 MaidFileData 列表 */
+    public static List<MaidFileData> readMaidFileDataList(FriendlyByteBuf buf) {
+        int size = buf.readVarInt();
+        List<MaidFileData> list = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            list.add(readMaidFileData(buf));
         }
         return list;
     }

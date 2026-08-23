@@ -49,9 +49,15 @@ public class MaidFileModNeoForge {
         registrar.playToServer(MaidFilePayloads.ExportMaidPayload.TYPE,
                 MaidFilePayloads.ExportMaidPayload.STREAM_CODEC,
                 MaidFilePayloads.ExportMaidPayload::handle);
+        registrar.playToServer(MaidFilePayloads.ExportBatchPayload.TYPE,
+                MaidFilePayloads.ExportBatchPayload.STREAM_CODEC,
+                MaidFilePayloads.ExportBatchPayload::handle);
         registrar.playToServer(MaidFilePayloads.ImportFilePayload.TYPE,
                 MaidFilePayloads.ImportFilePayload.STREAM_CODEC,
                 MaidFilePayloads.ImportFilePayload::handle);
+        registrar.playToServer(MaidFilePayloads.ImportBatchPayload.TYPE,
+                MaidFilePayloads.ImportBatchPayload.STREAM_CODEC,
+                MaidFilePayloads.ImportBatchPayload::handle);
 
         registrar.playToClient(MaidFilePayloads.MaidListPayload.TYPE,
                 MaidFilePayloads.MaidListPayload.STREAM_CODEC,
@@ -59,11 +65,14 @@ public class MaidFileModNeoForge {
         registrar.playToClient(MaidFilePayloads.ExportResultPayload.TYPE,
                 MaidFilePayloads.ExportResultPayload.STREAM_CODEC,
                 MaidFilePayloads.ExportResultPayload::handle);
+        registrar.playToClient(MaidFilePayloads.ExportBatchResultPayload.TYPE,
+                MaidFilePayloads.ExportBatchResultPayload.STREAM_CODEC,
+                MaidFilePayloads.ExportBatchResultPayload::handle);
         registrar.playToClient(MaidFilePayloads.FeedbackPayload.TYPE,
                 MaidFilePayloads.FeedbackPayload.STREAM_CODEC,
                 MaidFilePayloads.FeedbackPayload::handle);
 
-        Constants.LOG.info("[maid_file_manager] CustomPayload handlers registered: 3 C2S + 3 S2C");
+        Constants.LOG.info("[maid_file_manager] CustomPayload handlers registered: 5 C2S + 4 S2C");
     }
 
     private void onRegisterClient(RegisterKeyMappingsEvent event) {
