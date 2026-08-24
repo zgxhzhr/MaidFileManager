@@ -136,6 +136,14 @@ public final class MaidTransferService {
     private static void invokeLoadMaid(EntityMaid maid, Object registryAccess, CompoundTag tag) {
         Constants.LOG.info("[maid_file_manager] invokeLoadMaid: tag keys={}", tag.getAllKeys());
 
+        // 从原始传入 tag 先读出 StruckByLightning 渡劫标记，后续两条路径都用它强制同步
+        // （注意：extractTlmData 会移除 tag 里的键，所以必须在 extract 之前读好）
+        boolean tagStruckByLightning = false;
+        if (tag.contains("StruckByLightning", Tag.TAG_BYTE)) {
+            tagStruckByLightning = tag.getBoolean("StruckByLightning");
+            Constants.LOG.info("[maid_file_manager] invokeLoadMaid: source StruckByLightning from tag: {}", tagStruckByLightning);
+        }
+
         // 预初始化基础字段
         preInitBaseFields(maid, tag);
 
@@ -153,6 +161,9 @@ public final class MaidTransferService {
             Constants.LOG.info("[maid_file_manager] maid.load(tag) succeeded");
             // 成功后恢复 TLM 专属数据
             restoreTlmData(maid, tlmTag);
+            // 渡劫标记强制同步（路径 1）
+            maid.setStruckByLightning(tagStruckByLightning);
+            Constants.LOG.info("[maid_file_manager] invokeLoadMaid(path1): sync StruckByLightning -> {}", tagStruckByLightning);
             postLoadFixes(maid);
             return;
         } catch (Throwable t) {
@@ -173,11 +184,14 @@ public final class MaidTransferService {
 
         // 恢复 TLM 专属数据
         restoreTlmData(maid, tlmTag);
+        // 渡劫标记强制同步（路径 2 —— fallback 路径不会触发 TLM readAdditionalSaveData，必须手动同步）
+        maid.setStruckByLightning(tagStruckByLightning);
+        Constants.LOG.info("[maid_file_manager] invokeLoadMaid(path2 fallback): sync StruckByLightning -> {}", tagStruckByLightning);
         postLoadFixes(maid);
 
         // 验证实体状态
-        Constants.LOG.info("[maid_file_manager] post-load: alive={}, health={}, uuid={}",
-                maid.isAlive(), maid.getHealth(), maid.getUUID());
+        Constants.LOG.info("[maid_file_manager] post-load: alive={}, health={}, uuid={}, struckByLightning={}",
+                maid.isAlive(), maid.getHealth(), maid.getUUID(), maid.isStruckByLightning());
     }
 
     /**
@@ -314,8 +328,11 @@ public final class MaidTransferService {
         String[] complexStructures = {
                 // 任务数据 Maps（复杂结构，ListTag 里有 compound，跨版本字段差异大）
                 "MaidTaskDataMaps",
-                // AI 对话数据
+                // AI 对话数据：人设 + 聊天历史 + 压缩摘要 + token 统计（TLM 本体 AI 四件套标签）
                 "MaidAIChat",
+                "MaidHistoryChat",
+                "MaidHistorySummary",
+                "MaidLastChatTokenUsage",
                 // 配置（MaidConfig 里有各种子结构）
                 "MaidConfig",
                 "MaidSubConfig",
@@ -447,6 +464,105 @@ public final class MaidTransferService {
             }
         } else {
             Constants.LOG.info("[maid_file_manager] MaidFavorability self-loaded OK: {}", currentFavorability);
+        }
+
+        // ---------- AI 对话数据：聊天历史（本体API）+ 人设8字段（反射强塞双保险） ----------
+        // 用户实机铁证（1.21.1→1.20.1）：聊天 MaidHistoryChat 能还原，人设 CustomSetting 过不去
+        // 根因：MaidAIChatSerializable.readFromTag 对 tag.contains("MaidAIChat") 层级判空
+        //       在跨版本 NBT 包装不一致时条件不通过，虽 tlmData 里有值但字段仍为空。
+        // 修复策略：双路径
+        //   (A) 仍调用 aiChatManager.readFromTag(tlmData) —— 还原聊天历史 / 摘要 / token
+        //       （这部分用户验证成功，历史靠 MaidAIChatData override 的 readFromTag 独立读取）
+        //   (B) 反射强塞 MaidAIChatSerializable 的 8 个公开 String 字段：
+        //       llmSite / llmModel / ttsSite / ttsModel / ttsLanguage / chatLanguage / ownerName / customSetting
+        //       键名兼容 CamelCase（TLM 1.20/1.21 本体常量）+ 小写驼峰双重兜底，
+        //       只在源 NBT 有非空值时才覆盖，避免把已正确还原的值清空。
+        try {
+            boolean hasAiData = tlmData.contains("MaidAIChat", Tag.TAG_COMPOUND)
+                    || tlmData.contains("MaidHistoryChat")
+                    || tlmData.contains("MaidHistorySummary", Tag.TAG_STRING);
+            if (hasAiData) {
+                // ----- 路径 A：本体 API 还原聊天历史 -----
+                maid.getAiChatManager().readFromTag(tlmData);
+                int historyCount = -1;
+                if (tlmData.contains("MaidHistoryChat")) {
+                    historyCount = tlmData.getList("MaidHistoryChat", Tag.TAG_COMPOUND).size();
+                }
+
+                // ----- 路径 B：反射强塞人设 8 字段（双保险，不依赖本体 contains 判空层级） -----
+                String customSettingBefore = "";
+                String customSettingAfter = "";
+                int forcedFields = 0;
+                try {
+                    Object serializable = maid.getAiChatManager();
+                    Class<?> serialClass = Class.forName(
+                            "com.github.tartaricacid.touhoulittlemaid.ai.manager.entity.MaidAIChatSerializable");
+                    java.lang.reflect.Field csField = serialClass.getDeclaredField("customSetting");
+                    csField.setAccessible(true);
+                    Object csBeforeVal = csField.get(serializable);
+                    if (csBeforeVal instanceof String s) {
+                        customSettingBefore = s;
+                    }
+                    if (tlmData.contains("MaidAIChat", Tag.TAG_COMPOUND)) {
+                        CompoundTag ai = tlmData.getCompound("MaidAIChat");
+                        String[][] fieldMap = {
+                                {"llmSite",       "LLMSite",       "llmSite"},
+                                {"llmModel",      "LLMModel",      "llmModel"},
+                                {"ttsSite",       "TTSSiteName",   "ttsSiteName"},
+                                {"ttsModel",      "TTSModel",      "ttsModel"},
+                                {"ttsLanguage",   "TTSLanguage",   "ttsLanguage"},
+                                {"chatLanguage",  "ChatLanguage",  "chatLanguage"},
+                                {"ownerName",     "OwnerName",     "ownerName"},
+                                {"customSetting", "CustomSetting", "customSetting"},
+                        };
+                        for (String[] row : fieldMap) {
+                            String javaField = row[0];
+                            String camelKey  = row[1];
+                            String lowerKey  = row[2];
+                            String value = "";
+                            if (ai.contains(camelKey, Tag.TAG_STRING)) {
+                                value = ai.getString(camelKey);
+                            } else if (ai.contains(lowerKey, Tag.TAG_STRING)) {
+                                value = ai.getString(lowerKey);
+                            }
+                            if (value != null && !value.isEmpty()) {
+                                try {
+                                    java.lang.reflect.Field f = serialClass.getDeclaredField(javaField);
+                                    f.setAccessible(true);
+                                    f.set(serializable, value);
+                                    forcedFields++;
+                                    if ("customSetting".equals(javaField)) {
+                                        customSettingAfter = value;
+                                    }
+                                } catch (Throwable ignored) {
+                                }
+                            }
+                        }
+                    }
+                } catch (Throwable t) {
+                    Constants.LOG.warn("[maid_file_manager] AI persona force-assign via reflection failed: {}", t.toString());
+                }
+
+                // ----- 汇总日志（三元组 + 反射强塞前后对比，1.21.1→1.20.1 排错专用） -----
+                String settingReport;
+                if (customSettingAfter != null && !customSettingAfter.isEmpty()) {
+                    settingReport = "FORCE-ASSIGN len=" + customSettingAfter.length()
+                            + " (before=" + (customSettingBefore == null ? 0 : customSettingBefore.length()) + ")";
+                } else if (customSettingBefore != null && !customSettingBefore.isEmpty()) {
+                    settingReport = "API-RESTORE len=" + customSettingBefore.length();
+                } else {
+                    settingReport = "NO";
+                }
+                Constants.LOG.info("[maid_file_manager] AI data restored: persona={}, historyMessages={}, hasSummary={}, forcedFields={}",
+                        settingReport,
+                        historyCount,
+                        tlmData.contains("MaidHistorySummary", Tag.TAG_STRING) ? "YES" : "NO",
+                        forcedFields);
+            } else {
+                Constants.LOG.info("[maid_file_manager] No AI dialog data in source (no persona / chat history to restore)");
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Failed to restore AI chat data (persona/history), skipped: {}", t.toString());
         }
 
         for (String key : tlmData.getAllKeys()) {
@@ -753,14 +869,20 @@ public final class MaidTransferService {
     }
 
     private static void validateMaidAttributes(EntityMaid maid) {
+        // MAX_HEALTH 上限动态判断：渡劫 +20 HP（满好感 80 → 100），未渡劫 80
+        // （修复 v1.1.0/v1.1.1：硬 cap 80D 直接砍掉渡劫 +20，导致用户反馈「导入后还是少了 20 血」）
+        double healthCap = MAID_MAX_HEALTH + (maid.isStruckByLightning() ? 20.0D : 0.0D);
         double maxHealth = maid.getAttributeBaseValue(Attributes.MAX_HEALTH);
-        if (maxHealth > MAID_MAX_HEALTH) {
-            Constants.LOG.warn("[maid_file_manager] 导入女仆血量上限 {} 超过限制 {}, 截断到 {}",
-                    maxHealth, MAID_MAX_HEALTH, MAID_MAX_HEALTH);
-            maid.getAttribute(Attributes.MAX_HEALTH).setBaseValue(MAID_MAX_HEALTH);
-            if (maid.getHealth() > MAID_MAX_HEALTH) {
-                maid.setHealth((float) MAID_MAX_HEALTH);
+        if (maxHealth > healthCap) {
+            Constants.LOG.warn("[maid_file_manager] 导入女仆血量上限 {} 超过限制 {} (struck={}), 截断到 {}",
+                    maxHealth, healthCap, maid.isStruckByLightning(), healthCap);
+            maid.getAttribute(Attributes.MAX_HEALTH).setBaseValue(healthCap);
+            if (maid.getHealth() > healthCap) {
+                maid.setHealth((float) healthCap);
             }
+        } else {
+            Constants.LOG.info("[maid_file_manager] validateMaidAttributes: MAX_HEALTH={} cap={} struck={}",
+                    maxHealth, healthCap, maid.isStruckByLightning());
         }
         double attackDamage = maid.getAttributeBaseValue(Attributes.ATTACK_DAMAGE);
         if (attackDamage <= 0 || attackDamage > MAID_MAX_ATTACK_DAMAGE) {
@@ -770,7 +892,7 @@ public final class MaidTransferService {
         }
     }
 
-    private static void rebuildAttributesAndModel(EntityMaid maid, MaidFileData data) {
+    private static void rebuildAttributesAndModel(EntityMaid maid, MaidFileData data, boolean sourceStruckByLightning) {
         int favorability = maid.getFavorability();
         int level;
         if (favorability < 64) {
@@ -794,7 +916,10 @@ public final class MaidTransferService {
             case 3 -> 7;
             default -> 2;
         };
-        if (maid.isStruckByLightning()) {
+        // 渡劫 +20 HP：双重保险判断——实体 SynchedEntityData 值 OR 源 NBT 原始值，任一为 true 都加 20
+        // （避免同步时机差异导致判断失误，用户 bug「少了 20 点被闪电劈中的生命值」根因）
+        boolean struckEffective = maid.isStruckByLightning() || sourceStruckByLightning;
+        if (struckEffective) {
             healthByLevel += 20;
         }
         net.minecraft.world.entity.ai.attributes.AttributeInstance health = maid.getAttribute(Attributes.MAX_HEALTH);
@@ -808,8 +933,9 @@ public final class MaidTransferService {
         if (attack != null) {
             attack.setBaseValue(attackByLevel);
         }
-        Constants.LOG.info("[maid_file_manager] rebuildAttributes: favorability={} level={} health={} attack={}",
-                favorability, level, healthByLevel, attackByLevel);
+        Constants.LOG.info("[maid_file_manager] rebuildAttributes: favorability={} level={} health={} attack={} struck(ent={}|src={}|eff={})",
+                favorability, level, healthByLevel, attackByLevel,
+                maid.isStruckByLightning(), sourceStruckByLightning, struckEffective);
         if (data != null && data.getModelId() != null && !data.getModelId().isEmpty()) {
             String currentModel = maid.getModelId();
             if (!data.getModelId().equals(currentModel)) {
@@ -969,7 +1095,7 @@ public final class MaidTransferService {
 
         // ---------- 最终保护网：从原始 data.getData() 读出源值，供后续二次恢复 ----------
         // NbtMigration.migrate 会删一些东西，extractTlmData 又会再删，
-        // 但 data.getData() 是原始导出 NBT，好感度一定在这里面。
+        // 但 data.getData() 是原始导出 NBT，好感度 & 渡劫标记一定在这里面。
         CompoundTag originalNbt = data.getData();
         int sourceFavorability = -1;
         if (originalNbt.contains("MaidFavorability", Tag.TAG_INT)) {
@@ -978,6 +1104,12 @@ public final class MaidTransferService {
         } else if (originalNbt.contains("MaidFavorabilityManagerCounter", Tag.TAG_INT)) {
             sourceFavorability = originalNbt.getInt("MaidFavorabilityManagerCounter");
             Constants.LOG.info("[maid_file_manager] FINAL SAFETY NET: source fav counter from NBT: {}", sourceFavorability);
+        }
+        // 渡劫标记 FINAL SAFETY NET：从原始未处理 NBT 读出，无论后续加载流程怎么折腾都用这个值最终兜底
+        boolean sourceStruckByLightning = false;
+        if (originalNbt.contains("StruckByLightning", Tag.TAG_BYTE)) {
+            sourceStruckByLightning = originalNbt.getBoolean("StruckByLightning");
+            Constants.LOG.info("[maid_file_manager] FINAL SAFETY NET: source StruckByLightning from NBT: {}", sourceStruckByLightning);
         }
 
         try {
@@ -992,7 +1124,7 @@ public final class MaidTransferService {
             return Component.translatable("maid_file_manager.import.fail.exception", e.getMessage());
         }
 
-        // ---------- 最终保护网：如果 maid.getFavorability() == 0，但源数据有 > 0 的值，强制恢复 ----------
+        // ---------- 最终保护网 1/2：如果 maid.getFavorability() == 0，但源数据有 > 0 的值，强制恢复 ----------
         try {
             int currentFav = maid.getFavorability();
             if (currentFav == 0 && sourceFavorability > 0) {
@@ -1008,7 +1140,25 @@ public final class MaidTransferService {
             }
         }
 
-        rebuildAttributesAndModel(maid, data);
+        // ---------- 最终保护网 2/2：渡劫标记 StruckByLightning 最终强制同步（用户 bug 根因：少 20 HP + 重新劈不生效）
+        // 同步时机必须在 invokeLoadMaid 之后、rebuildAttributesAndModel 之前，确保 rebuild 中 isStruckByLightning() 读到正确值
+        try {
+            boolean currentStruck = maid.isStruckByLightning();
+            if (currentStruck != sourceStruckByLightning) {
+                Constants.LOG.warn("[maid_file_manager] FINAL FIX: StruckByLightning mismatch (ent={}, src={}) — force sync to src",
+                        currentStruck, sourceStruckByLightning);
+                maid.setStruckByLightning(sourceStruckByLightning);
+            } else {
+                Constants.LOG.info("[maid_file_manager] FINAL CHECK: StruckByLightning consistent (ent={}, src={})",
+                        currentStruck, sourceStruckByLightning);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] FINAL FIX: cannot read current StruckByLightning, fallback force sync to src={}",
+                    sourceStruckByLightning, t);
+            maid.setStruckByLightning(sourceStruckByLightning);
+        }
+
+        rebuildAttributesAndModel(maid, data, sourceStruckByLightning);
         validateMaidAttributes(maid);
         float fMax = maid.getMaxHealth();
         if (fMax > 0 && (maid.getHealth() <= 0 || maid.getHealth() > fMax)) {
@@ -1063,6 +1213,15 @@ public final class MaidTransferService {
         Level level = player.level();
         EntityMaid maid = new EntityMaid(level);
         Object registryAccess = getRegistryAccess(level);
+
+        // 渡劫标记 FINAL SAFETY NET：从原始未处理 NBT 读出（与 importMaidFromData 完全一致）
+        CompoundTag originalNbt = data.getData();
+        boolean sourceStruckByLightning = false;
+        if (originalNbt.contains("StruckByLightning", Tag.TAG_BYTE)) {
+            sourceStruckByLightning = originalNbt.getBoolean("StruckByLightning");
+            Constants.LOG.info("[maid_file_manager] importMaid(file) SAFETY NET: source StruckByLightning from NBT: {}", sourceStruckByLightning);
+        }
+
         try {
             int sourceVersion = data.getDataVersion() > 0
                     ? data.getDataVersion()
@@ -1074,7 +1233,25 @@ public final class MaidTransferService {
             Constants.LOG.error("[maid_file_manager] 导入女仆时加载 NBT 失败", e);
             return Component.translatable("maid_file_manager.import.fail.exception", e.getMessage());
         }
-        rebuildAttributesAndModel(maid, data);
+
+        // 渡劫标记 FINAL FIX：invokeLoadMaid 后 rebuild 前显式同步（与 importMaidFromData 完全一致）
+        try {
+            boolean currentStruck = maid.isStruckByLightning();
+            if (currentStruck != sourceStruckByLightning) {
+                Constants.LOG.warn("[maid_file_manager] importMaid(file) FINAL FIX: StruckByLightning mismatch (ent={}, src={}) — force sync",
+                        currentStruck, sourceStruckByLightning);
+                maid.setStruckByLightning(sourceStruckByLightning);
+            } else {
+                Constants.LOG.info("[maid_file_manager] importMaid(file) FINAL CHECK: StruckByLightning consistent (ent={}, src={})",
+                        currentStruck, sourceStruckByLightning);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] importMaid(file) FINAL FIX: cannot read current, fallback sync src={}",
+                    sourceStruckByLightning, t);
+            maid.setStruckByLightning(sourceStruckByLightning);
+        }
+
+        rebuildAttributesAndModel(maid, data, sourceStruckByLightning);
         validateMaidAttributes(maid);
         float fMax = maid.getMaxHealth();
         if (fMax > 0 && (maid.getHealth() <= 0 || maid.getHealth() > fMax)) {
