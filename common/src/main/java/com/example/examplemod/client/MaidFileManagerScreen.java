@@ -28,7 +28,7 @@ import java.util.Set;
 /**
  * 女仆文件管理主界面。
  *
- * <p>交互流程：用户在列表里点击行 → 底部【导出/导入选中】按钮执行动作。
+ * <p>交互流程：玩家在列表里点击行 → 底部【导出/导入选中】按钮执行动作。
  */
 public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.ClientHandler {
     private enum Tab {EXPORT, IMPORT}
@@ -47,7 +47,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private static final int ACCENT = 0xFFD0A060;
 
     private static final int MARGIN = 30;
-    /** 主面板宽度砍一砍（用户反馈太宽太乱） */
+    /** 主面板宽度砍一砍（反馈太宽太乱） */
     private static final int PANEL_MAX_W = 430;
     /** 左侧工具列宽（竖排堆：全选 / 保留女仆 / 打开文件夹）—— 按钮统一宽 = SIDEBAR_W - 12 */
     private static final int SIDEBAR_W = 156;
@@ -72,7 +72,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private Button closeBtn;
     private Button actionBtn;
     private Button openImportDirBtn;
-    /** 导出 Tab 工具栏②：打开导出文件夹（用户新增） */
+    /** 导出 Tab 工具栏②：打开导出文件夹（新增） */
     private Button openExportDirBtn;
     /** 导出 Tab：一键全选按钮（用 Button 模拟复选框，文字前缀 ☐/☑） */
     private Button selectAllBtn;
@@ -105,7 +105,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         panelY = MARGIN;
 
         // =============================================================
-        // 【用户要求】主界面宽度砍一砍
+        // 【需求】主界面宽度砍一砍
         //   L1 标题+关闭:      panelY+8 ~ panelY+30     （关闭 14×14 贴右上）
         //   L2 Tab 栏（原位）:  panelY+36 ~ panelY+58    导出/导入 Tab 居中 + 刷新贴右
         //   L3 主体分两栏:      panelY+66 开始
@@ -354,7 +354,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
     }
 
-    /** 打开导出文件夹（用户新增，跟 onOpenImportDir 对称实现） */
+    /** 打开导出文件夹（新增，跟 onOpenImportDir 对称实现） */
     private void onOpenExportDir() {
         try {
             File dir = new File(this.minecraft.gameDirectory, Constants.MAID_EXPORTS_DIR);
@@ -908,7 +908,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 String detail = String.format(Locale.ROOT, "%s  |  好感:%d  HP:%.0f/%.0f  %s",
                         info.modelId(), info.favorability(), info.health(), info.maxHealth(),
                         info.tamed() ? "已驯服" : "未驯服");
-                // 第二行（detail）：超长自动左右循环跑马灯（用户要求「左右自动滚动」）
+                // 第二行（detail）：超长自动左右循环跑马灯（需求「左右自动滚动」）
                 int detailW = font.width(detail);
                 if (detailW <= contentW) {
                     graphics.drawString(font, detail, textLeft, top + 12, SUBTEXT_COLOR, false);
@@ -1092,7 +1092,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 int contentW = contentRight - textLeft;
                 net.minecraft.client.gui.Font ffont = MaidFileManagerScreen.this.font;
 
-                // 第一行：文件名（超长 → 自动左右循环跑马灯，用户要求「左右自动滚动」）
+                // 第一行：文件名（超长 → 自动左右循环跑马灯，需求「左右自动滚动」）
                 int nameW = ffont.width(fileName);
                 if (nameW <= contentW) {
                     graphics.drawString(ffont, fileName, textLeft, top + 2, TEXT_COLOR, false);
