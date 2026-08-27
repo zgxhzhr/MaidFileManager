@@ -45,9 +45,9 @@ import java.util.UUID;
  *       这样导入后是完整 TLM 女仆，卸载本模组后不影响</li>
  *   <li>导出时清空背包内物品，但保留背包类型；强制工作状态为空闲；强制位置状态为站立</li>
  *   <li>导出落盘到 {@code maid_exports/}，文件名 {@code 中文名_时间_短UUID.maid}</li>
- *   <li>导入源目录为 {@code maid_imports/}（用户自行把 .maid 放到这里）</li>
+ *   <li>导入源目录为 {@code maid_imports/}（自行把 .maid 放到这里）</li>
  *   <li>导入时在玩家前方 {@value Constants#IMPORT_SPAWN_DISTANCE} 格寻找安全位置生成（避免卡在地下/墙里）</li>
- *   <li>主人匹配优先级：UUID > 名字 > 视为未驯服（用户可用蛋糕重新驯服）</li>
+ *   <li>主人匹配优先级：UUID > 名字 > 视为未驯服（可用蛋糕重新驯服）</li>
  * </ul>
  */
 public final class MaidTransferService {
@@ -467,12 +467,12 @@ public final class MaidTransferService {
         }
 
         // ---------- AI 对话数据：聊天历史（本体API）+ 人设8字段（反射强塞双保险） ----------
-        // 用户实机铁证（1.21.1→1.20.1）：聊天 MaidHistoryChat 能还原，人设 CustomSetting 过不去
+        // 实机验证（1.21.1→1.20.1）：聊天 MaidHistoryChat 能还原，人设 CustomSetting 过不去
         // 根因：MaidAIChatSerializable.readFromTag 对 tag.contains("MaidAIChat") 层级判空
         //       在跨版本 NBT 包装不一致时条件不通过，虽 tlmData 里有值但字段仍为空。
         // 修复策略：双路径
         //   (A) 仍调用 aiChatManager.readFromTag(tlmData) —— 还原聊天历史 / 摘要 / token
-        //       （这部分用户验证成功，历史靠 MaidAIChatData override 的 readFromTag 独立读取）
+        //       （这部分验证成功，历史靠 MaidAIChatData override 的 readFromTag 独立读取）
         //   (B) 反射强塞 MaidAIChatSerializable 的 8 个公开 String 字段：
         //       llmSite / llmModel / ttsSite / ttsModel / ttsLanguage / chatLanguage / ownerName / customSetting
         //       键名兼容 CamelCase（TLM 1.20/1.21 本体常量）+ 小写驼峰双重兜底，
@@ -870,7 +870,7 @@ public final class MaidTransferService {
 
     private static void validateMaidAttributes(EntityMaid maid) {
         // MAX_HEALTH 上限动态判断：渡劫 +20 HP（满好感 80 → 100），未渡劫 80
-        // （修复 v1.1.0/v1.1.1：硬 cap 80D 直接砍掉渡劫 +20，导致用户反馈「导入后还是少了 20 血」）
+        // （修复 v1.1.0/v1.1.1：硬 cap 80D 直接砍掉渡劫 +20，导致反馈「导入后还是少了 20 血」）
         double healthCap = MAID_MAX_HEALTH + (maid.isStruckByLightning() ? 20.0D : 0.0D);
         double maxHealth = maid.getAttributeBaseValue(Attributes.MAX_HEALTH);
         if (maxHealth > healthCap) {
@@ -917,7 +917,7 @@ public final class MaidTransferService {
             default -> 2;
         };
         // 渡劫 +20 HP：双重保险判断——实体 SynchedEntityData 值 OR 源 NBT 原始值，任一为 true 都加 20
-        // （避免同步时机差异导致判断失误，用户 bug「少了 20 点被闪电劈中的生命值」根因）
+        // （避免同步时机差异导致判断失误，bug「少了 20 点被闪电劈中的生命值」根因）
         boolean struckEffective = maid.isStruckByLightning() || sourceStruckByLightning;
         if (struckEffective) {
             healthByLevel += 20;
@@ -1054,6 +1054,9 @@ public final class MaidTransferService {
             clearInventoryItems(fullNbt, EntityMaid.MAID_TASK_INVENTORY_TAG);
             clearHandItems(fullNbt);
             fullNbt.remove("MaidBackpackData");
+            // 删除残留药水效果（反馈：导出后女仆带「生命恢复2」让其误以为是重新驯服的另一个女仆）
+            // 驯服自带的 buff 由 TLM 本体在驯服流程里动态加，不应在 .maid 文件里持久化残留
+            fullNbt.remove("ActiveEffects");
             fullNbt.putString("MaidTask", TaskManager.getIdleTask().getUid().toString());
             fullNbt.putByte("Sitting", (byte) 0);
             String ownerUuid = null;
@@ -1111,6 +1114,13 @@ public final class MaidTransferService {
             sourceStruckByLightning = originalNbt.getBoolean("StruckByLightning");
             Constants.LOG.info("[maid_file_manager] FINAL SAFETY NET: source StruckByLightning from NBT: {}", sourceStruckByLightning);
         }
+        // 源血量 FINAL SAFETY NET：反馈「女仆血量>20但导出后只有20血」
+        // 根因：maid.load 失败走 fallback 路径时 Health 字段未还原，getHealth() 停留 Mob 默认初始 20
+        float sourceHealth = -1f;
+        if (originalNbt.contains("Health", Tag.TAG_FLOAT)) {
+            sourceHealth = originalNbt.getFloat("Health");
+            Constants.LOG.info("[maid_file_manager] FINAL SAFETY NET: source Health from NBT: {}", sourceHealth);
+        }
 
         try {
             int sourceVersion = data.getDataVersion() > 0
@@ -1140,7 +1150,7 @@ public final class MaidTransferService {
             }
         }
 
-        // ---------- 最终保护网 2/2：渡劫标记 StruckByLightning 最终强制同步（用户 bug 根因：少 20 HP + 重新劈不生效）
+        // ---------- 最终保护网 2/2：渡劫标记 StruckByLightning 最终强制同步（bug 根因：少 20 HP + 重新劈不生效）
         // 同步时机必须在 invokeLoadMaid 之后、rebuildAttributesAndModel 之前，确保 rebuild 中 isStruckByLightning() 读到正确值
         try {
             boolean currentStruck = maid.isStruckByLightning();
@@ -1161,8 +1171,23 @@ public final class MaidTransferService {
         rebuildAttributesAndModel(maid, data, sourceStruckByLightning);
         validateMaidAttributes(maid);
         float fMax = maid.getMaxHealth();
-        if (fMax > 0 && (maid.getHealth() <= 0 || maid.getHealth() > fMax)) {
-            maid.setHealth(fMax);
+        // 血量恢复优先级：源 NBT Health（截断到 [1, fMax]）> fMax 满血兜底
+        // bug 根因：maid.load 失败导致 getHealth() 停留默认 20，rebuild 后未恢复
+        float finalHealth;
+        if (sourceHealth > 0 && sourceHealth <= fMax) {
+            finalHealth = sourceHealth;
+        } else {
+            finalHealth = fMax;  // 源血量超过新上限或异常，默认满血
+        }
+        maid.setHealth(finalHealth);
+        Constants.LOG.info("[maid_file_manager] Restored health: source={}, maxHealth={}, final={}", sourceHealth, fMax, finalHealth);
+        // 清空残留药水效果（双保险：导出已删 ActiveEffects，导入再清一次防止 maid.load 路径读到）
+        // 反馈「生命恢复2是驯服自带的，残留让玩家误以为不是同一个女仆」
+        try {
+            maid.removeAllEffects();
+            Constants.LOG.info("[maid_file_manager] Cleared all active effects (avoid stale buffs like Regeneration II)");
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] removeAllEffects failed: {}", t.toString());
         }
         maid.hurtTime = 0;
         maid.deathTime = 0;
@@ -1221,6 +1246,12 @@ public final class MaidTransferService {
             sourceStruckByLightning = originalNbt.getBoolean("StruckByLightning");
             Constants.LOG.info("[maid_file_manager] importMaid(file) SAFETY NET: source StruckByLightning from NBT: {}", sourceStruckByLightning);
         }
+        // 源血量 FINAL SAFETY NET（与 importMaidFromData 完全一致）
+        float sourceHealth = -1f;
+        if (originalNbt.contains("Health", Tag.TAG_FLOAT)) {
+            sourceHealth = originalNbt.getFloat("Health");
+            Constants.LOG.info("[maid_file_manager] importMaid(file) SAFETY NET: source Health from NBT: {}", sourceHealth);
+        }
 
         try {
             int sourceVersion = data.getDataVersion() > 0
@@ -1254,8 +1285,21 @@ public final class MaidTransferService {
         rebuildAttributesAndModel(maid, data, sourceStruckByLightning);
         validateMaidAttributes(maid);
         float fMax = maid.getMaxHealth();
-        if (fMax > 0 && (maid.getHealth() <= 0 || maid.getHealth() > fMax)) {
-            maid.setHealth(fMax);
+        // 血量恢复优先级：源 NBT Health（截断到 [1, fMax]）> fMax 满血兜底（与 importMaidFromData 完全一致）
+        float finalHealth;
+        if (sourceHealth > 0 && sourceHealth <= fMax) {
+            finalHealth = sourceHealth;
+        } else {
+            finalHealth = fMax;
+        }
+        maid.setHealth(finalHealth);
+        Constants.LOG.info("[maid_file_manager] importMaid(file) Restored health: source={}, maxHealth={}, final={}", sourceHealth, fMax, finalHealth);
+        // 清空残留药水效果（双保险，与 importMaidFromData 完全一致）
+        try {
+            maid.removeAllEffects();
+            Constants.LOG.info("[maid_file_manager] importMaid(file) Cleared all active effects");
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] importMaid(file) removeAllEffects failed: {}", t.toString());
         }
         maid.hurtTime = 0;
         maid.deathTime = 0;
