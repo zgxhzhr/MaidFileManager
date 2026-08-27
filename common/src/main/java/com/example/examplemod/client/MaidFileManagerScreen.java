@@ -28,7 +28,7 @@ import java.util.Set;
 /**
  * 女仆文件管理主界面。
  *
- * <p>交互流程：用户在列表里勾选条目 → 底部【批量导出/批量导入】按钮执行动作。
+ * <p>交互流程：玩家在列表里勾选条目 → 底部【批量导出/批量导入】按钮执行动作。
  */
 public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.ClientHandler {
     private enum Tab {EXPORT, IMPORT}
@@ -47,7 +47,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private static final int ACCENT = 0xFFD0A060;
 
     private static final int MARGIN = 30;
-    /** 主面板宽度砍一砍（用户反馈太宽太乱） */
+    /** 主面板宽度砍一砍（反馈太宽太乱） */
     private static final int PANEL_MAX_W = 430;
     /** 左侧工具列宽（竖排堆：全选 / 保留女仆 / 打开文件夹）—— 按钮统一宽 = SIDEBAR_W - 12 */
     private static final int SIDEBAR_W = 156;
@@ -72,7 +72,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private Button closeBtn;
     private Button actionBtn;
     private Button openImportDirBtn;
-    /** 导出 Tab 工具栏②：打开导出文件夹（用户新增） */
+    /** 导出 Tab 工具栏②：打开导出文件夹（新增） */
     private Button openExportDirBtn;
     /** 导出 Tab：一键全选按钮（用 Button 模拟复选框，文字前缀 ☐/☑） */
     private Button selectAllBtn;
@@ -105,7 +105,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         panelY = MARGIN;
 
         // =============================================================
-        // 【用户要求】主界面宽度砍一砍
+        // 【需求】主界面宽度砍一砍
         //   L1 标题+关闭:      panelY+10 ~ panelY+30
         //   L2 Tab 栏（原位）:  panelY+36 ~ panelY+58    导出/导入 Tab 居中 + 刷新贴右
         //   L3 主体分两栏:      panelY+66 开始
@@ -354,7 +354,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
     }
 
-    /** 打开导出文件夹（用户新增，跟 onOpenImportDir 对称实现） */
+    /** 打开导出文件夹（新增，跟 onOpenImportDir 对称实现） */
     private void onOpenExportDir() {
         try {
             File dir = new File(this.minecraft.gameDirectory, Constants.MAID_EXPORTS_DIR);
@@ -820,6 +820,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
         final class Entry extends ObjectSelectionList.Entry<Entry> {
             final MaidInfo info;
+            // 修复 v1.1.2 UI bug：反馈「点哪个女仆都只能选中第一个」
+            // 根因：isMouseOver 只检查 mouseX 不检查 mouseY，导致所有 entry 都返回 true → mouseClicked 遍历 children() 时第一个命中
+            // 修复：移植 1.20.1 的 lastTop/lastHeight 机制，render 时记录自己的行 top/height，isMouseOver 用它限定 mouseY 范围
+            int lastTop = -1;
+            int lastHeight = -1;
 
             Entry(MaidInfo info) {
                 this.info = info;
@@ -829,6 +834,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             public void render(GuiGraphics graphics, int index, int top, int left,
                                int width, int height, int mouseX, int mouseY, boolean hovering,
                                float partialTick) {
+                this.lastTop = top;
+                this.lastHeight = height;
                 boolean selected = selectedMaidIds.contains(info.entityId());
                 int rowX = MaidListWidget.this.listX;
                 int rowW = MaidListWidget.this.listW;
@@ -891,7 +898,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             public boolean isMouseOver(double mouseX, double mouseY) {
                 int rowX = MaidListWidget.this.listX;
                 int rowW = MaidListWidget.this.listW;
-                return mouseX >= rowX && mouseX <= rowX + rowW;
+                return mouseX >= rowX && mouseX <= rowX + rowW
+                        && this.lastTop >= 0
+                        && mouseY >= this.lastTop - 2
+                        && mouseY <= this.lastTop + this.lastHeight + 2;
             }
 
             @Override
@@ -996,6 +1006,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
         final class Entry extends ObjectSelectionList.Entry<Entry> {
             final String fileName;
+            // 修复 v1.1.2 UI bug：与 MaidListWidget.Entry 同款问题，isMouseOver 必须用 lastTop/lastHeight 限定 mouseY 范围
+            int lastTop = -1;
+            int lastHeight = -1;
 
             Entry(String fileName) {
                 this.fileName = fileName;
@@ -1005,6 +1018,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             public void render(GuiGraphics graphics, int index, int top, int left,
                                int width, int height, int mouseX, int mouseY, boolean hovering,
                                float partialTick) {
+                this.lastTop = top;
+                this.lastHeight = height;
                 boolean selected = selectedImportFileNames.contains(fileName);
                 int rowX = FileListWidget.this.listX;
                 int rowW = FileListWidget.this.listW;
@@ -1068,7 +1083,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             public boolean isMouseOver(double mouseX, double mouseY) {
                 int rowX = FileListWidget.this.listX;
                 int rowW = FileListWidget.this.listW;
-                return mouseX >= rowX && mouseX <= rowX + rowW;
+                return mouseX >= rowX && mouseX <= rowX + rowW
+                        && this.lastTop >= 0
+                        && mouseY >= this.lastTop - 2
+                        && mouseY <= this.lastTop + this.lastHeight + 2;
             }
 
             @Override
