@@ -13,10 +13,10 @@
     "environment": "*",
     "entrypoints": {
         "main": [
-            "com.example.examplemod.MaidFileModFabric"
+            "com.example.maid_file_manager.MaidFileModFabric"
         ],
         "client": [
-            "com.example.examplemod.MaidFileModFabricClient"
+            "com.example.maid_file_manager.MaidFileModFabricClient"
         ]
     },
     "depends": {
