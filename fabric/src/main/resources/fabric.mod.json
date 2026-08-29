@@ -16,7 +16,7 @@
     "environment": "*",
     "entrypoints": {
         "main": [
-            "com.example.examplemod.ExampleMod"
+            "com.example.maid_file_manager.ExampleMod"
         ]
     },
     "mixins": [
