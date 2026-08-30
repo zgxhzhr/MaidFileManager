@@ -1,0 +1,21 @@
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/C:/Users/MKIII/.gradle/wrapper/dists/gradle-8.11-bin/c4te04g51qsyw1bxcb929u7br/gradle-8.11/lib/native-platform-0.22-milestone-26.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+警告: 未知的枚举常量 Dist.CLIENT
+  原因: 找不到net.minecraftforge.api.distmarker.Dist的类文件
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+  原因: 找不到net.minecraftforge.api.distmarker.Dist的类文件
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+  原因: 找不到net.minecraftforge.api.distmarker.Dist的类文件
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+12 个警告

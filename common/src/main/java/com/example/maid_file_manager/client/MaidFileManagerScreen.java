@@ -1022,7 +1022,23 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
 
         public ListRow getHovered(double mouseX, double mouseY) {
-            return this.getEntryAtPosition(mouseX, mouseY);
+            return this.hitRow(mouseX, mouseY);
+        }
+
+        /** v14b FabricFix：父类 getEntryAtPosition 是 final 不能覆写 → 命中逻辑独立成 hitRow（自有 listX/listTop 直判，滚动量仍复用 getScrollAmount()） */
+        private ListRow hitRow(double mouseX, double mouseY) {
+            if (mouseX < (double) this.listX || mouseX > (double) (this.listX + this.listW)) {
+                return null;
+            }
+            if (mouseY < (double) this.listTop || mouseY > (double) this.listBottom) {
+                return null;
+            }
+            int index = (int) ((mouseY - this.listTop - 4 + this.getScrollAmount()) / ROW_HEIGHT);
+            java.util.List<ListRow> rows = this.children();
+            if (index < 0 || index >= rows.size()) {
+                return null;
+            }
+            return rows.get(index);
         }
 
         /** v13：父类内部 scissor 已靠 SRG 反射 6 字段 100% 命中拉正 → 删除之前「二次画 Entry」的兜底，只保留 Widget 层 isMouseOver 最后一道防线。
@@ -1060,10 +1076,41 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             return super.mouseScrolled(mouseX, mouseY, vertical);
         }
 
+        /** v14 FabricFix【Fabric 生产环境列表行不可见根治】：Fabric 运行时的字段/方法全是 intermediary 名，
+         *  SRG(f_933xx_)与官方名(x0/y0/setX)的字符串反射全部静默失败 → 父类 scissor/行坐标/滚动条全部错位（行画在看不见的位置）。
+         *  改为完全自绘：不调 super.render，用本类 listX/listTop/listW/listBottom 裁剪+摆行+画滚动条；
+         *  滚动量复用父类 getScrollAmount()（y0/y1 构造期已正确；编译期调用会被 loom 重映射，跨加载器稳定）。 */
         @Override
         public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            // v13：SRG 6 字段反射 100% 命中，父类内部 enableScissor 剪刀完全正确（x0=200 x1=389），直接 super.render 不再二次画
-            super.render(graphics, mouseX, mouseY, partialTick);
+            // 1.20.x AbstractSelectionList 不继承 AbstractWidget、无 visible 字段；显隐由外层 removeWidget/addRenderableWidget 控制
+            this.renderBackground(graphics);
+            java.util.List<ListRow> rows = this.children();
+            int viewH = this.listBottom - this.listTop;
+            int scroll = (int) this.getScrollAmount();
+            graphics.enableScissor(this.listX, this.listTop, this.listX + this.listW, this.listBottom);
+            for (int i = 0; i < rows.size(); i++) {
+                int top = this.listTop + 4 - scroll + i * ROW_HEIGHT;
+                if (top >= this.listBottom || top + ROW_HEIGHT <= this.listTop) {
+                    continue;
+                }
+                boolean hovering = mouseX >= this.listX && mouseX < this.listX + this.listW
+                        && mouseY >= top && mouseY < top + ROW_HEIGHT;
+                rows.get(i).render(graphics, i, top, this.listX + 2,
+                        this.getRowWidth(), ROW_HEIGHT, mouseX, mouseY, hovering, partialTick);
+            }
+            graphics.disableScissor();
+            // 滚动条：内容溢出时贴列表右缘画（位置基于我们自己的 listX/listW，不再依赖父类 x1）
+            int contentH = rows.size() * ROW_HEIGHT + 8;
+            if (contentH > viewH) {
+                int trackH = viewH - 4;
+                int thumbH = Math.max(20, trackH * viewH / contentH);
+                int maxScroll = contentH - viewH;
+                int progress = Math.min(trackH - thumbH,
+                        (int) ((long) scroll * (trackH - thumbH) / Math.max(1, maxScroll)));
+                int barX = this.listX + this.listW - 3;
+                graphics.fill(barX, this.listTop + 2 + progress, barX + 2,
+                        this.listTop + 2 + progress + thumbH, 0x66FFFFFF);
+            }
         }
 
         void refresh() {
@@ -1306,7 +1353,23 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
 
         public Entry getHovered(double mouseX, double mouseY) {
-            return this.getEntryAtPosition(mouseX, mouseY);
+            return this.hitRow(mouseX, mouseY);
+        }
+
+        /** v14b FabricFix：父类 getEntryAtPosition 是 final 不能覆写 → 命中逻辑独立成 hitRow（自有 listX/listTop 直判，滚动量仍复用 getScrollAmount()） */
+        private Entry hitRow(double mouseX, double mouseY) {
+            if (mouseX < (double) this.listX || mouseX > (double) (this.listX + this.listW)) {
+                return null;
+            }
+            if (mouseY < (double) this.listTop || mouseY > (double) this.listBottom) {
+                return null;
+            }
+            int index = (int) ((mouseY - this.listTop - 4 + this.getScrollAmount()) / ROW_HEIGHT);
+            java.util.List<Entry> rows = this.children();
+            if (index < 0 || index >= rows.size()) {
+                return null;
+            }
+            return rows.get(index);
         }
 
         /** v13 同 MaidListWidget：mouseClicked 自遍历 Entry.isMouseOver（绕开父类 getEntryAtPosition rowLeft 错值 → 只有最左端能选中）+ 不再二次重绘 Entry */
@@ -1338,9 +1401,37 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             return super.mouseScrolled(mouseX, mouseY, vertical);
         }
 
+        /** v14 FabricFix：与 MaidListWidget 相同的自绘渲染（Fabric intermediary 环境下父类几何反射失效） */
         @Override
         public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            super.render(graphics, mouseX, mouseY, partialTick);
+            // 1.20.x AbstractSelectionList 不继承 AbstractWidget、无 visible 字段；显隐由外层 removeWidget/addRenderableWidget 控制
+            this.renderBackground(graphics);
+            java.util.List<Entry> rows = this.children();
+            int viewH = this.listBottom - this.listTop;
+            int scroll = (int) this.getScrollAmount();
+            graphics.enableScissor(this.listX, this.listTop, this.listX + this.listW, this.listBottom);
+            for (int i = 0; i < rows.size(); i++) {
+                int top = this.listTop + 4 - scroll + i * ROW_HEIGHT;
+                if (top >= this.listBottom || top + ROW_HEIGHT <= this.listTop) {
+                    continue;
+                }
+                boolean hovering = mouseX >= this.listX && mouseX < this.listX + this.listW
+                        && mouseY >= top && mouseY < top + ROW_HEIGHT;
+                rows.get(i).render(graphics, i, top, this.listX + 2,
+                        this.getRowWidth(), ROW_HEIGHT, mouseX, mouseY, hovering, partialTick);
+            }
+            graphics.disableScissor();
+            int contentH = rows.size() * ROW_HEIGHT + 8;
+            if (contentH > viewH) {
+                int trackH = viewH - 4;
+                int thumbH = Math.max(20, trackH * viewH / contentH);
+                int maxScroll = contentH - viewH;
+                int progress = Math.min(trackH - thumbH,
+                        (int) ((long) scroll * (trackH - thumbH) / Math.max(1, maxScroll)));
+                int barX = this.listX + this.listW - 3;
+                graphics.fill(barX, this.listTop + 2 + progress, barX + 2,
+                        this.listTop + 2 + progress + thumbH, 0x66FFFFFF);
+            }
         }
 
         void refresh() {

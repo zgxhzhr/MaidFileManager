@@ -54,6 +54,28 @@ public class MaidFileModFabricClient implements ClientModInitializer {
             });
         });
 
+        // 批量导出结果：服务端序列化数据回传，由客户端写 maid_exports/<玩家名>/ 目录
+        ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_EXPORT_BATCH_RESULT, (client, handler, buf, responseSender) -> {
+            List<MaidFileData> dataList = MaidFilePackets.readMaidFileDataList(buf);
+            client.execute(() -> {
+                IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (h != null) {
+                    h.onExportResultReceived(dataList);
+                }
+            });
+        });
+
+        // OP 统一导出：收到服务端收集的所有在线玩家女仆分组列表
+        ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_SERVER_EXPORT_LIST, (client, handler, buf, responseSender) -> {
+            List<IMaidFileNetwork.PlayerMaidGroup> groups = MaidFilePackets.readPlayerMaidGroups(buf);
+            client.execute(() -> {
+                IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (h != null) {
+                    h.onServerExportListReceived(groups);
+                }
+            });
+        });
+
         // 服务端配置同步：不依赖 Screen，收到即更新客户端缓存并回发同意状态
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_SERVER_CONFIG_SYNC, (client, handler, buf, responseSender) -> {
             boolean allowImport = buf.readBoolean();
