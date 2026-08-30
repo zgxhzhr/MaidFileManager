@@ -1,0 +1,45 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.11/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:extractPluginRequests UP-TO-DATE
+> Task :buildSrc:generatePluginAdapters UP-TO-DATE
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:compileGroovyPlugins UP-TO-DATE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+
+> Configure project :fabric
+Fabric Loom: 1.9.2
+
+> Task :common:createMinecraftArtifacts UP-TO-DATE
+> Task :common:compileJava UP-TO-DATE
+
+> Task :fabric:compileJava
+
+> Task :fabric:processResources
+> Task :fabric:classes
+> Task :fabric:jar
+> Task :fabric:javadoc SKIPPED
+> Task :fabric:javadocJar
+> Task :fabric:compileTestJava NO-SOURCE
+> Task :fabric:processIncludeJars
+> Task :fabric:sourcesJar
+> Task :common:processResources
+> Task :common:classes
+> Task :common:jarJar NO-SOURCE
+> Task :common:jar
+> Task :fabric:processTestResources NO-SOURCE
+> Task :fabric:testClasses UP-TO-DATE
+> Task :fabric:test NO-SOURCE
+> Task :fabric:validateAccessWidener NO-SOURCE
+> Task :fabric:check UP-TO-DATE
+> Task :fabric:remapJar
+> Task :fabric:remapSourcesJar
+> Task :fabric:assemble
+> Task :fabric:build
+[Incubating] Problems report is available at: file:///E:/Mod/maid_file_manager-fabric-1.21/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 28s
+19 actionable tasks: 10 executed, 9 up-to-date

@@ -1,0 +1,69 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.11/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:extractPluginRequests UP-TO-DATE
+> Task :buildSrc:generatePluginAdapters UP-TO-DATE
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:compileGroovyPlugins UP-TO-DATE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+
+> Configure project :fabric
+Fabric Loom: 1.9.2
+
+> Task :common:createMinecraftArtifacts
+Loaded 86 artifacts from E:\Mod\maid_file_manager-fabric-1.21\common\build\tmp\createMinecraftArtifacts\nfrt_artifact_manifest.properties
+[1m*** Started working on [4mdownloadJson[0m[0m
+ [1m[92mDONE [0m Completed [4mdownloadJson[0m in 0.03s
+[1m*** Started working on [4mdownloadServer[0m[0m
+[1m*** Started working on [4mdownloadClient[0m[0m
+[1m*** Started working on [4mdownloadClientMappings[0m[0m
+[1m*** Started working on [4mlistLibraries[0m[0m
+ [1m[92mDONE [0m Completed [4mdownloadClient[0m in 0.04s
+ [1m[92mDONE [0m Completed [4mdownloadServer[0m in 0.04s
+ [1m[92mDONE [0m Completed [4mdownloadClientMappings[0m in 0.04s
+ [1m[92mDONE [0m Completed [4mlistLibraries[0m in 0.04s
+[1m*** Started working on [4mmergeMappings[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mmergeMappings[0m in 0.00s
+[1m*** Started working on [4mstripClient[0m[0m
+[1m*** Started working on [4mextractServer[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mextractServer[0m in 0.00s
+[1m*** Started working on [4mstripServer[0m[0m
+ [1m[92mDONE [0m Completed [4mstripServer[0m in 2.13s
+ [1m[92mDONE [0m Completed [4mstripClient[0m in 3.33s
+[1m*** Started working on [4mmerge[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mmerge[0m in 0.00s
+[1m*** Started working on [4mrename[0m[0m
+ RUN   Running external tool net.neoforged:AutoRenamingTool:2.0.3:all
+ [1m[92mDONE [0m Completed [4mrename[0m in 5.96s
+[1m*** Started working on [4mdecompile[0m[0m
+ RUN   Running external tool org.vineflower:vineflower:1.10.1
+ [1m[92mDONE [0m Completed [4mdecompile[0m in 26.45s
+[1m*** Started working on [4minject[0m[0m
+ [1m[92mDONE [0m Completed [4minject[0m in 3.33s
+[1m*** Started working on [4mpatch[0m[0m
+ RUN   Running external tool codechicken:DiffPatch:1.5.0.29:all
+ [1m[92mDONE [0m Completed [4mpatch[0m in 4.73s
+[1m*** Started working on [4mtransformSources[0m[0m
+ RUN   Running external tool net.neoforged.jst:jst-cli-bundle:1.0.66
+ [1m[92mDONE [0m Completed [4mtransformSources[0m in 9.53s
+[1m*** Started working on [4mrecompile[0m[0m
+ 74 items on the compile classpath
+ 0 items on the sourcepath
+ Compiling 5364 source files
+Copied 0 resource files
+ [1m[92mDONE [0m Completed [4mrecompile[0m in 41.13s
+[1m*** Started working on [4mmergeWithSources[0m[0m
+ [1m[92mDONE [0m Completed [4mmergeWithSources[0m in 2.53s
+Total runtime: 97.93s
+
+
+> Task :common:compileJava
+
+> Task :fabric:compileJava
+
+> Task :fabric:compileJava FAILED
+[Incubating] Problems report is available at: file:///E:/Mod/maid_file_manager-fabric-1.21/build/reports/problems/problems-report.html
+10 actionable tasks: 3 executed, 7 up-to-date

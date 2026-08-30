@@ -1,36 +1,28 @@
 {
     "schemaVersion": 1,
-    "id": "${mod_id}",
-    "version": "${version}",
-    "name": "${mod_name}",
-    "description": "${description}",
+    "id": "maid_file_manager",
+    "version": "1.2.0",
+    "name": "Maid File Manager",
+    "description": "车万女仆附属模组，支持跨版本导入导出女仆数据",
     "authors": [
-        "${mod_author}"
+        "zgxhzhr"
     ],
-    "contact": {
-        "homepage": "https://fabricmc.net/",
-        "sources": "https://github.com/FabricMC/fabric-example-mod"
-    },
-    "license": "${license}",
-    "icon": "${mod_id}.png",
+    "contact": {},
+    "license": "CC0-1.0",
     "environment": "*",
     "entrypoints": {
         "main": [
-            "com.example.maid_file_manager.ExampleMod"
+            "com.example.maid_file_manager.MaidFileModFabric"
+        ],
+        "client": [
+            "com.example.maid_file_manager.MaidFileModFabricClient"
         ]
     },
-    "mixins": [
-        "${mod_id}.mixins.json",
-        "${mod_id}.fabric.mixins.json"
-    ],
     "depends": {
-        "fabricloader": ">=${fabric_loader_version}",
+        "fabricloader": ">=0.15.11",
         "fabric-api": "*",
-        "minecraft": "${minecraft_version}",
-        "java": ">=${java_version}"
-    },
-    "suggests": {
-        "another-mod": "*"
+        "minecraft": ">=1.21 <1.22",
+        "java": ">=21",
+        "touhou_little_maid": "*"
     }
 }
-  

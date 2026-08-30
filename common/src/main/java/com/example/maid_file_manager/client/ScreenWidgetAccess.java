@@ -21,7 +21,11 @@ import java.util.List;
  * <ol>
  *   <li>优先查找 Mojang/Parchment 的 field 名：{@code renderables}</li>
  *   <li>找不到再回退查 SRG：{@code f_96543_}（1.20/1.21 常见）</li>
- *   <li>都失败：打一条 warn，后续 render 重绘阶段跳过 widget 重画（只是模糊不能彻底根治，不会崩）</li>
+ *   <li>都失败：按「泛型签名 = List&lt;Renderable&gt;」扫描 Screen 全部字段
+ *       （Fabric 运行时是 intermediary 名，renderables 的真名两边都不叫
+ *       renderables/f_96543_，只有泛型签名跨映射名稳定；Screen 的其它 List 字段
+ *       是 children/listeners、narratables，泛型实参不同，不会误中）</li>
+ *   <li>仍失败：打一条 warn，后续 render 重绘阶段跳过 widget 重画（只是模糊不能彻底根治，不会崩）</li>
  * </ol>
  */
 public final class ScreenWidgetAccess {
@@ -37,6 +41,22 @@ public final class ScreenWidgetAccess {
                 f.setAccessible(true);
                 break;
             } catch (NoSuchFieldException ignored) { /* 试下一个 */ }
+        }
+        // Fabric intermediary 运行时兜底：按泛型实参 Renderable 精确定位 List<Renderable> 字段
+        if (f == null) {
+            for (Field cand : Screen.class.getDeclaredFields()) {
+                if (cand.getType() != List.class || !(cand.getGenericType() instanceof java.lang.reflect.ParameterizedType pt)) {
+                    continue;
+                }
+                java.lang.reflect.Type[] args = pt.getActualTypeArguments();
+                if (args.length == 1 && Renderable.class.equals(args[0])) {
+                    try {
+                        cand.setAccessible(true);
+                        f = cand;
+                        break;
+                    } catch (Throwable ignored) { /* 下一个字段 */ }
+                }
+            }
         }
         RENDERABLES_FIELD = f;
         AVAILABLE = (f != null);
