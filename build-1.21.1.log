@@ -1,0 +1,97 @@
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/C:/Users/MKIII/.gradle/wrapper/dists/gradle-8.10-bin/deqhafrv1ntovfmgh0nh3npr9/gradle-8.10/lib/native-platform-0.22-milestone-26.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:extractPluginRequests UP-TO-DATE
+> Task :buildSrc:generatePluginAdapters UP-TO-DATE
+> Task :buildSrc:compileJava UP-TO-DATE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:compileGroovyPlugins UP-TO-DATE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+
+> Configure project :fabric
+Fabric Loom: 1.8.13
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Using of the official minecraft mappings is at your own risk!
+Please make sure to read and understand the following license:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# (c) 2020 Microsoft Corporation. These mappings are provided "as-is" and you bear the risk of using them. You may copy and use the mappings for development purposes, but you may not redistribute the mappings complete and unmodified. Microsoft makes no warranties, express or implied, with respect to the mappings provided here.  Use and modification of this document or the source code (in any form) of Minecraft: Java Edition is governed by the Minecraft End User License Agreement available at https://account.mojang.com/documents/minecraft_eula.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+:remapping 50 mods from modImplementation (java-api)
+:remapping sources
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Could not determine the dependencies of task ':fabric:compileJava'.
+> Could not resolve all dependencies for configuration ':fabric:compileClasspath'.
+   > Could not resolve project :common.
+     Required by:
+         project :fabric
+      > No matching variant of project :common was found. The consumer was configured to find a library for use during compile-time, compatible with Java 21, preferably in the form of class files, preferably optimized for standard JVMs, and its dependencies declared externally but:
+          - Variant 'accessTransformersElements':
+              - Incompatible because this component declares a component of category 'accesstransformer' and the consumer needed a library
+              - Other compatible attributes:
+                  - Doesn't say anything about how its dependencies are found (required its dependencies declared externally)
+                  - Doesn't say anything about its elements (required them preferably in the form of class files)
+                  - Doesn't say anything about its target Java environment (preferred optimized for standard JVMs)
+                  - Doesn't say anything about its target Java version (required compatibility with Java 21)
+                  - Doesn't say anything about its usage (required compile-time)
+          - Variant 'apiElements' declares a library for use during compile-time, compatible with Java 21, packaged as a jar, and its dependencies declared externally:
+              - Other compatible attribute:
+                  - Doesn't say anything about its target Java environment (preferred optimized for standard JVMs)
+          - Variant 'interfaceInjectionDataElements':
+              - Incompatible because this component declares a component of category 'interfaceinjection' and the consumer needed a library
+              - Other compatible attributes:
+                  - Doesn't say anything about how its dependencies are found (required its dependencies declared externally)
+                  - Doesn't say anything about its elements (required them preferably in the form of class files)
+                  - Doesn't say anything about its target Java environment (preferred optimized for standard JVMs)
+                  - Doesn't say anything about its target Java version (required compatibility with Java 21)
+                  - Doesn't say anything about its usage (required compile-time)
+          - Variant 'javadocElements' declares a component for use during runtime, and its dependencies declared externally:
+              - Incompatible because this component declares documentation and the consumer needed a library
+              - Other compatible attributes:
+                  - Doesn't say anything about its elements (required them preferably in the form of class files)
+                  - Doesn't say anything about its target Java environment (preferred optimized for standard JVMs)
+                  - Doesn't say anything about its target Java version (required compatibility with Java 21)
+          - Variant 'mainSourceElements' declares a component, and its dependencies declared externally:
+              - Incompatible because this component declares a component of category 'verification' and the consumer needed a library
+              - Other compatible attributes:
+                  - Doesn't say anything about its elements (required them preferably in the form of class files)
+                  - Doesn't say anything about its target Java environment (preferred optimized for standard JVMs)
+                  - Doesn't say anything about its target Java version (required compatibility with Java 21)
+                  - Doesn't say anything about its usage (required compile-time)
+          - Variant 'runtimeElements' declares a library for use during runtime, compatible with Java 21, packaged as a jar, and its dependencies declared externally:
+              - Other compatible attribute:
+                  - Doesn't say anything about its target Java environment (preferred optimized for standard JVMs)
+          - Variant 'sourcesElements' declares a component for use during runtime, and its dependencies declared externally:
+              - Incompatible because this component declares documentation and the consumer needed a library
+              - Other compatible attributes:
+                  - Doesn't say anything about its elements (required them preferably in the form of class files)
+                  - Doesn't say anything about its target Java environment (preferred optimized for standard JVMs)
+                  - Doesn't say anything about its target Java version (required compatibility with Java 21)
+          - Variant 'testResultsElementsForTest':
+              - Incompatible because this component declares a component of category 'verification' and the consumer needed a library
+              - Other compatible attributes:
+                  - Doesn't say anything about how its dependencies are found (required its dependencies declared externally)
+                  - Doesn't say anything about its elements (required them preferably in the form of class files)
+                  - Doesn't say anything about its target Java environment (preferred optimized for standard JVMs)
+                  - Doesn't say anything about its target Java version (required compatibility with Java 21)
+                  - Doesn't say anything about its usage (required compile-time)
+
+* Try:
+> No matching variant errors are explained in more detail at https://docs.gradle.org/8.10/userguide/variant_model.html#sub:variant-no-match.
+> Review the variant matching algorithm at https://docs.gradle.org/8.10/userguide/variant_attributes.html#sec:abm_algorithm.
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 1m 28s
+7 actionable tasks: 7 up-to-date

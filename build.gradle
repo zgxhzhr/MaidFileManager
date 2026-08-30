@@ -1,6 +1,11 @@
 plugins {
     // see https://fabricmc.net/develop/ for new versions
-    id 'fabric-loom' version '1.8-SNAPSHOT' apply false
+    id 'fabric-loom' version '1.9.2' apply false
     // see https://projects.neoforged.net/neoforged/moddevgradle for new versions
     id 'net.neoforged.moddev' version '2.0.49-beta' apply false
+}
+
+// javadoc 对成品 jar 无意义，且 GBK 控制台下中文注释必炸（doclint 缺 @param 直接报错）——直接关闭
+allprojects {
+    tasks.withType(Javadoc).configureEach { enabled = false }
 }

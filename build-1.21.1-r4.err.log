@@ -1,0 +1,77 @@
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/C:/Users/MKIII/.gradle/wrapper/dists/gradle-8.11-bin/c4te04g51qsyw1bxcb929u7br/gradle-8.11/lib/native-platform-0.22-milestone-26.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+警告: 未知的枚举常量 Dist.CLIENT
+  原因: 找不到net.neoforged.api.distmarker.Dist的类文件
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+  原因: 找不到net.neoforged.api.distmarker.Dist的类文件
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+  原因: 找不到net.neoforged.api.distmarker.Dist的类文件
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+警告: 未知的枚举常量 Dist.CLIENT
+E:\Mod\maid_file_manager-fabric-1.21.1\fabric\src\main\java\com\example\maid_file_manager\MaidFileModFabric.java:192: 错误: 找不到符号
+        out.writeComponent(message);
+           ^
+  符号:   方法 writeComponent(Component)
+  位置: 类型为FriendlyByteBuf的变量 out
+E:\Mod\maid_file_manager-fabric-1.21.1\fabric\src\main\java\com\example\maid_file_manager\MaidFileModFabricClient.java:49: 错误: 找不到符号
+            Component message = payload.body().readComponent();
+                                              ^
+  符号:   方法 readComponent()
+  位置: 类 FriendlyByteBuf
+E:\Mod\maid_file_manager-fabric-1.21.1\fabric\src\main\java\com\example\maid_file_manager\platform\FabricPlatformHelper.java:6: 错误: FabricPlatformHelper不是抽象的, 并且未覆盖IPlatformHelper中的抽象方法getGameDir()
+public class FabricPlatformHelper implements IPlatformHelper {
+       ^
+3 个错误
+12 个警告
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':fabric:compileJava'.
+> Compilation failed; see the compiler output below.
+  E:\Mod\maid_file_manager-fabric-1.21.1\fabric\src\main\java\com\example\maid_file_manager\platform\FabricPlatformHelper.java:6: 错误: FabricPlatformHelper不是抽象的, 并且未覆盖IPlatformHelper中的抽象方法getGameDir()
+  public class FabricPlatformHelper implements IPlatformHelper {
+         ^
+  警告: 未知的枚举常量 Dist.CLIENT
+  警告: 未知的枚举常量 Dist.CLIENT
+  警告: 未知的枚举常量 Dist.CLIENT
+  警告: 未知的枚举常量 Dist.CLIENT
+  警告: 未知的枚举常量 Dist.CLIENT
+  警告: 未知的枚举常量 Dist.CLIENT
+  警告: 未知的枚举常量 Dist.CLIENT
+  警告: 未知的枚举常量 Dist.CLIENT
+  警告: 未知的枚举常量 Dist.CLIENT
+  警告: 未知的枚举常量 Dist.CLIENT
+    原因: 找不到net.neoforged.api.distmarker.Dist的类文件
+  警告: 未知的枚举常量 Dist.CLIENT
+    原因: 找不到net.neoforged.api.distmarker.Dist的类文件
+  警告: 未知的枚举常量 Dist.CLIENT
+    原因: 找不到net.neoforged.api.distmarker.Dist的类文件
+  E:\Mod\maid_file_manager-fabric-1.21.1\fabric\src\main\java\com\example\maid_file_manager\MaidFileModFabric.java:192: 错误: 找不到符号
+          out.writeComponent(message);
+             ^
+    符号:   方法 writeComponent(Component)
+    位置: 类型为FriendlyByteBuf的变量 out
+  E:\Mod\maid_file_manager-fabric-1.21.1\fabric\src\main\java\com\example\maid_file_manager\MaidFileModFabricClient.java:49: 错误: 找不到符号
+              Component message = payload.body().readComponent();
+                                                ^
+    符号:   方法 readComponent()
+    位置: 类 FriendlyByteBuf
+  3 个错误
+  12 个警告
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to get full insights.
+
+BUILD FAILED in 16s
