@@ -12,15 +12,15 @@
       "projectName": "forge",
       "mainClass": "net.neoforged.devlaunch.Main",
       "args": [
-        "@E:\\Mod\\maid_file_manager-forge-1.20.1\\forge\\build\\moddev\\clientRunProgramArgs.txt"
+        "@E:\\Mod\\maid_file_manager-fabric-1.20.1\\forge\\build\\moddev\\clientRunProgramArgs.txt"
       ],
       "vmArgs": [
-        "@E:\\Mod\\maid_file_manager-forge-1.20.1\\forge\\build\\moddev\\clientRunVmArgs.txt",
-        "-Dfml.modFolders\u003dmaid_file_manager%%E:\\Mod\\maid_file_manager-forge-1.20.1\\forge\\bin\\main"
+        "@E:\\Mod\\maid_file_manager-fabric-1.20.1\\forge\\build\\moddev\\clientRunVmArgs.txt",
+        "-Dfml.modFolders\u003dmaid_file_manager%%E:\\Mod\\maid_file_manager-fabric-1.20.1\\forge\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\forge\\run",
       "env": {
-        "MOD_CLASSES": "maid_file_manager%%E:\\Mod\\maid_file_manager-forge-1.20.1\\forge\\bin\\main"
+        "MOD_CLASSES": "maid_file_manager%%E:\\Mod\\maid_file_manager-fabric-1.20.1\\forge\\bin\\main"
       },
       "console": "internalConsole",
       "shortenCommandLine": "none"
@@ -36,15 +36,15 @@
       "projectName": "forge",
       "mainClass": "net.neoforged.devlaunch.Main",
       "args": [
-        "@E:\\Mod\\maid_file_manager-forge-1.20.1\\forge\\build\\moddev\\dataRunProgramArgs.txt"
+        "@E:\\Mod\\maid_file_manager-fabric-1.20.1\\forge\\build\\moddev\\dataRunProgramArgs.txt"
       ],
       "vmArgs": [
-        "@E:\\Mod\\maid_file_manager-forge-1.20.1\\forge\\build\\moddev\\dataRunVmArgs.txt",
-        "-Dfml.modFolders\u003dmaid_file_manager%%E:\\Mod\\maid_file_manager-forge-1.20.1\\forge\\bin\\main"
+        "@E:\\Mod\\maid_file_manager-fabric-1.20.1\\forge\\build\\moddev\\dataRunVmArgs.txt",
+        "-Dfml.modFolders\u003dmaid_file_manager%%E:\\Mod\\maid_file_manager-fabric-1.20.1\\forge\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\forge\\run",
       "env": {
-        "MOD_CLASSES": "maid_file_manager%%E:\\Mod\\maid_file_manager-forge-1.20.1\\forge\\bin\\main"
+        "MOD_CLASSES": "maid_file_manager%%E:\\Mod\\maid_file_manager-fabric-1.20.1\\forge\\bin\\main"
       },
       "console": "internalConsole",
       "shortenCommandLine": "none"
@@ -60,15 +60,15 @@
       "projectName": "forge",
       "mainClass": "net.neoforged.devlaunch.Main",
       "args": [
-        "@E:\\Mod\\maid_file_manager-forge-1.20.1\\forge\\build\\moddev\\serverRunProgramArgs.txt"
+        "@E:\\Mod\\maid_file_manager-fabric-1.20.1\\forge\\build\\moddev\\serverRunProgramArgs.txt"
       ],
       "vmArgs": [
-        "@E:\\Mod\\maid_file_manager-forge-1.20.1\\forge\\build\\moddev\\serverRunVmArgs.txt",
-        "-Dfml.modFolders\u003dmaid_file_manager%%E:\\Mod\\maid_file_manager-forge-1.20.1\\forge\\bin\\main"
+        "@E:\\Mod\\maid_file_manager-fabric-1.20.1\\forge\\build\\moddev\\serverRunVmArgs.txt",
+        "-Dfml.modFolders\u003dmaid_file_manager%%E:\\Mod\\maid_file_manager-fabric-1.20.1\\forge\\bin\\main"
       ],
       "cwd": "${workspaceFolder}\\forge\\run",
       "env": {
-        "MOD_CLASSES": "maid_file_manager%%E:\\Mod\\maid_file_manager-forge-1.20.1\\forge\\bin\\main"
+        "MOD_CLASSES": "maid_file_manager%%E:\\Mod\\maid_file_manager-fabric-1.20.1\\forge\\bin\\main"
       },
       "console": "internalConsole",
       "shortenCommandLine": "none"

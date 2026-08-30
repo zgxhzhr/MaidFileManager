@@ -24,4 +24,3 @@ plugins {
 rootProject.name = 'MultiLoader-Template'
 include("common")
 include("fabric")
-include("forge")

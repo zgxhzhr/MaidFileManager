@@ -1,9 +1,11 @@
 plugins {
-    id 'fabric-loom' version '1.9-SNAPSHOT' apply(false)
+    id 'fabric-loom' version '1.9.2' apply(false)
     id 'net.neoforged.moddev.legacyforge' version '2.0.77' apply(false)
 }
 
 // 为所有子项目设置 description，供 processResources 占位符使用
 allprojects {
     description = mod_description
+    // javadoc 对成品 jar 无意义，且 GBK 控制台下中文注释必炸（doclint 缺 @param 直接报错）——直接关闭
+    tasks.withType(Javadoc).configureEach { enabled = false }
 }

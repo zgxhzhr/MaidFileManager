@@ -1,0 +1,555 @@
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/C:/Users/MKIII/.gradle/wrapper/dists/gradle-8.11-bin/c4te04g51qsyw1bxcb929u7br/gradle-8.11/lib/native-platform-0.22-milestone-26.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.11/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :buildSrc:extractPluginRequests UP-TO-DATE
+> Task :buildSrc:generatePluginAdapters UP-TO-DATE
+> Task :buildSrc:compileJava
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:compileGroovyPlugins
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources UP-TO-DATE
+> Task :buildSrc:classes
+> Task :buildSrc:jar
+
+> Configure project :fabric
+Fabric Loom: 1.9.2
+
+> Task :common:createMinecraftArtifacts
+Loaded 98 artifacts from E:\Mod\maid_file_manager-fabric-1.20.1\common\build\tmp\createMinecraftArtifacts\nfrt_artifact_manifest.properties
+[1m*** Started working on [4mdownloadJson[0m[0m
+ [1m[92mDONE [0m Completed [4mdownloadJson[0m in 0.03s
+[1m*** Started working on [4mdownloadClientMappings[0m[0m
+[1m*** Started working on [4mdownloadServer[0m[0m
+[1m*** Started working on [4mdownloadClient[0m[0m
+[1m*** Started working on [4mlistLibraries[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mlistLibraries[0m in 0.00s
+ [1m[92mDONE [0m Completed [4mdownloadClient[0m in 0.04s
+ [1m[92mDONE [0m Completed [4mdownloadClientMappings[0m in 0.04s
+ [1m[92mDONE [0m Completed [4mdownloadServer[0m in 0.04s
+[1m*** Started working on [4mmergeMappings[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mmergeMappings[0m in 0.00s
+[1m*** Started working on [4mcreateMappings[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mcreateMappings[0m in 0.00s
+[1m*** Started working on [4mstripClient[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mstripClient[0m in 0.00s
+[1m*** Started working on [4mextractServer[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mextractServer[0m in 0.00s
+[1m*** Started working on [4mstripServer[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mstripServer[0m in 0.00s
+[1m*** Started working on [4mmerge[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mmerge[0m in 0.00s
+[1m*** Started working on [4mrename[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mrename[0m in 0.00s
+[1m*** Started working on [4mdecompile[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mdecompile[0m in 0.00s
+[1m*** Started working on [4minject[0m[0m
+ [1m[92mREUSE[0m Used cache of [4minject[0m in 0.00s
+[1m*** Started working on [4mpatch[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mpatch[0m in 0.00s
+[1m*** Started working on [4mremapSrgSourcesToOfficial[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mremapSrgSourcesToOfficial[0m in 0.00s
+[1m*** Started working on [4mapplyParchment[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mapplyParchment[0m in 0.00s
+[1m*** Started working on [4mrecompile[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mrecompile[0m in 0.00s
+[1m*** Started working on [4mmergeWithSources[0m[0m
+ [1m[92mREUSE[0m Used cache of [4mmergeWithSources[0m in 0.00s
+Total runtime: 1.28s
+
+
+> Task :common:compileJava
+> Task :common:processResources
+> Task :common:classes
+> Task :common:jarJar NO-SOURCE
+> Task :common:jar
+
+> Task :common:javadoc
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\Constants.java:6: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+public class Constants {
+       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\Constants.java:9: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public static final Logger LOG = LoggerFactory.getLogger(MOD_NAME);
+                               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\Constants.java:7: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public static final String MOD_ID = "maid_file_manager";
+                               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\Constants.java:8: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public static final String MOD_NAME = "Maid File Manager";
+                               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:18: 锟斤拷锟斤拷: entityIds没锟斤拷 @param
+    void sendExportMaids(List<Integer> entityIds, boolean removeAfterExport);
+         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:18: 锟斤拷锟斤拷: removeAfterExport没锟斤拷 @param
+    void sendExportMaids(List<Integer> entityIds, boolean removeAfterExport);
+         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:21: 锟斤拷锟斤拷: data没锟斤拷 @param
+    void sendImportFile(MaidFileData data, boolean keepBaubles);
+         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:21: 锟斤拷锟斤拷: keepBaubles没锟斤拷 @param
+    void sendImportFile(MaidFileData data, boolean keepBaubles);
+         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:24: 锟斤拷锟斤拷: dataList没锟斤拷 @param
+    void sendImportFiles(List<MaidFileData> dataList, boolean keepBaubles);
+         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:24: 锟斤拷锟斤拷: keepBaubles没锟斤拷 @param
+    void sendImportFiles(List<MaidFileData> dataList, boolean keepBaubles);
+         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:27: 锟斤拷锟斤拷: allow没锟斤拷 @param
+    void sendClientConsent(boolean allow);
+         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:30: 锟斤拷锟斤拷: key没锟斤拷 @param
+    void sendSetServerConfig(String key, boolean value);
+         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:30: 锟斤拷锟斤拷: value没锟斤拷 @param
+    void sendSetServerConfig(String key, boolean value);
+         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:35: 锟斤拷锟斤拷: 未知锟斤拷锟? 锟斤拷锟斤拷锟?
+    /** OP 锟斤拷锟斤拷锟斤拷锟剿达拷为锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷曳锟斤拷锟斤拷女锟斤拷 entityId锟斤拷锟斤拷锟斤拷锟侥硷拷锟斤拷锟芥到锟斤拷锟斤拷舜锟斤拷锟?maid_exports/<锟斤拷锟斤拷锟?/ */
+                                                                 ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:36: 锟斤拷锟斤拷: groups没锟斤拷 @param
+    void sendServerExportBatch(List<PlayerExportRequest> groups);
+         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:77: 锟斤拷锟斤拷: groups没锟斤拷 @param
+        void onServerExportListReceived(List<PlayerMaidGroup> groups);
+             ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:72: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+        void onExportResultReceived(List<MaidFileData> dataList);
+             ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:74: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+        void onFeedbackReceived(Component message);
+             ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:70: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+        void onMaidListReceived(List<MaidInfo> list);
+             ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:87: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+        public static ClientHandler get() {
+                                    ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:91: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+        public static void set(ClientHandler handler) {
+                           ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:53: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+        public static IMaidFileNetwork get() {
+                                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\IMaidFileNetwork.java:57: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+        public static void set(IMaidFileNetwork impl) {
+                           ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\platform\services\IPlatformHelper.java:5: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+public interface IPlatformHelper {
+       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:65: 锟斤拷锟斤拷: gameDir没锟斤拷 @param
+    public static void init(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:75: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static boolean isClientImportAllowed() {
+                          ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:80: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static boolean isBaublesAllowed() {
+                          ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:85: 锟斤拷锟斤拷: playerId没锟斤拷 @param
+    public static boolean getClientConsent(UUID playerId) {
+                          ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:85: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static boolean getClientConsent(UUID playerId) {
+                          ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:90: 锟斤拷锟斤拷: playerId没锟斤拷 @param
+    public static void removeClientConsent(UUID playerId) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:95: 锟斤拷锟斤拷: playerId没锟斤拷 @param
+    public static void handleClientConsent(UUID playerId, boolean allow) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:95: 锟斤拷锟斤拷: allow没锟斤拷 @param
+    public static void handleClientConsent(UUID playerId, boolean allow) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:100: 锟斤拷锟斤拷: key没锟斤拷 @param
+    public static synchronized void setServerConfig(String key, boolean value) {
+                                    ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:100: 锟斤拷锟斤拷: value没锟斤拷 @param
+    public static synchronized void setServerConfig(String key, boolean value) {
+                                    ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:115: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static boolean isClientAllowServerExport() {
+                          ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:120: 锟斤拷锟斤拷: value没锟斤拷 @param
+    public static synchronized void setClientAllowServerExport(boolean value) {
+                                    ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:131: 锟斤拷锟斤拷: allowImport没锟斤拷 @param
+    public static void handleServerConfigSync(boolean allowImport, boolean allowBaubles) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:131: 锟斤拷锟斤拷: allowBaubles没锟斤拷 @param
+    public static void handleServerConfigSync(boolean allowImport, boolean allowBaubles) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:141: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static boolean cachedClientImportAllowed() {
+                          ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\config\MaidConfigManager.java:145: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public static boolean cachedBaublesAllowed() {
+                          ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\client\MaidConfigScreen.java:61: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public MaidConfigScreen(Screen parent) {
+           ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:57: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public MaidFileData() {
+           ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:191: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public CompoundTag getData() {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:207: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public int getDataVersion() {
+               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:215: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public String getDisplayName() {
+                  ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:135: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public long getExportedAt() {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:127: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public int getFormatVersion() {
+               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:199: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public String getModelId() {
+                  ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:159: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public String getModId() {
+                  ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:175: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public String getOwnerName() {
+                  ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:167: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public String getOwnerUuid() {
+                  ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:143: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public String getSourceMcVersion() {
+                  ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:151: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public String getSourceTlmVersion() {
+                  ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:183: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public boolean isTamed() {
+                   ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:87: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public static MaidFileData readFromNbt(CompoundTag root) {
+                               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:195: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public void setData(CompoundTag data) {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:211: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public void setDataVersion(int dataVersion) {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:219: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public void setDisplayName(String displayName) {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:139: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public void setExportedAt(long exportedAt) {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:131: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public void setFormatVersion(int formatVersion) {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:203: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public void setModelId(String modelId) {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:163: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public void setModId(String modId) {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:179: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public void setOwnerName(String ownerName) {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:171: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public void setOwnerUuid(String ownerUuid) {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:147: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public void setSourceMcVersion(String sourceMcVersion) {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:155: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public void setSourceTlmVersion(String sourceTlmVersion) {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:187: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public void setTamed(boolean tamed) {
+                ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileData.java:60: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public CompoundTag writeToNbt() {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:43: 锟斤拷锟斤拷: gameDir没锟斤拷 @param
+    public static Path ensureExportsDir(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:43: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static Path ensureExportsDir(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:48: 锟斤拷锟斤拷: gameDir没锟斤拷 @param
+    public static Path ensureImportsDir(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:48: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static Path ensureImportsDir(Path gameDir) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:75: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static String buildExportFileName(String displayName, String modelId, String ownerUuid, LocalDateTime time) {
+                         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:99: 锟斤拷锟斤拷: s没锟斤拷 @param
+    public static String sanitize(String s) {
+                         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:99: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static String sanitize(String s) {
+                         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:117: 锟斤拷锟斤拷: s没锟斤拷 @param
+    public static String sanitizePlayerName(String s) {
+                         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:117: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static String sanitizePlayerName(String s) {
+                         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:136: 锟斤拷锟斤拷: java.io.IOException没锟斤拷 @throws
+    public static String writeMaidFile(Path dir, String displayName, String modelId,
+                         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:160: 锟斤拷锟斤拷: file没锟斤拷 @param
+    public static MaidFileData readMaidFile(Path file) {
+                               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:160: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static MaidFileData readMaidFile(Path file) {
+                               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:178: 锟斤拷锟斤拷: dir没锟斤拷 @param
+    public static List<String> listMaidFiles(Path dir) {
+                               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:199: 锟斤拷锟斤拷: fileName没锟斤拷 @param
+    public static long parseTimestampFromFileName(String fileName) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:199: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static long parseTimestampFromFileName(String fileName) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:228: 锟斤拷锟斤拷: fileName没锟斤拷 @param
+    public static String extractDisplayModelId(String fileName) {
+                         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:228: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static String extractDisplayModelId(String fileName) {
+                         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\data\MaidFileIo.java:246: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public static Logger logger() {
+                         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\client\MaidFileManagerScreen.java:116: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+    public MaidFileManagerScreen() {
+           ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\client\MaidFileManagerScreen.java:1469: 锟斤拷锟斤拷: 没锟斤拷注锟斤拷
+        public MaidServerExportScreen(MaidFileManagerScreen parent) {
+               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:68: 锟斤拷锟斤拷: data没锟斤拷 @param
+    public static byte[] serializeMaidFileData(MaidFileData data) {
+                         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:68: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static byte[] serializeMaidFileData(MaidFileData data) {
+                         ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:80: 锟斤拷锟斤拷: bytes没锟斤拷 @param
+    public static MaidFileData deserializeMaidFileData(byte[] bytes) {
+                               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:80: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static MaidFileData deserializeMaidFileData(byte[] bytes) {
+                               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:94: 锟斤拷锟斤拷: buf没锟斤拷 @param
+    public static void writeMaidFileData(FriendlyByteBuf buf, MaidFileData data) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:94: 锟斤拷锟斤拷: data没锟斤拷 @param
+    public static void writeMaidFileData(FriendlyByteBuf buf, MaidFileData data) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:105: 锟斤拷锟斤拷: buf没锟斤拷 @param
+    public static MaidFileData readMaidFileData(FriendlyByteBuf buf) {
+                               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:105: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static MaidFileData readMaidFileData(FriendlyByteBuf buf) {
+                               ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:116: 锟斤拷锟斤拷: buf没锟斤拷 @param
+    public static void writeMaidInfoList(FriendlyByteBuf buf, List<MaidInfo> list) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:116: 锟斤拷锟斤拷: list没锟斤拷 @param
+    public static void writeMaidInfoList(FriendlyByteBuf buf, List<MaidInfo> list) {
+                       ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:124: 锟斤拷锟斤拷: buf没锟斤拷 @param
+    public static List<MaidInfo> readMaidInfoList(FriendlyByteBuf buf) {
+                                 ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:124: 锟斤拷锟斤拷: 没锟斤拷 @return
+    public static List<MaidInfo> readMaidInfoList(FriendlyByteBuf buf) {
+                                 ^
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\network\MaidFilePackets.java:188: 锟斤拷锟斤拷: buf没锟斤拷 @param
+    public static void writeIntList(FriendlyByteBuf buf, List<Integer> list) {
+                       ^
+1 锟斤拷锟斤拷锟斤拷
+100 锟斤拷锟斤拷锟斤拷
+
+> Task :common:javadoc FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':common:javadoc'.
+> Javadoc generation failed. Generated Javadoc options file (useful for troubleshooting): 'E:\Mod\maid_file_manager-fabric-1.20.1\common\build\tmp\javadoc\javadoc.options'
+
+* Try:
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+* Exception is:
+org.gradle.api.tasks.TaskExecutionException: Execution failed for task ':common:javadoc'.
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.lambda$executeIfValid$1(ExecuteActionsTaskExecuter.java:130)
+	at org.gradle.internal.Try$Failure.ifSuccessfulOrElse(Try.java:293)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:128)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:85)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:459)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:376)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+Caused by: org.gradle.api.GradleException: Javadoc generation failed. Generated Javadoc options file (useful for troubleshooting): 'E:\Mod\maid_file_manager-fabric-1.20.1\common\build\tmp\javadoc\javadoc.options'
+	at org.gradle.api.tasks.javadoc.internal.JavadocGenerator.execute(JavadocGenerator.java:56)
+	at org.gradle.api.tasks.javadoc.internal.JavadocToolAdapter.execute(JavadocToolAdapter.java:37)
+	at org.gradle.api.tasks.javadoc.Javadoc.generate(Javadoc.java:177)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at org.gradle.internal.reflect.JavaMethod.invoke(JavaMethod.java:125)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.doExecute(StandardTaskAction.java:58)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:51)
+	at org.gradle.api.internal.project.taskfactory.StandardTaskAction.execute(StandardTaskAction.java:29)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$3.run(TaskExecution.java:244)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:29)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$1.execute(DefaultBuildOperationRunner.java:26)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.run(DefaultBuildOperationRunner.java:47)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeAction(TaskExecution.java:229)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeActions(TaskExecution.java:212)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.executeWithPreviousOutputFiles(TaskExecution.java:195)
+	at org.gradle.api.internal.tasks.execution.TaskExecution.execute(TaskExecution.java:162)
+	at org.gradle.internal.execution.steps.ExecuteStep.executeInternal(ExecuteStep.java:105)
+	at org.gradle.internal.execution.steps.ExecuteStep.access$000(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:59)
+	at org.gradle.internal.execution.steps.ExecuteStep$1.call(ExecuteStep.java:56)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:56)
+	at org.gradle.internal.execution.steps.ExecuteStep.execute(ExecuteStep.java:44)
+	at org.gradle.internal.execution.steps.CancelExecutionStep.execute(CancelExecutionStep.java:42)
+	at org.gradle.internal.execution.steps.TimeoutStep.executeWithoutTimeout(TimeoutStep.java:75)
+	at org.gradle.internal.execution.steps.TimeoutStep.execute(TimeoutStep.java:55)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:50)
+	at org.gradle.internal.execution.steps.PreCreateOutputParentsStep.execute(PreCreateOutputParentsStep.java:28)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:67)
+	at org.gradle.internal.execution.steps.RemovePreviousOutputsStep.execute(RemovePreviousOutputsStep.java:37)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:61)
+	at org.gradle.internal.execution.steps.BroadcastChangingOutputsStep.execute(BroadcastChangingOutputsStep.java:26)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:69)
+	at org.gradle.internal.execution.steps.CaptureOutputsAfterExecutionStep.execute(CaptureOutputsAfterExecutionStep.java:46)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:40)
+	at org.gradle.internal.execution.steps.ResolveInputChangesStep.execute(ResolveInputChangesStep.java:29)
+	at org.gradle.internal.execution.steps.BuildCacheStep.executeWithoutCache(BuildCacheStep.java:189)
+	at org.gradle.internal.execution.steps.BuildCacheStep.lambda$execute$1(BuildCacheStep.java:75)
+	at org.gradle.internal.Either$Right.fold(Either.java:175)
+	at org.gradle.internal.execution.caching.CachingState.fold(CachingState.java:62)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:73)
+	at org.gradle.internal.execution.steps.BuildCacheStep.execute(BuildCacheStep.java:48)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:46)
+	at org.gradle.internal.execution.steps.StoreExecutionStateStep.execute(StoreExecutionStateStep.java:35)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.executeBecause(SkipUpToDateStep.java:75)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.lambda$execute$2(SkipUpToDateStep.java:53)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:53)
+	at org.gradle.internal.execution.steps.SkipUpToDateStep.execute(SkipUpToDateStep.java:35)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:37)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsFinishedStep.execute(MarkSnapshottingInputsFinishedStep.java:27)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:49)
+	at org.gradle.internal.execution.steps.ResolveIncrementalCachingStateStep.executeDelegate(ResolveIncrementalCachingStateStep.java:27)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:71)
+	at org.gradle.internal.execution.steps.AbstractResolveCachingStateStep.execute(AbstractResolveCachingStateStep.java:39)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:65)
+	at org.gradle.internal.execution.steps.ResolveChangesStep.execute(ResolveChangesStep.java:36)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:107)
+	at org.gradle.internal.execution.steps.ValidateStep.execute(ValidateStep.java:56)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:64)
+	at org.gradle.internal.execution.steps.AbstractCaptureStateBeforeExecutionStep.execute(AbstractCaptureStateBeforeExecutionStep.java:43)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.executeWithNonEmptySources(AbstractSkipEmptyWorkStep.java:125)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:61)
+	at org.gradle.internal.execution.steps.AbstractSkipEmptyWorkStep.execute(AbstractSkipEmptyWorkStep.java:36)
+	at org.gradle.internal.execution.steps.legacy.MarkSnapshottingInputsStartedStep.execute(MarkSnapshottingInputsStartedStep.java:38)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:36)
+	at org.gradle.internal.execution.steps.LoadPreviousExecutionStateStep.execute(LoadPreviousExecutionStateStep.java:23)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:75)
+	at org.gradle.internal.execution.steps.HandleStaleOutputsStep.execute(HandleStaleOutputsStep.java:41)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.lambda$execute$0(AssignMutableWorkspaceStep.java:35)
+	at org.gradle.api.internal.tasks.execution.TaskExecution$4.withWorkspace(TaskExecution.java:289)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:31)
+	at org.gradle.internal.execution.steps.AssignMutableWorkspaceStep.execute(AssignMutableWorkspaceStep.java:22)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:40)
+	at org.gradle.internal.execution.steps.ChoosePipelineStep.execute(ChoosePipelineStep.java:23)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.lambda$execute$2(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:67)
+	at org.gradle.internal.execution.steps.ExecuteWorkBuildOperationFiringStep.execute(ExecuteWorkBuildOperationFiringStep.java:39)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:46)
+	at org.gradle.internal.execution.steps.IdentityCacheStep.execute(IdentityCacheStep.java:34)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:48)
+	at org.gradle.internal.execution.steps.IdentifyStep.execute(IdentifyStep.java:35)
+	at org.gradle.internal.execution.impl.DefaultExecutionEngine$1.execute(DefaultExecutionEngine.java:61)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.executeIfValid(ExecuteActionsTaskExecuter.java:127)
+	at org.gradle.api.internal.tasks.execution.ExecuteActionsTaskExecuter.execute(ExecuteActionsTaskExecuter.java:116)
+	at org.gradle.api.internal.tasks.execution.FinalizePropertiesTaskExecuter.execute(FinalizePropertiesTaskExecuter.java:46)
+	at org.gradle.api.internal.tasks.execution.ResolveTaskExecutionModeExecuter.execute(ResolveTaskExecutionModeExecuter.java:51)
+	at org.gradle.api.internal.tasks.execution.SkipTaskWithNoActionsExecuter.execute(SkipTaskWithNoActionsExecuter.java:57)
+	at org.gradle.api.internal.tasks.execution.SkipOnlyIfTaskExecuter.execute(SkipOnlyIfTaskExecuter.java:74)
+	at org.gradle.api.internal.tasks.execution.CatchExceptionTaskExecuter.execute(CatchExceptionTaskExecuter.java:36)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.executeTask(EventFiringTaskExecuter.java:77)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:55)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter$1.call(EventFiringTaskExecuter.java:52)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:209)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$CallableBuildOperationWorker.execute(DefaultBuildOperationRunner.java:204)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:66)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner$2.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:166)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.execute(DefaultBuildOperationRunner.java:59)
+	at org.gradle.internal.operations.DefaultBuildOperationRunner.call(DefaultBuildOperationRunner.java:53)
+	at org.gradle.api.internal.tasks.execution.EventFiringTaskExecuter.execute(EventFiringTaskExecuter.java:52)
+	at org.gradle.execution.plan.LocalTaskNodeExecutor.execute(LocalTaskNodeExecutor.java:42)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:331)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$InvokeNodeExecutorsAction.execute(DefaultTaskExecutionGraph.java:318)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.lambda$execute$0(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.internal.operations.CurrentBuildOperationRef.with(CurrentBuildOperationRef.java:85)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:314)
+	at org.gradle.execution.taskgraph.DefaultTaskExecutionGraph$BuildOperationAwareExecutionAction.execute(DefaultTaskExecutionGraph.java:303)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.execute(DefaultPlanExecutor.java:459)
+	at org.gradle.execution.plan.DefaultPlanExecutor$ExecutorWorker.run(DefaultPlanExecutor.java:376)
+	at org.gradle.internal.concurrent.ExecutorPolicy$CatchAndRecordFailures.onExecute(ExecutorPolicy.java:64)
+	at org.gradle.internal.concurrent.AbstractManagedExecutor$1.run(AbstractManagedExecutor.java:48)
+Caused by: org.gradle.process.internal.ExecException: Process 'command 'C:\Program Files\Java\jdk-17\bin\javadoc.exe'' finished with non-zero exit value 1
+	at org.gradle.process.internal.DefaultExecHandle$ExecResultImpl.assertNormalExitValue(DefaultExecHandle.java:439)
+	at org.gradle.process.internal.DefaultExecAction.execute(DefaultExecAction.java:38)
+	at org.gradle.api.tasks.javadoc.internal.JavadocGenerator.execute(JavadocGenerator.java:51)
+	... 122 more
+
+
+BUILD FAILED in 36s
+12 actionable tasks: 8 executed, 4 up-to-date

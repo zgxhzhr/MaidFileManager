@@ -1,0 +1,59 @@
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/C:/Users/MKIII/.gradle/wrapper/dists/gradle-8.11-bin/c4te04g51qsyw1bxcb929u7br/gradle-8.11/lib/native-platform-0.22-milestone-26.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\client\MaidFileManagerScreen.java:1069: 错误: 找不到符号
+            if (!this.visible) {
+                     ^
+  符号: 变量 visible
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\client\MaidFileManagerScreen.java:1104: 错误: MaidFileManagerScreen.MaidListWidget中的getEntryAtPosition(double,double)无法覆盖AbstractSelectionList中的getEntryAtPosition(double,double)
+        public ListRow getEntryAtPosition(double mouseX, double mouseY) {
+                       ^
+  被覆盖的方法为final
+  其中, E是类型变量:
+    E扩展已在类 AbstractSelectionList中声明的Entry<E>
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\client\MaidFileManagerScreen.java:1394: 错误: 找不到符号
+            if (!this.visible) {
+                     ^
+  符号: 变量 visible
+E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\client\MaidFileManagerScreen.java:1428: 错误: MaidFileManagerScreen.FileListWidget中的getEntryAtPosition(double,double)无法覆盖AbstractSelectionList中的getEntryAtPosition(double,double)
+        public Entry getEntryAtPosition(double mouseX, double mouseY) {
+                     ^
+  被覆盖的方法为final
+  其中, E是类型变量:
+    E扩展已在类 AbstractSelectionList中声明的net.minecraft.client.gui.components.AbstractSelectionList.Entry<E>
+4 个错误
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':common:compileJava'.
+> Compilation failed; see the compiler output below.
+  E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\client\MaidFileManagerScreen.java:1069: 错误: 找不到符号
+              if (!this.visible) {
+                       ^
+    符号: 变量 visible
+  E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\client\MaidFileManagerScreen.java:1394: 错误: 找不到符号
+              if (!this.visible) {
+                       ^
+    符号: 变量 visible
+  E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\client\MaidFileManagerScreen.java:1104: 错误: MaidFileManagerScreen.MaidListWidget中的getEntryAtPosition(double,double)无法覆盖AbstractSelectionList中的getEntryAtPosition(double,double)
+          public ListRow getEntryAtPosition(double mouseX, double mouseY) {
+                         ^
+    被覆盖的方法为final
+    其中, E是类型变量:
+      E扩展已在类 AbstractSelectionList中声明的Entry<E>
+  E:\Mod\maid_file_manager-fabric-1.20.1\common\src\main\java\com\example\maid_file_manager\client\MaidFileManagerScreen.java:1428: 错误: MaidFileManagerScreen.FileListWidget中的getEntryAtPosition(double,double)无法覆盖AbstractSelectionList中的getEntryAtPosition(double,double)
+          public Entry getEntryAtPosition(double mouseX, double mouseY) {
+                       ^
+    被覆盖的方法为final
+    其中, E是类型变量:
+      E扩展已在类 AbstractSelectionList中声明的net.minecraft.client.gui.components.AbstractSelectionList.Entry<E>
+  4 个错误
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+> Run with --scan to get full insights.
+
+BUILD FAILED in 23s

@@ -1,15 +1,14 @@
 {
     "schemaVersion": 1,
-    "id": "${mod_id}",
-    "version": "${version}",
-    "name": "${mod_name}",
-    "description": "${description}",
+    "id": "maid_file_manager",
+    "version": "1.2.0",
+    "name": "Maid File Manager",
+    "description": "车万女仆附属模组，支持跨版本导入导出女仆数据",
     "authors": [
-        "${mod_author}"
+        "zgxhzhr"
     ],
     "contact": {},
-    "license": "${license}",
-    "icon": "assets/${mod_id}/icon.png",
+    "license": "CC0-1.0",
     "environment": "*",
     "entrypoints": {
         "main": [

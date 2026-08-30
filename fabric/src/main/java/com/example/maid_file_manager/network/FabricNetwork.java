@@ -57,6 +57,18 @@ public final class FabricNetwork implements IMaidFileNetwork {
         sendC2S(MaidFilePackets.ID_SET_SERVER_CONFIG, buf);
     }
 
+    @Override
+    public void sendRequestServerExportList() {
+        sendC2S(MaidFilePackets.ID_REQUEST_SERVER_EXPORT_LIST, PacketByteBufs.create());
+    }
+
+    @Override
+    public void sendServerExportBatch(List<PlayerExportRequest> groups) {
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        MaidFilePackets.writePlayerExportRequests(buf, groups);
+        sendC2S(MaidFilePackets.ID_SERVER_EXPORT_BATCH, buf);
+    }
+
     private static void sendC2S(ResourceLocation id, FriendlyByteBuf buf) {
         ClientPlayNetworking.send(id, buf);
     }
