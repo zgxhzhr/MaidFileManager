@@ -25,3 +25,6 @@ runs
 
 # build logs (local build/error logs)
 *.log
+
+# Eclipse IDE 运行配置
+.eclipse/
