@@ -1,30 +1,49 @@
 package com.example.maid_file_manager.platform;
 
 import com.example.maid_file_manager.Constants;
+import com.example.maid_file_manager.network.IMaidFileNetwork;
 import com.example.maid_file_manager.platform.services.IPlatformHelper;
 
 import java.util.ServiceLoader;
+import java.util.function.Supplier;
 
-// Service loaders are a built-in Java feature that allow us to locate implementations of an interface that vary from one
-// environment to another. In the context of MultiLoader we use this feature to access a mock API in the common code that
-// is swapped out for the platform specific implementation at runtime.
 public class Services {
 
-    // In this example we provide a platform helper which provides information about what platform the mod is running on.
-    // For example this can be used to check if the code is running on Forge vs Fabric, or to ask the modloader if another
-    // mod is loaded.
-    public static final IPlatformHelper PLATFORM = load(IPlatformHelper.class);
+    public static final ServiceProvider<IPlatformHelper> PLATFORM = new ServiceProvider<>();
+    public static final ServiceProvider<IMaidFileNetwork> NETWORK = new ServiceProvider<>();
 
-    // This code is used to load a service for the current environment. Your implementation of the service must be defined
-    // manually by including a text file in META-INF/services named with the fully qualified class name of the service.
-    // Inside the file you should write the fully qualified class name of the implementation to load for the platform. For
-    // example our file on Forge points to ForgePlatformHelper while Fabric points to FabricPlatformHelper.
+    static {
+        try {
+            PLATFORM.loadService(IPlatformHelper.class, () -> load(IPlatformHelper.class));
+        } catch (Exception e) {
+            // 正常打包下 META-INF/services 声明必在；失败只可能是打包损坏/类加载被阻断，
+            // 不能静默吞掉，否则后续 PLATFORM.get() 只会以裸 NPE 暴露、无从排查
+            Constants.LOG.error("[maid_file_manager] 平台服务 IPlatformHelper 加载失败，模组功能将不可用", e);
+        }
+    }
+
     public static <T> T load(Class<T> clazz) {
-
         final T loadedService = ServiceLoader.load(clazz)
                 .findFirst()
                 .orElseThrow(() -> new NullPointerException("Failed to load service for " + clazz.getName()));
         Constants.LOG.debug("Loaded {} for service {}", loadedService, clazz);
         return loadedService;
+    }
+
+    public static final class ServiceProvider<T> {
+        private T instance;
+        private boolean loaded;
+
+        public synchronized void loadService(Class<T> clazz, Supplier<T> supplier) {
+            if (!loaded) {
+                this.instance = supplier.get();
+                this.loaded = true;
+                Constants.LOG.debug("Registered service provider for {}", clazz.getName());
+            }
+        }
+
+        public T get() {
+            return instance;
+        }
     }
 }

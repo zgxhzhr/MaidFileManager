@@ -123,6 +123,10 @@ processResources {
         expand jsonExpandProps
     }
 
+    // expand/filter 默认按平台字符集（Windows 为 GBK）读取源文件，
+    // 导致 mods.toml 等资源里的 UTF-8 中文注释在 jar 内二次编码乱码，统一固定为 UTF-8
+    filteringCharset = 'UTF-8'
+
     inputs.properties(expandProps)
 }
 
