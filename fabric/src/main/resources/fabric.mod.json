@@ -1,7 +1,7 @@
 {
     "schemaVersion": 1,
     "id": "maid_file_manager",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "name": "Maid File Manager",
     "description": "车万女仆附属模组，支持跨版本导入导出女仆数据",
     "authors": [
@@ -21,7 +21,7 @@
     "depends": {
         "fabricloader": ">=0.16.9",
         "fabric-api": "*",
-        "minecraft": ">=1.21 <1.22",
+        "minecraft": ">=1.21.1 <1.22",
         "java": ">=21",
         "touhou_little_maid": "*"
     }
