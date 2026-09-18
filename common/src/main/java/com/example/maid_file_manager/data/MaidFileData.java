@@ -53,6 +53,10 @@ public class MaidFileData {
     private String modelId;
     /** 模型显示名（中文名），用于导出文件命名 */
     private String displayName;
+    /** 源玩家 TLM 成就数据（仅命名空间 touhou_little_maid 的已完成成就），可空 */
+    private CompoundTag advancements;
+    /** 药水效果 NBT（从 ActiveEffects 提取，始终序列化，不受配置影响），可空 */
+    private CompoundTag effects;
 
     public MaidFileData() {
     }
@@ -64,6 +68,7 @@ public class MaidFileData {
         root.putString("source_mc_version", sourceMcVersion);
         root.putString("source_tlm_version", sourceTlmVersion);
         root.putString("mod_id", modId);
+        root.putInt("data_version", dataVersion);
         root.putBoolean("tamed", tamed);
         if (ownerUuid != null) {
             root.putString("owner_uuid", ownerUuid);
@@ -74,12 +79,17 @@ public class MaidFileData {
         if (data != null) {
             root.put("data", data);
         }
-        root.putInt("data_version", dataVersion);
         if (modelId != null) {
             root.putString("model_id", modelId);
         }
         if (displayName != null) {
             root.putString("display_name", displayName);
+        }
+        if (advancements != null) {
+            root.put("advancements", advancements);
+        }
+        if (effects != null) {
+            root.put("effects", effects);
         }
         return root;
     }
@@ -95,6 +105,9 @@ public class MaidFileData {
         data.modId = root.contains("mod_id", Tag.TAG_STRING)
                 ? root.getString("mod_id")
                 : Constants.MOD_ID;
+        data.dataVersion = root.contains("data_version", Tag.TAG_INT)
+                ? root.getInt("data_version")
+                : NbtVersion.fromMcVersion(root.getString("source_mc_version"));
         data.tamed = root.getBoolean("tamed");
         if (root.contains("owner_uuid", Tag.TAG_STRING)) {
             data.ownerUuid = root.getString("owner_uuid");
@@ -110,15 +123,21 @@ public class MaidFileData {
         if (root.contains("data", Tag.TAG_COMPOUND)) {
             data.data = root.getCompound("data");
         }
-        data.dataVersion = root.contains("data_version", Tag.TAG_INT)
-                ? root.getInt("data_version")
-                : NbtVersion.fromMcVersion(root.getString("source_mc_version"));
         if (root.contains("model_id", Tag.TAG_STRING)) {
             data.modelId = root.getString("model_id");
         }
         if (root.contains("display_name", Tag.TAG_STRING)) {
             data.displayName = root.getString("display_name");
         }
+        // v3 新增：成就数据（旧 v2 文件无此字段，容错为 null）
+        if (root.contains("advancements", Tag.TAG_COMPOUND)) {
+            data.advancements = root.getCompound("advancements");
+        }
+        // v4 药水效果字段（旧 v3 文件无此字段，容错处理）
+        if (root.contains("effects", Tag.TAG_COMPOUND)) {
+            data.effects = root.getCompound("effects");
+        }
+        // 旧 v4 文件可能含 spell_maid 键，本次改造已删除该字段，直接忽略（向后兼容）
         return data;
     }
 
@@ -204,6 +223,14 @@ public class MaidFileData {
         this.modelId = modelId;
     }
 
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
     public int getDataVersion() {
         return dataVersion;
     }
@@ -212,11 +239,19 @@ public class MaidFileData {
         this.dataVersion = dataVersion;
     }
 
-    public String getDisplayName() {
-        return displayName;
+    public CompoundTag getAdvancements() {
+        return advancements;
     }
 
-    public void setDisplayName(String displayName) {
-        this.displayName = displayName;
+    public void setAdvancements(CompoundTag advancements) {
+        this.advancements = advancements;
+    }
+
+    public CompoundTag getEffects() {
+        return effects;
+    }
+
+    public void setEffects(CompoundTag effects) {
+        this.effects = effects;
     }
 }

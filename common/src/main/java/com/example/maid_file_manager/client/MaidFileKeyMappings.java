@@ -7,7 +7,7 @@ import net.minecraft.client.KeyMapping;
 /**
  * 模组按键绑定。
  *
- * <p>默认 Alt+U 唤出女仆文件管理界面，玩家可在原版 MC 控制设置中重新绑定。
+ * <p>默认 U 键唤出女仆文件管理界面，玩家可在原版 MC 控制设置中重新绑定。
  */
 public final class MaidFileKeyMappings {
     /** 主分类（与原版按键一致），便于玩家在控制设置中查找 */
