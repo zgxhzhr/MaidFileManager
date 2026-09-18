@@ -21,3 +21,6 @@ build
 # other
 eclipse
 run
+
+# build logs (local build/error logs)
+*.log

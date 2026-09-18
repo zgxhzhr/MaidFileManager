@@ -15,6 +15,12 @@ dependencies {
     modCompileOnly files(rootProject.file(tlm_jar_path))
 }
 
+// 工程面向 1.20（fabric.mod.json 声明 >=1.20 <1.20.2），但工具链沿用 1.20.1 的 loader/API 版本，
+// 不能沿用 buildSrc 的 ${minecraft_version} 命名公式，否则产物会被错误命名成 fabric-1.20.1
+base {
+    archivesName = "maid_file_manager-fabric-1.20"
+}
+
 loom {
     if (project(":common").file("src/main/resources/${mod_id}.accesswidener").exists()) {
         accessWidenerPath.set(project(":common").file("src/main/resources/${mod_id}.accesswidener"))
