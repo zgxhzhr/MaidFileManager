@@ -1,5 +1,8 @@
 package com.example.maid_file_manager.data;
 
+import com.example.maid_file_manager.Constants;
+import com.example.maid_file_manager.platform.Services;
+
 public final class NbtVersion {
     public static final int MC_1_20_1 = 1_20_01_00;
     public static final int MC_1_20_6 = 1_20_06_00;
@@ -18,8 +21,17 @@ public final class NbtVersion {
         return UNKNOWN;
     }
 
-    /** 当前运行时版本：1.21 */
+    /**
+     * 当前运行时版本。由平台层提供 MC 版本字符串（各加载器启动早期即可用），
+     * 这样 common 层本文件在全部八个工程中保持同一份代码，无需按工程改常量。
+     * 平台服务异常时返回 {@link #UNKNOWN}（迁移器会只做与版本无关的卫生清理）。
+     */
     public static int currentRuntime() {
-        return MC_1_21;
+        try {
+            return fromMcVersion(Services.PLATFORM.get().getMcVersion());
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 无法获取当前 MC 运行时版本: {}", t.toString());
+            return UNKNOWN;
+        }
     }
 }

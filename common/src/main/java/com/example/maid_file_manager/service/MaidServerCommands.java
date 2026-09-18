@@ -32,8 +32,6 @@ import java.util.List;
 public final class MaidServerCommands {
     /** 统一导出时搜索主人周围女仆的范围（格）：确保离服主较远的玩家的女仆也能被导出 */
     private static final double EXPORT_ALL_RADIUS = 256.0D;
-    /** 玩家名作为目录名时的非法字符正则（与 MaidFileIo 同规则） */
-    private static final String INVALID_CHAR_REGEX = "[\\\\/:*?\"<>|\\[\\]\\u0000-\\u001F]";
 
     private MaidServerCommands() {
     }
@@ -68,7 +66,7 @@ public final class MaidServerCommands {
             List<EntityMaid> maids = player.level().getEntitiesOfClass(EntityMaid.class,
                     player.getBoundingBox().inflate(EXPORT_ALL_RADIUS),
                     maid -> maid.isTame() && player.equals(maid.getOwner()));
-            Path playerDir = exportRoot.resolve(MaidFileIo.sanitizePlayerName(playerName));
+            Path playerDir = MaidFileIo.resolvePlayerDir(exportRoot, playerName);
             int count = 0;
             for (EntityMaid maid : maids) {
                 try {
@@ -152,8 +150,8 @@ public final class MaidServerCommands {
                         name, owner.getUUID());
                 continue;
             }
-            // 玩家名仅清洗非法字符（禁止折叠下划线→把 "_" 清空为 unknown 的 bug）
-            Path playerDir = exportRoot.resolve(MaidFileIo.sanitizePlayerName(name));
+            // 玩家名经 resolvePlayerDir 清洗并断言目录不越界（兼容单独下划线玩家名，拒绝 "."/".."）
+            Path playerDir = MaidFileIo.resolvePlayerDir(exportRoot, name);
             int ok = 0;
             int fail = 0;
             for (int entityId : req.entityIds()) {
@@ -178,7 +176,8 @@ public final class MaidServerCommands {
             totalOk += ok;
             totalFail += fail;
             details.add(name + "：" + ok + " 个" + (fail > 0 ? "（失败 " + fail + " 个）" : ""));
-            Constants.LOG.warn("[maid_file_manager] 统一导出玩家完成：player={}, 成功={}, 失败={}, 保存目录={}",
+            // 正常完成路径用 INFO：即使个别失败（已在上方 error 记录），整批完成本身不是警告，避免污染告警筛选
+            Constants.LOG.info("[maid_file_manager] 统一导出玩家完成：player={}, 成功={}, 失败={}, 保存目录={}",
                     name, ok, fail, playerDir);
         }
 

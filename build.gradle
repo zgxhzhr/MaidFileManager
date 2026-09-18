@@ -4,3 +4,11 @@ plugins {
     // see https://projects.neoforged.net/neoforged/moddevgradle for new versions
     id 'net.neoforged.moddev' version '2.0.49-beta' apply false
 }
+// Delivery only ships the platform main jar; disable javadoc/javadocJar (doclint fails on undocumented sources)
+allprojects {
+    tasks.withType(org.gradle.api.tasks.javadoc.Javadoc).configureEach { enabled = false }
+    tasks.matching { it.name in ['javadocJar', 'remapJavadocJar'] }.configureEach { enabled = false }
+    // sourcesJar 由模板 withSourcesJar() 注册；remapSourcesJar 是 fabric-loom 额外重映射任务，
+    // 只禁 sourcesJar 时 loom 仍会把旧 sources jar 重映射进 build/libs，必须一并禁用
+    tasks.matching { it.name in ['sourcesJar', 'remapSourcesJar'] }.configureEach { enabled = false }
+}

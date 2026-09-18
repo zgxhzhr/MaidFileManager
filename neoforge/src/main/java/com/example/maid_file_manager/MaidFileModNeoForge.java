@@ -83,15 +83,15 @@ public class MaidFileModNeoForge {
         registrar.playToClient(MaidFilePayloads.MaidListPayload.TYPE,
                 MaidFilePayloads.MaidListPayload.STREAM_CODEC,
                 MaidFilePayloads.MaidListPayload::handle);
-        registrar.playToClient(MaidFilePayloads.ExportResultPayload.TYPE,
-                MaidFilePayloads.ExportResultPayload.STREAM_CODEC,
-                MaidFilePayloads.ExportResultPayload::handle);
         registrar.playToClient(MaidFilePayloads.ExportBatchResultPayload.TYPE,
                 MaidFilePayloads.ExportBatchResultPayload.STREAM_CODEC,
                 MaidFilePayloads.ExportBatchResultPayload::handle);
         registrar.playToClient(MaidFilePayloads.FeedbackPayload.TYPE,
                 MaidFilePayloads.FeedbackPayload.STREAM_CODEC,
                 MaidFilePayloads.FeedbackPayload::handle);
+        registrar.playToClient(MaidFilePayloads.ImportBatchResultPayload.TYPE,
+                MaidFilePayloads.ImportBatchResultPayload.STREAM_CODEC,
+                MaidFilePayloads.ImportBatchResultPayload::handle);
         registrar.playToClient(MaidFilePayloads.ServerConfigSyncPayload.TYPE,
                 MaidFilePayloads.ServerConfigSyncPayload.STREAM_CODEC,
                 MaidFilePayloads.ServerConfigSyncPayload::handle);
@@ -127,10 +127,10 @@ public class MaidFileModNeoForge {
         Constants.LOG.info("[maid_file_manager] /maidfile gui + exportall commands registered");
     }
 
-    /** 玩家登录：把服务端配置推给客户端（客户端收到后回发同意状态） */
+    /** 玩家登录：仅向该玩家单播服务端配置（客户端收到后回发同意状态） */
     private void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer sp) {
-            MaidFilePayloads.broadcastServerConfig(sp.server);
+            MaidFilePayloads.sendServerConfig(sp);
         }
     }
 
