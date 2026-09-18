@@ -17,11 +17,14 @@ public interface IMaidFileNetwork {
     /** 请求服务端批量导出指定 entityId 列表的女仆；removeAfter=true 表示导出成功后在世界中移除女仆 */
     void sendExportMaids(List<Integer> entityIds, boolean removeAfterExport);
 
-    /** 发送要导入的女仆文件数据给服务端（单条）；keepBaubles=true 表示客户端希望保留饰品导入 */
-    void sendImportFile(MaidFileData data, boolean keepBaubles);
-
-    /** 批量发送要导入的女仆文件数据给服务端；keepBaubles=true 表示客户端希望保留饰品导入 */
-    void sendImportFiles(List<MaidFileData> dataList, boolean keepBaubles);
+    /**
+     * 批量发送要导入的女仆文件数据给服务端。
+     *
+     * @param keepBaubles       true=客户端希望保留饰品导入
+     * @param deleteAfterImport true=导入成功后删除对应的本地源文件（默认关闭）；
+     *                          服务端会额外回传逐项 spawned 结果，客户端只删除确实成功的文件
+     */
+    void sendImportFiles(List<MaidFileData> dataList, boolean keepBaubles, boolean deleteAfterImport);
 
     /** 上报本客户端对「服务端统一导出」的同意状态（默认 false，服务端按 UUID 记录） */
     void sendClientConsent(boolean allow);
@@ -72,6 +75,14 @@ public interface IMaidFileNetwork {
         void onExportResultReceived(List<MaidFileData> dataList);
 
         void onFeedbackReceived(Component message);
+
+        /**
+         * 批量导入逐项结果（仅在请求了「导入后删除文件」时收到）。
+         *
+         * @param summary 汇总文案（直接显示）
+         * @param spawned 与请求顺序严格对齐的成功标志；true=实体已生成，可安全删除对应本地文件
+         */
+        void onImportBatchResultReceived(Component summary, List<Boolean> spawned);
 
         /** OP 统一导出：收到服务端收集的所有在线玩家女仆列表 */
         void onServerExportListReceived(List<PlayerMaidGroup> groups);

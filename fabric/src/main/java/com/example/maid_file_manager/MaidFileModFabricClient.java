@@ -54,9 +54,23 @@ public class MaidFileModFabricClient implements ClientModInitializer {
             });
         });
 
-        // 批量导出结果：服务端序列化数据回传，由客户端写 maid_exports/<玩家名>/ 目录
+        // 批量导入 + 删除源文件：汇总文案 + 逐项 spawned 标志，客户端只删除成功导入的本地文件
+        ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_IMPORT_BATCH_RESULT, (client, handler, buf, responseSender) -> {
+            Component summary = buf.readComponent();
+            List<Boolean> spawned = MaidFilePackets.readBooleanList(buf);
+            client.execute(() -> {
+                IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (h != null) {
+                    h.onImportBatchResultReceived(summary, spawned);
+                }
+            });
+        });
+
+        // 批量导出结果：服务端序列化数据回传，由客户端写 maid_exports/<玩家名>/ 目录。
+        // 条目上限必须与服务端导出请求侧 MAX_EXPORT_IDS(512) 对齐，不能沿用导入通道的 64，
+        // 否则 65~512 个合法结果会在此解码抛异常把玩家踢下线
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_EXPORT_BATCH_RESULT, (client, handler, buf, responseSender) -> {
-            List<MaidFileData> dataList = MaidFilePackets.readMaidFileDataList(buf);
+            List<MaidFileData> dataList = MaidFilePackets.readMaidFileDataList(buf, MaidFilePackets.MAX_EXPORT_IDS);
             client.execute(() -> {
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
                 if (h != null) {
@@ -80,7 +94,10 @@ public class MaidFileModFabricClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_SERVER_CONFIG_SYNC, (client, handler, buf, responseSender) -> {
             boolean allowImport = buf.readBoolean();
             boolean allowBaubles = buf.readBoolean();
-            client.execute(() -> MaidConfigManager.handleServerConfigSync(allowImport, allowBaubles));
+            boolean allowAdvancements = buf.readBoolean();
+            boolean allowEffects = buf.readBoolean();
+            client.execute(() -> MaidConfigManager.handleServerConfigSync(
+                    allowImport, allowBaubles, allowAdvancements, allowEffects));
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {

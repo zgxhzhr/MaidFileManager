@@ -2,14 +2,17 @@ package com.example.maid_file_manager.service;
 
 import com.example.maid_file_manager.Constants;
 import com.example.maid_file_manager.config.MaidConfigManager;
+import com.example.maid_file_manager.data.ImportResult;
 import com.example.maid_file_manager.data.MaidFileData;
-import com.example.maid_file_manager.data.MaidFileIo;
 import com.example.maid_file_manager.data.MaidInfo;
 import com.example.maid_file_manager.data.NbtMigration;
 import com.example.maid_file_manager.data.NbtVersion;
 import com.example.maid_file_manager.platform.Services;
+import com.github.tartaricacid.touhoulittlemaid.ai.manager.entity.MaidAIChatSerializable;
+import com.github.tartaricacid.touhoulittlemaid.entity.favorability.FavorabilityManager;
 import com.github.tartaricacid.touhoulittlemaid.entity.info.ServerCustomPackLoader;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
+import com.github.tartaricacid.touhoulittlemaid.entity.passive.SchedulePos;
 import com.github.tartaricacid.touhoulittlemaid.entity.task.TaskManager;
 import com.github.tartaricacid.touhoulittlemaid.world.data.MaidWorldData;
 import net.minecraft.core.BlockPos;
@@ -18,22 +21,20 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.players.PlayerList;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.slf4j.Logger;
 
-import java.nio.file.Path;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -43,1118 +44,51 @@ import java.util.UUID;
  * <p>设计要点：
  * <ul>
  *   <li>导出使用 {@link EntityMaid#saveWithoutId(CompoundTag)} 获取女仆完整 NBT 数据，
- *       这样导入后是完整 TLM 女仆，卸载本模组后不影响</li>
- *   <li>导出时清空背包内物品，但保留背包类型；强制工作状态为空闲；强制位置状态为站立</li>
- *   <li>导出落盘到 {@code maid_exports/}，文件名 {@code 中文名_时间_短UUID.maid}</li>
- *   <li>导入源目录为 {@code maid_imports/}（自行把 .maid 放到这里）</li>
- *   <li>导入时在玩家前方 {@value Constants#IMPORT_SPAWN_DISTANCE} 格寻找安全位置生成（避免卡在地下/墙里）</li>
- *   <li>主人匹配优先级：UUID > 名字 > 视为未驯服（可用蛋糕重新驯服）</li>
+ *       导入后是完整 TLM 女仆，卸载本模组后不影响</li>
+ *   <li>导出时清空背包/手持物品，但保留背包类型与饰品栏（饰品由导入端白名单恢复）；
+ *       强制工作状态为空闲、强制站立</li>
+ *   <li>导出落盘到 {@code maid_exports/}，导入源目录为 {@code maid_imports/}</li>
+ *   <li>导入时在玩家前方 {@value Constants#IMPORT_SPAWN_DISTANCE} 格寻找安全位置生成</li>
+ *   <li>TLM 交互全部使用公开 API；唯一的跨加载器差异（饰品栏容器类型）
+ *       经 {@link com.example.maid_file_manager.platform.services.IPlatformHelper} 下沉平台层</li>
  * </ul>
  */
 public final class MaidTransferService {
-    /** GUI 导出列表查询半径（格）：女仆离玩家较远也能被列出 */
+    /** GUI 导出列表查询半径（格） */
     private static final double SEARCH_RADIUS = 128.0;
-    private static final int MAID_SEARCH_LIMIT = 64;
+    /** 单次列表返回上限（防止超大数据包；正常玩家远低于此值） */
+    private static final int MAID_SEARCH_LIMIT = 256;
+    /**
+     * 饰品栏扩容硬上限。槽位号来自网络 NBT 完全不可信，必须封顶，
+     * 防止伪造 Slot=数千万 触发 ItemStackHandler.setSize 分配巨型数组（OOM 与存档永久膨胀）。
+     * TLM 默认饰品栏 9 槽，256 足以容纳任何合理扩展而内存开销可忽略。
+     */
+    private static final int MAX_BAUBLE_SLOTS = 256;
     private static final int SPAWN_SAFE_MAX_UP = 8;
+    /** 满血上限：满好感基础 80，渡劫额外 +20 */
     private static final double MAID_MAX_HEALTH = 80.0D;
     private static final double MAID_DEFAULT_ATTACK_DAMAGE = 2.0D;
     private static final double MAID_MAX_ATTACK_DAMAGE = 1024.0D;
-
-    // 监控已导入实体的状态，用于追踪实体是否被意外移除
-    // 使用实体引用而不是 UUID，避免 UUID 查找可能的问题
-    private static final Map<EntityMaid, Long> monitoredMaids = new ConcurrentHashMap<>();
-    private static int tickCounter = 0;
-    private static boolean tickListenerRegistered = false;
+    /** 属性安全硬上限，防止恶意外挂 NBT 把属性打穿 */
+    private static final double ABSOLUTE_MAX_HEALTH_CAP = 256.0D;
+    /**
+     * 万法皆通特殊女仆身上的永久常驻药水效果固定为这 11 种 ResourceLocation
+     * （来自万法皆通结构模板 .nbt 预置，duration=-1）。
+     * 判定依据：duration=-1 AND 效果 ID 命中此白名单。不依赖女仆实体身份，
+     * 即普通女仆被施加白名单内的无限时长效果时同样适用此保护。
+     */
+    private static final java.util.Set<String> SPELL_PERMANENT_EFFECT_IDS = java.util.Set.of(
+            "minecraft:regeneration", "minecraft:strength", "minecraft:resistance", "minecraft:speed",
+            "irons_spellbooks:vigor", "irons_spellbooks:blight",
+            "irons_spellbooks:true_invisibility", "irons_spellbooks:abyssal_shroud",
+            "goety:save_effects", "goety:leeching",
+            "youkaishomecoming:native_god_bless"
+    );
 
     private MaidTransferService() {
     }
 
-    /**
-     * 获取 RegistryAccess：先试 Level.registryAccess()（1.20.1+），
-     * 回退 RegistryAccess.FROZEN（1.20 也有）。
-     */
-    private static Object getRegistryAccess(Level level) {
-        if (level != null) {
-            try {
-                Class<?> raClass = Class.forName("net.minecraft.core.RegistryAccess");
-                java.lang.reflect.Method m = level.getClass().getMethod("registryAccess");
-                Object ra = m.invoke(level);
-                if (raClass.isInstance(ra)) {
-                    return ra;
-                }
-            } catch (NoSuchMethodException ignored) {
-            } catch (ClassNotFoundException ignored) {
-            } catch (Throwable t) {
-                Constants.LOG.debug("[maid_file_manager] getRegistryAccess(level) failed: {}", t.toString());
-            }
-        }
-        try {
-            Class<?> raClass = Class.forName("net.minecraft.core.RegistryAccess");
-            java.lang.reflect.Field frozenField = raClass.getDeclaredField("FROZEN");
-            frozenField.setAccessible(true);
-            Object frozen = frozenField.get(null);
-            if (frozen != null) {
-                Constants.LOG.info("[maid_file_manager] using RegistryAccess.FROZEN as fallback");
-                return frozen;
-            }
-        } catch (ClassNotFoundException ignored) {
-        } catch (NoSuchFieldException ignored) {
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] getRegistryAccess(FROZEN) failed: {}", t.toString());
-        }
-        return null;
-    }
-
-    /**
-     * 调用 EntityMaid.saveWithoutId：优先 2 参（1.20.1+），回退 1 参（1.20）。
-     */
-    private static CompoundTag invokeSaveWithoutId(EntityMaid maid, Object registryAccess, CompoundTag tag) {
-        if (registryAccess != null) {
-            try {
-                Class<?> raClass = Class.forName("net.minecraft.core.RegistryAccess");
-                java.lang.reflect.Method m = EntityMaid.class.getMethod("saveWithoutId", raClass, CompoundTag.class);
-                Object result = m.invoke(maid, registryAccess, tag);
-                if (result instanceof CompoundTag ct) {
-                    Constants.LOG.info("[maid_file_manager] saveWithoutId via RegistryAccess succeeded");
-                    return ct;
-                }
-            } catch (ClassNotFoundException ignored) {
-            } catch (NoSuchMethodException ignored) {
-            } catch (Throwable t) {
-                Constants.LOG.warn("[maid_file_manager] invokeSaveWithoutId(RegistryAccess) failed: {}, try fallback", t.toString());
-            }
-        }
-        CompoundTag result = maid.saveWithoutId(tag);
-        Constants.LOG.info("[maid_file_manager] saveWithoutId(CompoundTag) succeeded");
-        return result;
-    }
-
-    /**
-     * 调用 EntityMaid.load(tag) 从 NBT 恢复实体。
-     * <p>
-     * 关键策略：预处理 tag，移除 TLM 专属的 ListTag 避免数组越界，
-     * 让 Entity.load(CompoundTag) 成功执行，然后再单独恢复 TLM 专属数据。
-     */
-    private static void invokeLoadMaid(EntityMaid maid, Object registryAccess, CompoundTag tag, boolean keepBaubles) {
-        Constants.LOG.info("[maid_file_manager] invokeLoadMaid: tag keys={}, keepBaubles={}", tag.getAllKeys(), keepBaubles);
-
-        // 从原始传入 tag 先读出 StruckByLightning 渡劫标记，后续两条路径都用它强制同步
-        // （注意：extractTlmData 会移除 tag 里的键，所以必须在 extract 之前读好）
-        boolean tagStruckByLightning = false;
-        if (tag.contains("StruckByLightning", Tag.TAG_BYTE)) {
-            tagStruckByLightning = tag.getBoolean("StruckByLightning");
-            Constants.LOG.info("[maid_file_manager] invokeLoadMaid: source StruckByLightning from tag: {}", tagStruckByLightning);
-        }
-
-        // 预初始化基础字段
-        preInitBaseFields(maid, tag);
-
-        // 修复 BaubleItemHandler 数组大小（运行时 TLM 1.2.1 只有 9 槽，数据有 10 槽）
-        fixBaubleItemHandler(maid);
-
-        // 预处理 tag：保存 TLM 专属数据并移除，避免数组越界
-        CompoundTag tlmTag = extractTlmData(tag);
-        Constants.LOG.info("[maid_file_manager] Preprocessed tag: removed TLM keys, remaining={}", tag.getAllKeys());
-
-        // 尝试 1: 直接调用 maid.load(tag) —— TLM override（tag 已预处理）
-        try {
-            Constants.LOG.info("[maid_file_manager] trying maid.load(preprocessedTag) ...");
-            maid.load(tag);
-            Constants.LOG.info("[maid_file_manager] maid.load(tag) succeeded");
-            // 成功后恢复 TLM 专属数据
-            restoreTlmData(maid, tlmTag, keepBaubles);
-            // 渡劫标记强制同步（路径 1）
-            maid.setStruckByLightning(tagStruckByLightning);
-            Constants.LOG.info("[maid_file_manager] invokeLoadMaid(path1): sync StruckByLightning -> {}", tagStruckByLightning);
-            postLoadFixes(maid);
-            return;
-        } catch (Throwable t) {
-            // 输出完整堆栈
-            Constants.LOG.error("[maid_file_manager] maid.load(tag) failed with full stack:", t);
-            // 解包 ReportedException 找到根因并输出完整堆栈
-            Throwable cause = t;
-            while (cause.getCause() != null) {
-                cause = cause.getCause();
-            }
-            Constants.LOG.error("[maid_file_manager] ROOT CAUSE ({}): {}", cause.getClass().getName(), cause.getMessage());
-            Constants.LOG.error("[maid_file_manager] ROOT CAUSE STACK:", cause);
-        }
-
-        // 尝试 2: 反射调用基类 Entity.load(TAG) —— 只处理基础数据
-        Constants.LOG.info("[maid_file_manager] Attempting base Entity load via reflection...");
-        tryLoadBaseEntity(maid, tag);
-
-        // 恢复 TLM 专属数据
-        restoreTlmData(maid, tlmTag, keepBaubles);
-        // 渡劫标记强制同步（路径 2 —— fallback 路径不会触发 TLM readAdditionalSaveData，必须手动同步）
-        maid.setStruckByLightning(tagStruckByLightning);
-        Constants.LOG.info("[maid_file_manager] invokeLoadMaid(path2 fallback): sync StruckByLightning -> {}", tagStruckByLightning);
-        postLoadFixes(maid);
-
-        // 验证实体状态
-        Constants.LOG.info("[maid_file_manager] post-load: alive={}, health={}, uuid={}, struckByLightning={}",
-                maid.isAlive(), maid.getHealth(), maid.getUUID(), maid.isStruckByLightning());
-    }
-
-    /**
-     * 修复 BaubleItemHandler 数组大小。
-     * 运行时 TLM 1.2.1 的 BaubleItemHandler 只有 9 个槽位，
-     * 但导入的数据可能有 10 个槽位（来自 TLM 1.5.3）。
-     * 通过反射扩展内部数组。
-     */
-    private static void fixBaubleItemHandler(EntityMaid maid) {
-        try {
-            // 查找 EntityMaid 中的 BaubleItemHandler 字段
-            Class<?> baubleHandlerClass = Class.forName("com.github.tartaricacid.touhoulittlemaid.inventory.handler.BaubleItemHandler");
-
-            for (java.lang.reflect.Field f : EntityMaid.class.getDeclaredFields()) {
-                if (baubleHandlerClass.isAssignableFrom(f.getType())) {
-                    f.setAccessible(true);
-                    Object handler = f.get(maid);
-                    if (handler != null) {
-                        Constants.LOG.info("[maid_file_manager] Found BaubleItemHandler: {}.{}", EntityMaid.class.getSimpleName(), f.getName());
-                        // 扩展 handler 内部数组
-                        expandHandlerArray(handler, baubleHandlerClass);
-                    }
-                }
-            }
-
-            // 也搜索父类字段
-            Class<?> searchClass = EntityMaid.class.getSuperclass();
-            while (searchClass != null && searchClass != Object.class) {
-                for (java.lang.reflect.Field f : searchClass.getDeclaredFields()) {
-                    if (baubleHandlerClass.isAssignableFrom(f.getType())) {
-                        f.setAccessible(true);
-                        Object handler = f.get(maid);
-                        if (handler != null) {
-                            Constants.LOG.info("[maid_file_manager] Found BaubleItemHandler in superclass: {}.{}", searchClass.getSimpleName(), f.getName());
-                            expandHandlerArray(handler, baubleHandlerClass);
-                        }
-                    }
-                }
-                searchClass = searchClass.getSuperclass();
-            }
-        } catch (Exception e) {
-            Constants.LOG.warn("[maid_file_manager] fixBaubleItemHandler failed: {}", e.toString());
-        }
-    }
-
-    /**
-     * 扩展 ItemHandler 的内部数组大小。
-     * 查找所有数组字段，如果数组长度 < 10，则扩展到 10。
-     */
-    private static void expandHandlerArray(Object handler, Class<?> handlerClass) {
-        try {
-            for (java.lang.reflect.Field f : handlerClass.getDeclaredFields()) {
-                f.setAccessible(true);
-                if (f.getType().isArray()) {
-                    Object array = f.get(handler);
-                    if (array != null) {
-                        int length = java.lang.reflect.Array.getLength(array);
-                        Constants.LOG.info("[maid_file_manager] Found array field: {} (type={}, length={})", f.getName(), f.getType().getComponentType().getSimpleName(), length);
-
-                        if (length < 10) {
-                            // 扩展数组到 10
-                            Class<?> componentType = f.getType().getComponentType();
-                            Object newArray = java.lang.reflect.Array.newInstance(componentType, 10);
-                            // 复制旧数据
-                            System.arraycopy(array, 0, newArray, 0, length);
-                            // 新位置保持 null（空槽位）
-                            f.set(handler, newArray);
-                            Constants.LOG.info("[maid_file_manager] Extended array {} from {} to 10", f.getName(), length);
-                        }
-                    }
-                }
-            }
-
-            // 也检查父类
-            Class<?> superClass = handlerClass.getSuperclass();
-            while (superClass != null && superClass != Object.class) {
-                for (java.lang.reflect.Field f : superClass.getDeclaredFields()) {
-                    f.setAccessible(true);
-                    if (f.getType().isArray()) {
-                        Object array = f.get(handler);
-                        if (array != null) {
-                            int length = java.lang.reflect.Array.getLength(array);
-                            Constants.LOG.info("[maid_file_manager] Found superclass array: {}.{} (length={})", superClass.getSimpleName(), f.getName(), length);
-
-                            if (length < 10) {
-                                Class<?> componentType = f.getType().getComponentType();
-                                Object newArray = java.lang.reflect.Array.newInstance(componentType, 10);
-                                System.arraycopy(array, 0, newArray, 0, length);
-                                f.set(handler, newArray);
-                                Constants.LOG.info("[maid_file_manager] Extended superclass array from {} to 10", length);
-                            }
-                        }
-                    }
-                }
-                superClass = superClass.getSuperclass();
-            }
-        } catch (Exception e) {
-            Constants.LOG.warn("[maid_file_manager] expandHandlerArray failed: {}", e.toString());
-        }
-    }
-
-    /**
-     * 从 tag 中移除会导致 maid.load 崩溃的复杂容器。
-     * <p>
-     * 设计原则（极重要）：
-     * - 只移除会触发 BaubleItemHandler.onContentsChanged 数组越界的**物品容器**
-     *   和 SynchedEntityData/复杂结构容器（ListTag<CompoundTag> 存储 ItemStack）。
-     * - 简单值字段（MaidFavorability / MaidExperience / MaidHunger 等 TAG_INT）
-     *   一律**不移除**，留在 tag 里给 TLM 自己的 readAdditionalSaveData 正确还原。
-     *   这是修复"导入 1.20 好感度归零"的关键。
-     */
-    private static CompoundTag extractTlmData(CompoundTag tag) {
-        CompoundTag tlmData = new CompoundTag();
-
-        // ---------- 第一类：物品容器（会导致 BaubleItemHandler 数组越界） ----------
-        // BaubleItemHandler.setBaubleInSlot 是唯一的越界来源，根因是 9 槽 vs 10 槽
-        // 这些都是 ListTag<CompoundTag>，存储 ItemStack，会引发 onContentsChanged 回调
-        String[] inventoryContainers = {
-                // TLM 专属饰品/背包（导致越界的直接原因）
-                "MaidBaubleInventory",
-                "MaidInventory",
-                "MaidHideInventory",
-                "MaidTaskInventory",
-                // GameSkill 里也是物品列表
-                "MaidGameSkillData",
-                // 原版但会触发 SynchedEntityData 更新
-                "HandItems",
-                "ArmorItems",
-        };
-
-        // ---------- 第二类：会触发 NBT 结构不兼容的复杂 CompoundTag 容器 ----------
-        // 跨版本（TLM 1.5.3 数据 → TLM 1.2.1 解析）时这些 CompoundTag 结构可能不一致
-        // 为了确保 maid.load 不抛异常，先抽出来，之后再通过反射尽力恢复
-        String[] complexStructures = {
-                // 任务数据 Maps（复杂结构，ListTag 里有 compound，跨版本字段差异大）
-                "MaidTaskDataMaps",
-                // AI 对话数据：人设 + 聊天历史 + 压缩摘要 + token 统计（TLM 本体 AI 四件套标签）
-                "MaidAIChat",
-                "MaidHistoryChat",
-                "MaidHistorySummary",
-                "MaidLastChatTokenUsage",
-                // 配置（MaidConfig 里有各种子结构）
-                "MaidConfig",
-                "MaidSubConfig",
-                "MaidWorldData",
-                // 背包数据（CompoundTag 物品）
-                "MaidBackpackData",
-                // 任务 CompoundTag
-                "MaidTask",
-                // 游戏记录
-                "MaidGameRecord",
-                "MaidKillRecord",
-                // 日程位置
-                "MaidSchedulePos",
-                // YSM 扩展字段
-                "YsmRoamingVars",
-                // 行为 Brain
-                "Brain",
-        };
-
-        // ---------- 第三类：ModelId / SoundPackId（String，安全起见保留在 tag 中） ----------
-        // 这些是简单 String 值，不会导致任何崩溃。TLM 自己的 load 能正确解析。
-        // 如果 maid.load(tag) 走成功路径，这些字段会被原生还原，不需要我们反射恢复。
-
-        // 执行移除
-        for (String key : inventoryContainers) {
-            if (tag.contains(key)) {
-                try {
-                    tlmData.put(key, tag.get(key).copy());
-                    tag.remove(key);
-                    Constants.LOG.info("[maid_file_manager] Extracted INV: {}", key);
-                } catch (Exception e) {
-                    Constants.LOG.warn("[maid_file_manager] Failed to extract {}: {}", key, e.toString());
-                }
-            }
-        }
-
-        for (String key : complexStructures) {
-            if (tag.contains(key)) {
-                try {
-                    tlmData.put(key, tag.get(key).copy());
-                    tag.remove(key);
-                    Constants.LOG.info("[maid_file_manager] Extracted CPLX: {}", key);
-                } catch (Exception e) {
-                    Constants.LOG.warn("[maid_file_manager] Failed to extract {}: {}", key, e.toString());
-                }
-            }
-        }
-
-        Constants.LOG.info("[maid_file_manager] Extraction done. remaining={}", tag.getAllKeys());
-        return tlmData;
-    }
-
-    /**
-     * 恢复 TLM 专属数据到实体。
-     * <p>
-     * 简单值字段（MaidFavorability / MaidExperience / MaidHunger / ModelId / SoundPackId 等）
-     * 现在留在 tag 里由 TLM 自己的 readAdditionalSaveData 还原，不在这里处理。
-     * 本方法只处理复杂容器的尽力恢复（例如 ModelId 兜底、Favorability 双重检查）。
-     */
-    private static void restoreTlmData(EntityMaid maid, CompoundTag tlmData, boolean keepBaubles) {
-        Constants.LOG.info("[maid_file_manager] Restoring TLM data ({} keys)...", tlmData.getAllKeys().size());
-
-        // ---------- 饰品恢复（车万本体 + 万法皆通白名单；全新无附魔；缺模组安全降级） ----------
-        restoreBaubles(maid, tlmData, keepBaubles);
-
-        // ---------- ModelId 兜底：只有当 tag 里没写 ModelId 时才反射恢复 ----------
-        // 如果 maid.load 成功，TLM 已经正确设置了 ModelId
-        // 只有当 maid.load 失败走 tryLoadBaseEntity 路径，才需要这里手动恢复
-        boolean modelIdAlreadySet = false;
-        try {
-            java.lang.reflect.Method getModelId = EntityMaid.class.getMethod("getModelId");
-            String currentModelId = (String) getModelId.invoke(maid);
-            if (currentModelId != null && !currentModelId.isEmpty()) {
-                modelIdAlreadySet = true;
-                Constants.LOG.debug("[maid_file_manager] ModelId already restored by TLM: {}", currentModelId);
-            }
-        } catch (Throwable ignored) {
-        }
-
-        if (!modelIdAlreadySet && tlmData.contains("ModelId", Tag.TAG_STRING)) {
-            String modelId = tlmData.getString("ModelId");
-            try {
-                java.lang.reflect.Method setModelId = EntityMaid.class.getMethod("setModelId", String.class);
-                setModelId.invoke(maid, modelId);
-                Constants.LOG.info("[maid_file_manager] Restored ModelId (fallback): {}", modelId);
-            } catch (Exception e) {
-                try {
-                    java.lang.reflect.Field modelIdField = EntityMaid.class.getDeclaredField("modelId");
-                    modelIdField.setAccessible(true);
-                    modelIdField.set(maid, modelId);
-                    Constants.LOG.info("[maid_file_manager] Restored ModelId via field: {}", modelId);
-                } catch (Exception ex) {
-                    Constants.LOG.warn("[maid_file_manager] Cannot restore ModelId");
-                }
-            }
-        }
-
-        // ---------- Favorability 双重检查 ----------
-        // 如果 maid.load(tag) 走成功路径，TLM 已经读了 MaidFavorability TAG_INT 设好值
-        // 但这里再检查一次，防止走 fallback 路径或某些字段跨版本未识别导致 0
-        int currentFavorability = 0;
-        boolean favNeedFix = false;
-        try {
-            currentFavorability = maid.getFavorability();
-            if (currentFavorability == 0) {
-                // 可能 TLM 自己没读成功（走了 fallback base loading），尝试找 tag 里的 fav
-                favNeedFix = true;
-            }
-        } catch (Throwable ignored) {
-            favNeedFix = true;
-        }
-
-        if (favNeedFix) {
-            // 尝试从 tlmData 里恢复 MaidFavorability（虽然 extractTlmData 不再抽走这个，
-            // 但万一 tlmData 里有，或者 NbtMigration 删了再意外塞回来）
-            int favToRestore = -1;
-            if (tlmData.contains("MaidFavorability", Tag.TAG_INT)) {
-                favToRestore = tlmData.getInt("MaidFavorability");
-            }
-            // 如果 tlmData 没有，也可以从传入的 tag 中检查
-            // （注意：这里拿到的是已经被 extractTlmData 处理过的 tag，但 MaidFavorability 没被抽走）
-            // 但因为这个方法只拿到 tlmData，所以我们通过实体类重新扫描
-            if (favToRestore < 0) {
-                favToRestore = 0;  // 保底 0
-            }
-
-            // 只有 favToRestore > 0 时才去设
-            if (favToRestore > 0) {
-                restoreFavorability(maid, favToRestore);
-            } else {
-                Constants.LOG.info("[maid_file_manager] MaidFavorability=0 (new maid / TLM self-loaded OK)");
-            }
-        } else {
-            Constants.LOG.info("[maid_file_manager] MaidFavorability self-loaded OK: {}", currentFavorability);
-        }
-
-        // ---------- AI 对话数据：聊天历史（本体API）+ 人设8字段（反射强塞双保险） ----------
-        // 实机验证（1.21.1→1.20.1）：聊天 MaidHistoryChat 能还原，人设 CustomSetting 过不去
-        // 根因：MaidAIChatSerializable.readFromTag 对 tag.contains("MaidAIChat") 层级判空
-        //       在跨版本 NBT 包装不一致时条件不通过，虽 tlmData 里有值但字段仍为空。
-        // 修复策略：双路径
-        //   (A) 仍调用 aiChatManager.readFromTag(tlmData) —— 还原聊天历史 / 摘要 / token
-        //       （这部分验证成功，历史靠 MaidAIChatData override 的 readFromTag 独立读取）
-        //   (B) 反射强塞 MaidAIChatSerializable 的 8 个公开 String 字段：
-        //       llmSite / llmModel / ttsSite / ttsModel / ttsLanguage / chatLanguage / ownerName / customSetting
-        //       键名兼容 CamelCase（TLM 1.20/1.21 本体常量）+ 小写驼峰双重兜底，
-        //       只在源 NBT 有非空值时才覆盖，避免把已正确还原的值清空。
-        try {
-            boolean hasAiData = tlmData.contains("MaidAIChat", Tag.TAG_COMPOUND)
-                    || tlmData.contains("MaidHistoryChat")
-                    || tlmData.contains("MaidHistorySummary", Tag.TAG_STRING);
-            if (hasAiData) {
-                // ----- 路径 A：本体 API 还原聊天历史 -----
-                maid.getAiChatManager().readFromTag(tlmData);
-                int historyCount = -1;
-                if (tlmData.contains("MaidHistoryChat")) {
-                    historyCount = tlmData.getList("MaidHistoryChat", Tag.TAG_COMPOUND).size();
-                }
-
-                // ----- 路径 B：反射强塞人设 8 字段（双保险，不依赖本体 contains 判空层级） -----
-                String customSettingBefore = "";
-                String customSettingAfter = "";
-                int forcedFields = 0;
-                try {
-                    Object serializable = maid.getAiChatManager();
-                    Class<?> serialClass = Class.forName(
-                            "com.github.tartaricacid.touhoulittlemaid.ai.manager.entity.MaidAIChatSerializable");
-                    java.lang.reflect.Field csField = serialClass.getDeclaredField("customSetting");
-                    csField.setAccessible(true);
-                    Object csBeforeVal = csField.get(serializable);
-                    if (csBeforeVal instanceof String s) {
-                        customSettingBefore = s;
-                    }
-                    if (tlmData.contains("MaidAIChat", Tag.TAG_COMPOUND)) {
-                        CompoundTag ai = tlmData.getCompound("MaidAIChat");
-                        String[][] fieldMap = {
-                                {"llmSite",       "LLMSite",       "llmSite"},
-                                {"llmModel",      "LLMModel",      "llmModel"},
-                                {"ttsSite",       "TTSSiteName",   "ttsSiteName"},
-                                {"ttsModel",      "TTSModel",      "ttsModel"},
-                                {"ttsLanguage",   "TTSLanguage",   "ttsLanguage"},
-                                {"chatLanguage",  "ChatLanguage",  "chatLanguage"},
-                                {"ownerName",     "OwnerName",     "ownerName"},
-                                {"customSetting", "CustomSetting", "customSetting"},
-                        };
-                        for (String[] row : fieldMap) {
-                            String javaField = row[0];
-                            String camelKey  = row[1];
-                            String lowerKey  = row[2];
-                            String value = "";
-                            if (ai.contains(camelKey, Tag.TAG_STRING)) {
-                                value = ai.getString(camelKey);
-                            } else if (ai.contains(lowerKey, Tag.TAG_STRING)) {
-                                value = ai.getString(lowerKey);
-                            }
-                            if (value != null && !value.isEmpty()) {
-                                try {
-                                    java.lang.reflect.Field f = serialClass.getDeclaredField(javaField);
-                                    f.setAccessible(true);
-                                    f.set(serializable, value);
-                                    forcedFields++;
-                                    if ("customSetting".equals(javaField)) {
-                                        customSettingAfter = value;
-                                    }
-                                } catch (Throwable ignored) {
-                                }
-                            }
-                        }
-                    }
-                } catch (Throwable t) {
-                    Constants.LOG.warn("[maid_file_manager] AI persona force-assign via reflection failed: {}", t.toString());
-                }
-
-                // ----- 汇总日志（三元组 + 反射强塞前后对比，1.21.1→1.20.1 排错专用） -----
-                String settingReport;
-                if (customSettingAfter != null && !customSettingAfter.isEmpty()) {
-                    settingReport = "FORCE-ASSIGN len=" + customSettingAfter.length()
-                            + " (before=" + (customSettingBefore == null ? 0 : customSettingBefore.length()) + ")";
-                } else if (customSettingBefore != null && !customSettingBefore.isEmpty()) {
-                    settingReport = "API-RESTORE len=" + customSettingBefore.length();
-                } else {
-                    settingReport = "NO";
-                }
-                Constants.LOG.info("[maid_file_manager] AI data restored: persona={}, historyMessages={}, hasSummary={}, forcedFields={}",
-                        settingReport,
-                        historyCount,
-                        tlmData.contains("MaidHistorySummary", Tag.TAG_STRING) ? "YES" : "NO",
-                        forcedFields);
-            } else {
-                Constants.LOG.info("[maid_file_manager] No AI dialog data in source (no persona / chat history to restore)");
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] Failed to restore AI chat data (persona/history), skipped: {}", t.toString());
-        }
-
-        for (String key : tlmData.getAllKeys()) {
-            Constants.LOG.debug("[maid_file_manager] TLM pending container: {}", key);
-        }
-    }
-
-    /**
-     * 恢复女仆饰品栏（MaidBaubleInventory）。
-     *
-     * <p>规则：
-     * <ul>
-     *   <li>双闸门：客户端勾选「保留饰品」且服务端 allow_baubles 开启，二者缺一则整栏丢弃</li>
-     *   <li>白名单：只恢复命名空间 {@code touhou_little_maid}（车万本体）与
-     *       {@code touhou_little_maid_spell}（万法皆通）的饰品，其余一律丢弃</li>
-     *   <li>全新化：重建 ItemStack（不带 tag/components）→ 附魔清空、耐久回满，
-     *       「有附魔/有耐久的直接变成全新无附魔的」</li>
-     *   <li>安全降级：目标世界没装万法皆通时注册表查不到对应物品 → 跳过该饰品，
-     *       绝不抛异常、绝不崩溃</li>
-     *   <li>动态扩容：槽位数按数据里的最大 Slot+1 通过 ItemStackHandler.setSize 扩容，
-     *       兼容 TLM 不同版本的饰品栏大小（9/10/&gt;10）</li>
-     * </ul>
-     * 整个方法全程 try/catch 兜底：饰品恢复失败不影响女仆本体导入。
-     */
-    private static void restoreBaubles(EntityMaid maid, CompoundTag tlmData, boolean keepBaubles) {
-        try {
-            if (!tlmData.contains("MaidBaubleInventory", Tag.TAG_COMPOUND)) {
-                return;
-            }
-            if (!keepBaubles) {
-                Constants.LOG.info("[maid_file_manager] Baubles skipped: client unchecked keep-baubles");
-                return;
-            }
-            if (!MaidConfigManager.isBaublesAllowed()) {
-                Constants.LOG.info("[maid_file_manager] Baubles skipped: server config allow_baubles=false");
-                return;
-            }
-            CompoundTag baubleTag = tlmData.getCompound("MaidBaubleInventory");
-            // 兼容 1.20.1（Count/Items）与 1.21（count/Items）两种序列化结构
-            ListTag items = baubleTag.getList("Items", Tag.TAG_COMPOUND);
-            if (items.isEmpty()) {
-                Constants.LOG.info("[maid_file_manager] MaidBaubleInventory present but empty");
-                return;
-            }
-
-            Object handler = findBaubleHandler(maid);
-            if (handler == null) {
-                Constants.LOG.warn("[maid_file_manager] BaubleItemHandler not found on EntityMaid, baubles dropped ({} items)", items.size());
-                return;
-            }
-            int currentSlots = invokeGetSlots(handler);
-            if (currentSlots <= 0) {
-                Constants.LOG.warn("[maid_file_manager] BaubleItemHandler.getSlots()={} (unexpected), baubles dropped", currentSlots);
-                return;
-            }
-
-            // 计算需要的槽位数（最大 Slot + 1）
-            int needed = currentSlots;
-            for (int i = 0; i < items.size(); i++) {
-                CompoundTag entry = items.getCompound(i);
-                int slot = entry.contains("Slot", Tag.TAG_INT) ? entry.getInt("Slot") : i;
-                if (slot >= 0 && slot + 1 > needed) {
-                    needed = slot + 1;
-                }
-            }
-            if (needed > currentSlots) {
-                try {
-                    java.lang.reflect.Method setSize = handler.getClass().getMethod("setSize", int.class);
-                    setSize.invoke(handler, needed);
-                    Constants.LOG.info("[maid_file_manager] Bauble handler resized {} -> {}", currentSlots, needed);
-                    currentSlots = needed;
-                } catch (Throwable t) {
-                    Constants.LOG.warn("[maid_file_manager] setSize failed ({}), clamping to {} slots", t.toString(), currentSlots);
-                }
-            }
-
-            // 逐条恢复：白名单过滤 + 注册表校验 + 全新化重建
-            int restored = 0;
-            int droppedForeign = 0;
-            int droppedMissing = 0;
-            int droppedFailed = 0;
-            for (int i = 0; i < items.size(); i++) {
-                CompoundTag entry = items.getCompound(i);
-                try {
-                    int slot = entry.contains("Slot", Tag.TAG_INT) ? entry.getInt("Slot") : i;
-                    if (slot < 0 || slot >= currentSlots) {
-                        droppedFailed++;
-                        continue;
-                    }
-                    String id = entry.contains("id", Tag.TAG_STRING) ? entry.getString("id") : "";
-                    if (id.isEmpty()) {
-                        droppedFailed++;
-                        continue;
-                    }
-                    // 白名单：只支持车万本体 + 万法皆通
-                    String namespace = namespaceOf(id);
-                    if (!"touhou_little_maid".equals(namespace) && !"touhou_little_maid_spell".equals(namespace)) {
-                        droppedForeign++;
-                        Constants.LOG.info("[maid_file_manager] Bauble dropped (namespace not allowed): {}", id);
-                        continue;
-                    }
-                    // 注册表查询：目标世界没装万法皆通时查不到 → 安全跳过，绝不崩溃
-                    net.minecraft.world.item.Item item = resolveItem(id);
-                    if (item == null || net.minecraft.world.item.Items.AIR.equals(item)) {
-                        droppedMissing++;
-                        Constants.LOG.info("[maid_file_manager] Bauble dropped (item missing in target world, e.g. no spell mod): {}", id);
-                        continue;
-                    }
-                    // 数量：兼容 1.20.1 Count(byte) 与 1.21 count(int)，缺省 1
-                    int count = 1;
-                    if (entry.contains("Count", Tag.TAG_ANY_NUMERIC)) {
-                        count = entry.getInt("Count");
-                    } else if (entry.contains("count", Tag.TAG_ANY_NUMERIC)) {
-                        count = entry.getInt("count");
-                    }
-                    if (count < 1) {
-                        count = 1;
-                    }
-                    // 全新化：new ItemStack 不携带任何 tag/components → 无附魔、满耐久
-                    net.minecraft.world.item.ItemStack fresh = new net.minecraft.world.item.ItemStack(item, count);
-                    try {
-                        fresh.setCount(Math.min(count, fresh.getMaxStackSize()));
-                    } catch (Throwable ignored) {
-                    }
-                    // setStackInSlot 触发 onContentsChanged → TLM 自己注册 IMaidBauble 效果
-                    java.lang.reflect.Method setStack = handler.getClass().getMethod("setStackInSlot", int.class, net.minecraft.world.item.ItemStack.class);
-                    setStack.invoke(handler, slot, fresh);
-                    restored++;
-                    Constants.LOG.info("[maid_file_manager] Bauble restored (fresh, no enchant): slot={}, item={} x{}", slot, id, count);
-                } catch (Throwable t) {
-                    droppedFailed++;
-                    Constants.LOG.warn("[maid_file_manager] Bauble restore failed for one entry, skipped: {}", t.toString());
-                }
-            }
-            Constants.LOG.info("[maid_file_manager] Baubles restore done: restored={}, droppedForeign={}, droppedMissing={}, droppedFailed={}",
-                    restored, droppedForeign, droppedMissing, droppedFailed);
-        } catch (Throwable t) {
-            // 兜底：饰品恢复的任何异常都不能影响女仆本体导入
-            Constants.LOG.warn("[maid_file_manager] restoreBaubles failed entirely (maid import continues): {}", t.toString());
-        }
-    }
-
-    /** 在 EntityMaid 及其父类上查找 BaubleItemHandler 字段实例（找不到返回 null） */
-    private static Object findBaubleHandler(EntityMaid maid) {
-        try {
-            Class<?> baubleHandlerClass = Class.forName("com.github.tartaricacid.touhoulittlemaid.inventory.handler.BaubleItemHandler");
-            Class<?> search = maid.getClass();
-            while (search != null && search != Object.class) {
-                for (java.lang.reflect.Field f : search.getDeclaredFields()) {
-                    if (baubleHandlerClass.isAssignableFrom(f.getType())) {
-                        f.setAccessible(true);
-                        Object handler = f.get(maid);
-                        if (handler != null) {
-                            Constants.LOG.info("[maid_file_manager] Found BaubleItemHandler: {}.{}", search.getSimpleName(), f.getName());
-                            return handler;
-                        }
-                    }
-                }
-                search = search.getSuperclass();
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] findBaubleHandler failed: {}", t.toString());
-        }
-        return null;
-    }
-
-    /** 反射调用 handler.getSlots()（异常返回 -1） */
-    private static int invokeGetSlots(Object handler) {
-        try {
-            java.lang.reflect.Method m = handler.getClass().getMethod("getSlots");
-            Object v = m.invoke(handler);
-            return v instanceof Number n ? n.intValue() : -1;
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] getSlots failed: {}", t.toString());
-            return -1;
-        }
-    }
-
-    /** 从 "namespace:path" 里取命名空间（无冒号时返回 minecraft） */
-    private static String namespaceOf(String id) {
-        int colon = id.indexOf(':');
-        return colon >= 0 ? id.substring(0, colon) : "minecraft";
-    }
-
-    /**
-     * 通过原版注册表解析物品 ID。目标世界缺对应模组（如万法皆通）时返回 null，
-     * 调用方据此安全跳过 —— 这是「没装万法皆通不崩溃」的关键。
-     */
-    private static net.minecraft.world.item.Item resolveItem(String id) {
-        try {
-            net.minecraft.resources.ResourceLocation rl = net.minecraft.resources.ResourceLocation.tryParse(id);
-            if (rl == null) {
-                return null;
-            }
-            return net.minecraft.core.registries.BuiltInRegistries.ITEM.getOptional(rl).orElse(null);
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] resolveItem({}) failed: {}", id, t.toString());
-            return null;
-        }
-    }
-
-    /**
-     * 恢复女仆好感度。多策略兜底：
-     * 1. 调用 setFavorability(int) setter
-     * 2. 反射设置 favorability 字段
-     * 3. 反射设置 favorabilityManager 内部 counter 字段
-     */
-    private static void restoreFavorability(EntityMaid maid, int favorability) {
-        Constants.LOG.info("[maid_file_manager] Restoring MaidFavorability: {}", favorability);
-        // 策略 1: 调用 setter
-        try {
-            java.lang.reflect.Method setFav = EntityMaid.class.getMethod("setFavorability", int.class);
-            setFav.invoke(maid, favorability);
-            Constants.LOG.info("[maid_file_manager] Restored MaidFavorability via setter: {}", favorability);
-            return;
-        } catch (NoSuchMethodException nsme) {
-            Constants.LOG.debug("[maid_file_manager] setFavorability not found, trying field fallback");
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] setFavorability failed: {}", t.toString());
-        }
-        // 策略 2: 反射设置 int 字段
-        if (trySetIntField(maid, EntityMaid.class, "favorability", favorability)) return;
-        // 策略 3: 反射设置 favorabilityManager 的 counter 字段
-        try {
-            for (java.lang.reflect.Field f : EntityMaid.class.getDeclaredFields()) {
-                if (f.getName().toLowerCase().contains("favorability")
-                        && f.getName().toLowerCase().contains("manager")) {
-                    f.setAccessible(true);
-                    Object manager = f.get(maid);
-                    if (manager != null) {
-                        // 在 manager 对象中查找 int counter 字段
-                        for (java.lang.reflect.Field cf : manager.getClass().getDeclaredFields()) {
-                            if (cf.getType() == int.class) {
-                                cf.setAccessible(true);
-                                cf.setInt(manager, favorability);
-                                Constants.LOG.info("[maid_file_manager] Restored MaidFavorability via manager.{}: {}",
-                                        cf.getName(), favorability);
-                                return;
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] Cannot restore MaidFavorability via manager: {}", t.toString());
-        }
-        Constants.LOG.warn("[maid_file_manager] Cannot restore MaidFavorability (no method/field)");
-    }
-
-    /**
-     * 通过反射在类层次中查找 int 字段并赋值。
-     */
-    private static boolean trySetIntField(Object target, Class<?> startClass, String fieldName, int value) {
-        Class<?> clazz = startClass;
-        while (clazz != null && clazz != Object.class) {
-            try {
-                java.lang.reflect.Field f = clazz.getDeclaredField(fieldName);
-                if (f.getType() == int.class) {
-                    f.setAccessible(true);
-                    f.setInt(target, value);
-                    Constants.LOG.info("[maid_file_manager] Set int field {}.{} = {}", clazz.getSimpleName(), fieldName, value);
-                    return true;
-                }
-            } catch (NoSuchFieldException ignored) {
-            } catch (Throwable t) {
-                Constants.LOG.warn("[maid_file_manager] Failed to set field {}.{}: {}", clazz.getSimpleName(), fieldName, t.toString());
-                return false;
-            }
-            clazz = clazz.getSuperclass();
-        }
-        return false;
-    }
-
-    /**
-     * 通过反射在类层次中查找 setter 方法并调用。
-     */
-    private static boolean trySetIntViaSetter(Object target, Class<?> startClass, String methodName, int value) {
-        Class<?> clazz = startClass;
-        while (clazz != null && clazz != Object.class) {
-            try {
-                java.lang.reflect.Method m = clazz.getDeclaredMethod(methodName, int.class);
-                m.setAccessible(true);
-                m.invoke(target, value);
-                Constants.LOG.info("[maid_file_manager] Set via {}.{}({})", clazz.getSimpleName(), methodName, value);
-                return true;
-            } catch (NoSuchMethodException ignored) {
-            } catch (Throwable t) {
-                Constants.LOG.warn("[maid_file_manager] Failed to call {}.{}: {}", clazz.getSimpleName(), methodName, t.toString());
-                return false;
-            }
-            clazz = clazz.getSuperclass();
-        }
-        return false;
-    }
-
-    /**
-     * 加载后的修复：设置持久化标志等。
-     */
-    private static void postLoadFixes(EntityMaid maid) {
-        // 通过反射直接设置 persistenceRequired 字段
-        try {
-            setPersistenceDirect(maid, true);
-            Constants.LOG.info("[maid_file_manager] Persistence set via direct field access");
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] Failed to set persistence: {}", t.toString());
-            // 回退：使用方法调用
-            try {
-                maid.setPersistenceRequired();
-                Constants.LOG.info("[maid_file_manager] Persistence set via method call");
-            } catch (Throwable t2) {
-                Constants.LOG.warn("[maid_file_manager] Failed to set persistence via method: {}", t2.toString());
-            }
-        }
-    }
-
-    /**
-     * 通过反射直接设置 Entity 的 persistenceRequired 字段。
-     * Forge 1.20 中 setPersistenceRequired() 方法可能不生效。
-     * persistenceRequired 定义在 Mob.class 中，需要遍历类层次查找。
-     */
-    private static void setPersistenceDirect(Entity entity, boolean persistent) throws Exception {
-        // 遍历 Mob → LivingEntity → Entity 类层次
-        Class<?>[] classHierarchy = {
-                net.minecraft.world.entity.Mob.class,
-                net.minecraft.world.entity.LivingEntity.class,
-                Entity.class
-        };
-
-        for (Class<?> clazz : classHierarchy) {
-            for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-                if (f.getType() == boolean.class) {
-                    String name = f.getName();
-                    if (name.equals("persistenceRequired") || name.toLowerCase().contains("persistent")) {
-                        f.setAccessible(true);
-                        f.setBoolean(entity, persistent);
-                        Constants.LOG.info("[maid_file_manager] Set {}.{} = {}", clazz.getSimpleName(), name, persistent);
-                        return;
-                    }
-                }
-            }
-        }
-
-        // 回退：遍历类层次中所有 boolean 字段
-        for (Class<?> clazz : classHierarchy) {
-            for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-                if (f.getType() == boolean.class) {
-                    String name = f.getName().toLowerCase();
-                    if (name.contains("save") || name.contains("chunk") || name.contains("removable")) {
-                        f.setAccessible(true);
-                        f.setBoolean(entity, persistent);
-                        Constants.LOG.info("[maid_file_manager] Set {}.{} = {} (fallback)", clazz.getSimpleName(), f.getName(), persistent);
-                        return;
-                    }
-                }
-            }
-        }
-
-        throw new NoSuchFieldException("No persistence field found in Mob/LivingEntity/Entity hierarchy");
-    }
-
-    /**
-     * 尝试加载基础实体数据（反射调用 Entity 的 load 方法）。
-     * 如果失败则手动加载基础字段。
-     */
-    private static void tryLoadBaseEntity(EntityMaid maid, CompoundTag tag) {
-        // 策略：遍历 Entity 类及其父类，查找接受 CompoundTag 的 load 方法
-        try {
-            Constants.LOG.info("[maid_file_manager] Trying to find Entity.load(CompoundTag) method...");
-
-            // 查找所有接受 CompoundTag 的公共/私有方法
-            java.lang.reflect.Method targetMethod = null;
-            Class<?> currentClass = Entity.class;
-            while (currentClass != null && currentClass != Object.class) {
-                for (java.lang.reflect.Method m : currentClass.getDeclaredMethods()) {
-                    if (m.getParameterCount() == 1 && m.getParameterTypes()[0] == CompoundTag.class) {
-                        String name = m.getName();
-                        if (name.equals("load") || name.contains("load") || name.contains("Load")) {
-                            targetMethod = m;
-                            Constants.LOG.info("[maid_file_manager] Found method: {}.{}", currentClass.getSimpleName(), name);
-                            break;
-                        }
-                    }
-                }
-                if (targetMethod != null) break;
-                currentClass = currentClass.getSuperclass();
-            }
-
-            if (targetMethod != null) {
-                targetMethod.setAccessible(true);
-                targetMethod.invoke(maid, tag);
-                Constants.LOG.info("[maid_file_manager] Base Entity data loaded successfully via {}.{}",
-                        targetMethod.getDeclaringClass().getSimpleName(), targetMethod.getName());
-            } else {
-                Constants.LOG.warn("[maid_file_manager] No Entity.load method found, using manual loading");
-                manualLoadBaseFields(maid, tag);
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] Base Entity.load failed: {}", t.toString());
-            manualLoadBaseFields(maid, tag);
-        }
-    }
-
-    /**
-     * 手动加载 Entity 基础字段（如果 Entity.load 反射失败）。
-     * 这个方法只加载关键字段用于实体存活。
-     */
-    private static void manualLoadBaseFields(EntityMaid maid, CompoundTag tag) {
-        Constants.LOG.info("[maid_file_manager] Manual base field loading...");
-
-        // 生命值
-        if (tag.contains("Health", Tag.TAG_FLOAT)) {
-            float health = tag.getFloat("Health");
-            maid.setHealth(health);
-            Constants.LOG.info("[maid_file_manager] Set health to {}", health);
-        }
-
-        // motion
-        if (tag.contains("Motion", Tag.TAG_COMPOUND)) {
-            CompoundTag motion = tag.getCompound("Motion");
-            double mx = motion.getDouble("x");
-            double my = motion.getDouble("y");
-            double mz = motion.getDouble("z");
-            maid.setDeltaMovement(mx, my, mz);
-        }
-
-        // OnGround
-        if (tag.contains("OnGround", Tag.TAG_BYTE)) {
-            maid.setOnGround(tag.getBoolean("OnGround"));
-        }
-
-        // Rotation (使用反射设置私有字段)
-        if (tag.contains("Rotation", Tag.TAG_LIST)) {
-            ListTag rotation = tag.getList("Rotation", Tag.TAG_FLOAT);
-            if (rotation.size() >= 2) {
-                float yRot = rotation.getFloat(0);
-                float xRot = rotation.getFloat(1);
-                setEntityRotation(maid, yRot, xRot);
-            }
-        }
-
-        Constants.LOG.info("[maid_file_manager] Manual base fields loaded");
-    }
-
-    /**
-     * 使用反射设置实体旋转角度。
-     */
-    private static void setEntityRotation(Entity entity, float yRot, float xRot) {
-        try {
-            java.lang.reflect.Method setRot = Entity.class.getMethod("setRot", float.class, float.class);
-            setRot.invoke(entity, yRot, xRot);
-            return;
-        } catch (Exception ignored) {
-        }
-
-        try {
-            java.lang.reflect.Field yRotField = Entity.class.getDeclaredField("yRot");
-            yRotField.setAccessible(true);
-            yRotField.setFloat(entity, yRot);
-        } catch (Exception e) {
-            // 忽略
-        }
-        try {
-            java.lang.reflect.Field xRotField = Entity.class.getDeclaredField("xRot");
-            xRotField.setAccessible(true);
-            xRotField.setFloat(entity, xRot);
-        } catch (Exception e) {
-            // 忽略
-        }
-    }
-
-    private static void preInitBaseFields(EntityMaid maid, CompoundTag tag) {
-        if (tag.contains("Pos", Tag.TAG_COMPOUND)) {
-            CompoundTag pos = tag.getCompound("Pos");
-            double px = pos.getDouble("x");
-            double py = pos.getDouble("y");
-            double pz = pos.getDouble("z");
-            maid.setPos(px, py, pz);
-            Constants.LOG.info("[maid_file_manager] pre-setPos({}, {}, {})", px, py, pz);
-        }
-        if (tag.contains("UUIDLeast") && tag.contains("UUIDMost")) {
-            long least = tag.getLong("UUIDLeast");
-            long most = tag.getLong("UUIDMost");
-            maid.setUUID(new java.util.UUID(most, least));
-            Constants.LOG.info("[maid_file_manager] pre-setUUID ok");
-        }
-        if (tag.contains("CustomName", Tag.TAG_STRING)) {
-            String cn = tag.getString("CustomName");
-            if (cn != null && !cn.isEmpty()) {
-                maid.setCustomName(Component.literal(cn));
-            }
-        }
-        if (tag.contains("Pose", Tag.TAG_STRING)) {
-            try {
-                net.minecraft.world.entity.Pose pose = net.minecraft.world.entity.Pose.valueOf(tag.getString("Pose"));
-                maid.setPose(pose);
-            } catch (Throwable ignored) {}
-        }
-    }
-
-    private static void validateMaidAttributes(EntityMaid maid) {
-        // MAX_HEALTH 上限动态判断：渡劫 +20 HP（满好感 80 → 100），未渡劫 80
-        // （修复 v1.1.x 硬 cap 80D 直接砍掉渡劫 +20，导致反馈「导入后还是少了 20 血」）
-        //
-        // v1.2.x 修复「饰品加血量上限被硬编码 100 截断」：
-        //   先以 TLM 本体基础值（好感度等级 + 渡劫）算 baseCap；
-        //   再与当前 MAX_HEALTH attribute 实际值（已由 BaubleItemHandler onContentsChanged
-        //   通过万法皆通 anchor_core / 车万本体饰品 AttributeModifier 加成后的最终值）
-        //   取两者较大值 → 绝不因为饰品加成超过基础值就被我们硬 cap 砍掉。
-        //   最后外层兜底 256D，彻底避免跨版本恶意外挂 NBT 把属性打穿。
-        double baseCap = MAID_MAX_HEALTH + (maid.isStruckByLightning() ? 20.0D : 0.0D);
-        double currentMax = maid.getAttributeValue(Attributes.MAX_HEALTH);
-        double hardFloorCap = Math.max(baseCap, currentMax);
-        double ABSOLUTE_SAFETY_CAP = 256.0D;
-        double effectiveCap = Math.min(hardFloorCap, ABSOLUTE_SAFETY_CAP);
-        double maxHealth = maid.getAttributeBaseValue(Attributes.MAX_HEALTH);
-        if (maxHealth > effectiveCap) {
-            Constants.LOG.warn("[maid_file_manager] 导入女仆血量上限 {} 超过限制 {} (struck={}, attrValue={}, baseCap={}), 截断到 {}",
-                    maxHealth, effectiveCap, maid.isStruckByLightning(), currentMax, baseCap, effectiveCap);
-            maid.getAttribute(Attributes.MAX_HEALTH).setBaseValue(effectiveCap);
-            if (maid.getHealth() > effectiveCap) {
-                maid.setHealth((float) effectiveCap);
-            }
-        } else {
-            Constants.LOG.info("[maid_file_manager] validateMaidAttributes: baseMAX={} effectiveCap={} struck={} attrValueNow={}",
-                    maxHealth, effectiveCap, maid.isStruckByLightning(), currentMax);
-        }
-        double attackDamage = maid.getAttributeBaseValue(Attributes.ATTACK_DAMAGE);
-        if (attackDamage <= 0 || attackDamage > MAID_MAX_ATTACK_DAMAGE) {
-            Constants.LOG.warn("[maid_file_manager] 导入女仆攻击伤害 {} 异常, 回退到默认值 {}",
-                    attackDamage, MAID_DEFAULT_ATTACK_DAMAGE);
-            maid.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(MAID_DEFAULT_ATTACK_DAMAGE);
-        }
-    }
-
-    private static void rebuildAttributesAndModel(EntityMaid maid, MaidFileData data, boolean sourceStruckByLightning) {
-        int favorability = maid.getFavorability();
-        int level;
-        if (favorability < 64) {
-            level = 0;
-        } else if (favorability < 192) {
-            level = 1;
-        } else if (favorability < 384) {
-            level = 2;
-        } else {
-            level = 3;
-        }
-        int healthByLevel = switch (level) {
-            case 1 -> 30;
-            case 2 -> 40;
-            case 3 -> 80;
-            default -> 20;
-        };
-        int attackByLevel = switch (level) {
-            case 1 -> 3;
-            case 2 -> 5;
-            case 3 -> 7;
-            default -> 2;
-        };
-        // 渡劫 +20 HP：双重保险判断——实体 SynchedEntityData 值 OR 源 NBT 原始值，任一为 true 都加 20
-        // （避免同步时机差异导致判断失误，bug「少了 20 点被闪电劈中的生命值」根因）
-        boolean struckEffective = maid.isStruckByLightning() || sourceStruckByLightning;
-        if (struckEffective) {
-            healthByLevel += 20;
-        }
-        net.minecraft.world.entity.ai.attributes.AttributeInstance health = maid.getAttribute(Attributes.MAX_HEALTH);
-        if (health != null) {
-            health.setBaseValue(healthByLevel);
-            if (maid.getHealth() > maid.getMaxHealth()) {
-                maid.setHealth(maid.getMaxHealth());
-            }
-        }
-        net.minecraft.world.entity.ai.attributes.AttributeInstance attack = maid.getAttribute(Attributes.ATTACK_DAMAGE);
-        if (attack != null) {
-            attack.setBaseValue(attackByLevel);
-        }
-        Constants.LOG.info("[maid_file_manager] rebuildAttributes: favorability={} level={} health={} attack={} struck(ent={}|src={}|eff={})",
-                favorability, level, healthByLevel, attackByLevel,
-                maid.isStruckByLightning(), sourceStruckByLightning, struckEffective);
-        if (data != null && data.getModelId() != null && !data.getModelId().isEmpty()) {
-            String currentModel = maid.getModelId();
-            if (!data.getModelId().equals(currentModel)) {
-                maid.setModelId(data.getModelId());
-                Constants.LOG.info("[maid_file_manager] restore modelId from MaidFileData: {} -> {}",
-                        currentModel, data.getModelId());
-            }
-        }
-    }
+    // ============================ 导出 ============================
 
     public static List<MaidInfo> listOwnMaids(ServerPlayer player) {
         Level level = player.level();
@@ -1164,6 +98,8 @@ public final class MaidTransferService {
         List<MaidInfo> result = new ArrayList<>();
         for (EntityMaid maid : maids) {
             if (result.size() >= MAID_SEARCH_LIMIT) {
+                Constants.LOG.warn("[maid_file_manager] 女仆数量超过列表上限 {}，仅返回前 {} 个",
+                        MAID_SEARCH_LIMIT, MAID_SEARCH_LIMIT);
                 break;
             }
             result.add(toInfo(maid));
@@ -1179,7 +115,8 @@ public final class MaidTransferService {
             ownerName = owner.getName().getString();
         }
         String customName = maid.hasCustomName() ? maid.getCustomName().getString() : null;
-        float maxHealth = (float) maid.getAttribute(Attributes.MAX_HEALTH).getValue();
+        AttributeInstance maxHealthAttr = maid.getAttribute(Attributes.MAX_HEALTH);
+        float maxHealth = maxHealthAttr == null ? maid.getMaxHealth() : (float) maxHealthAttr.getValue();
         return new MaidInfo(
                 maid.getId(),
                 maid.getModelId(),
@@ -1202,25 +139,20 @@ public final class MaidTransferService {
             Optional<?> infoOpt = ServerCustomPackLoader.SERVER_MAID_MODELS.getInfo(modelId);
             if (infoOpt.isPresent()) {
                 Object info = infoOpt.get();
+                // IModelInfo 位于 client 包，专用服务端环境可能被裁剪，用反射只读 getName，找不到则回退
                 try {
                     java.lang.reflect.Method m = info.getClass().getMethod("getName");
                     Object name = m.invoke(info);
                     if (name instanceof String s && !s.isEmpty()) {
                         if (s.startsWith("{") && s.endsWith("}")) {
                             String key = s.substring(1, s.length() - 1);
-                            Constants.LOG.info("[maid_file_manager] getDisplayName: resolving lang key={}", key);
                             try {
-                                net.minecraft.network.chat.Component translated =
-                                        net.minecraft.network.chat.Component.translatable(key);
-                                String result = translated.getString();
+                                String result = Component.translatable(key).getString();
                                 if (result != null && !result.equals(key) && !result.isEmpty()) {
-                                    Constants.LOG.info("[maid_file_manager] getDisplayName: resolved={}", result);
                                     return result;
                                 }
-                            } catch (Exception e) {
-                                Constants.LOG.debug("[maid_file_manager] getDisplayName: translation failed for {}", key);
+                            } catch (Exception ignored) {
                             }
-                            Constants.LOG.info("[maid_file_manager] getDisplayName: using modelId fallback for lang key {}", key);
                             return fallbackNameFromModelId(modelId);
                         }
                         return s;
@@ -1229,7 +161,7 @@ public final class MaidTransferService {
                 }
             }
         } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] getDisplayName failed for {}: {}", modelId, t.toString());
+            Constants.LOG.warn("[maid_file_manager] getDisplayName 失败 modelId={}: {}", modelId, t.toString());
         }
         return fallbackNameFromModelId(modelId);
     }
@@ -1243,89 +175,86 @@ public final class MaidTransferService {
     }
 
     public static MaidFileData exportMaidToData(ServerPlayer player, int entityId) {
-        Constants.LOG.info("[maid_file_manager] exportMaidToData called: player={} entityId={}",
-                player.getName().getString(), entityId);
         Entity entity = player.level().getEntity(entityId);
         if (!(entity instanceof EntityMaid maid)) {
-            Constants.LOG.warn("[maid_file_manager] exportMaidToData: entityId={} is NOT EntityMaid", entityId);
+            Constants.LOG.warn("[maid_file_manager] exportMaidToData: entityId={} 不是 EntityMaid", entityId);
             return null;
         }
         if (!maid.isOwnedBy(player)) {
-            Constants.LOG.warn("[maid_file_manager] exportMaidToData: maid not owned by player");
+            Constants.LOG.warn("[maid_file_manager] exportMaidToData: 女仆不属于该玩家");
             return null;
         }
         return doSerializeMaid(maid);
     }
 
     /**
-     * 统一导出（服务端 OP 代导）专用序列化入口。
-     *
-     * <p>与 {@link #exportMaidToData(ServerPlayer, int)} 的区别：
-     * <ol>
-     *   <li>ownership 校验改为「目标女仆 ownerUUID == expectedOwner.getUUID()」，
-     *       不要求 entityId 在调用者（OP）的 level 上直接可见——OP 常常和其他玩家不在同区块，
-     *       getEntity(entityId) 会返回 null，这是 p3「即使客户端同意仍导出失败」的核心根因。</li>
-     *   <li>在 expectedOwner 所在 level 以 ownerUUID 匹配遍历搜索女仆（范围 128×2 AABB +
-     *       再扩大到全 level 兜底），找到后才做序列化。</li>
-     *   <li>只负责写入 NBT 数据，**永不移除或 discard 世界实体**（p4：统一导出必须永远保留原女仆）。</li>
-     * </ol>
+     * 统一导出（OP 代导）专用序列化入口。
+     * ownership 校验改为 ownerUUID 精确匹配，并使用「直接取 → 128 格搜索 → 全维度搜索」三级查找，
+     * 只负责序列化，永不移除世界实体。
      */
     public static MaidFileData exportMaidOwnedBy(ServerPlayer expectedOwner, int entityId) {
         if (expectedOwner == null) {
-            Constants.LOG.warn("[maid_file_manager] exportMaidOwnedBy: expectedOwner is null");
             return null;
         }
         UUID ownerUuid = expectedOwner.getUUID();
         Level level = expectedOwner.level();
-        // 路径 1：按 entityId 直接取（若实体在 OP/owner 的当前追踪区块内就命中）
         Entity direct = level.getEntity(entityId);
         if (direct instanceof EntityMaid m && m.isTame() && ownerUuid.equals(m.getOwnerUUID())) {
-            Constants.LOG.info("[maid_file_manager] exportMaidOwnedBy: direct-hit entityId={} owner={}",
-                    entityId, expectedOwner.getName().getString());
             return doSerializeMaid(m);
         }
-        // 路径 2：SEARCH_RADIUS=128 附近遍历（collectOnlinePlayerMaids 里 listOwnMaids 也是这个范围）
         Vec3 pos = expectedOwner.position();
         AABB near = AABB.ofSize(pos, SEARCH_RADIUS * 2, SEARCH_RADIUS * 2, SEARCH_RADIUS * 2);
         List<EntityMaid> nearMaids = level.getEntitiesOfClass(EntityMaid.class, near,
                 m -> m.isTame() && ownerUuid.equals(m.getOwnerUUID()) && m.getId() == entityId);
         if (!nearMaids.isEmpty()) {
-            Constants.LOG.info("[maid_file_manager] exportMaidOwnedBy: near-hit entityId={} owner={}",
-                    entityId, expectedOwner.getName().getString());
             return doSerializeMaid(nearMaids.get(0));
         }
-        // 路径 3：全 level 遍历按 ownerUUID + entityId 精确匹配（玩家跨区块/穿越维度时仍能找到）
+        // 最后兜底：按实体 ID 在本维度世界边界范围内全量扫描。代价较高（分区实体逐个过谓词），
+        // 但谓词含 m.getId() == entityId，且前两级查找已覆盖 99% 场景，仅在玩家与女仆极端远离时才走到
         for (EntityMaid m : level.getEntitiesOfClass(EntityMaid.class,
                 new AABB(-30000000, -30000000, -30000000, 30000000, 30000000, 30000000),
                 m -> m.isTame() && ownerUuid.equals(m.getOwnerUUID()) && m.getId() == entityId)) {
-            Constants.LOG.info("[maid_file_manager] exportMaidOwnedBy: world-hit entityId={} owner={}",
-                    entityId, expectedOwner.getName().getString());
             return doSerializeMaid(m);
         }
-        Constants.LOG.warn("[maid_file_manager] exportMaidOwnedBy: NOT FOUND entityId={} owner={} (uuid={})",
-                entityId, expectedOwner.getName().getString(), ownerUuid);
+        Constants.LOG.warn("[maid_file_manager] exportMaidOwnedBy: 未找到 entityId={} owner={}",
+                entityId, expectedOwner.getName().getString());
         return null;
     }
 
     /**
-     * 序列化核心：把女仆实体打包成 MaidFileData（清空物品/背包/背包/残留 buff，但保留饰品栏以便导入端按配置恢复）。
-     * 不做任何 ownership 校验、不做任何实体移除。
+     * 序列化核心：清空物品/残留 buff，保留饰品栏供导入端按配置恢复。
+     * 不做 ownership 校验、不移除实体。
      */
     private static MaidFileData doSerializeMaid(EntityMaid maid) {
         try {
             String modelId = maid.getModelId();
-            Object registryAccess = getRegistryAccess(maid.level());
-            CompoundTag fullNbt = invokeSaveWithoutId(maid, registryAccess, new CompoundTag());
+            CompoundTag fullNbt = maid.saveWithoutId(new CompoundTag());
             clearInventoryItems(fullNbt, EntityMaid.MAID_INVENTORY_TAG);
-            // v1.2.0：饰品栏不再清空 —— 保留 MaidBaubleInventory 以便导入端按配置恢复
-            //（导入时白名单过滤车万本体/万法皆通，附魔耐久重置为全新；缺模组世界安全跳过）
             clearInventoryItems(fullNbt, EntityMaid.MAID_HIDE_INVENTORY_TAG);
             clearInventoryItems(fullNbt, EntityMaid.MAID_TASK_INVENTORY_TAG);
-            clearHandItems(fullNbt);
+            // 手持/护甲直接移除容器标签（导出策略本就不带手持/护甲物品）
+            fullNbt.remove("HandItems");
+            fullNbt.remove("ArmorItems");
+            fullNbt.remove("HandDropChances");
+            fullNbt.remove("ArmorDropChances");
             fullNbt.remove("MaidBackpackData");
-            // 删除残留药水效果（反馈：导出后女仆带「生命恢复2」让其误以为是重新驯服的另一个女仆）
-            // 驯服自带的 buff 由 TLM 本体在驯服流程里动态加，不应在 .maid 文件里持久化残留
-            fullNbt.remove("ActiveEffects");
+            // 药水效果：提取到 MaidFileData.effects 字段，始终序列化（不受配置影响）
+            // 同时生成 normalized 标准化数据用于跨版本兼容
+            CompoundTag effectsTag = null;
+            if (fullNbt.contains("ActiveEffects", Tag.TAG_LIST)) {
+                ListTag rawList = fullNbt.getList("ActiveEffects", Tag.TAG_COMPOUND);
+                effectsTag = new CompoundTag();
+                // 原始 NBT 副本：同版本直读（MobEffectInstance.load）
+                effectsTag.put("active_effects", rawList.copy());
+                // 标准化数据：跨版本重建 MobEffectInstance（按 ResourceLocation 查注册表）
+                effectsTag.put("normalized", buildNormalizedEffects(rawList));
+                fullNbt.remove("ActiveEffects");
+            }
+            // 检查实体持久化标签中是否有存储的效果（禁药水服务器再导出的场景）
+            CompoundTag storedEffects = Services.PLATFORM.get().getStoredEffects(maid);
+            if (storedEffects != null) {
+                effectsTag = storedEffects;
+            }
             fullNbt.putString("MaidTask", TaskManager.getIdleTask().getUid().toString());
             fullNbt.putByte("Sitting", (byte) 0);
             String ownerUuid = null;
@@ -1340,291 +269,724 @@ public final class MaidTransferService {
             }
             MaidFileData data = new MaidFileData();
             data.setExportedAt(System.currentTimeMillis());
-            data.setSourceMcVersion(Services.PLATFORM.getMcVersion());
+            data.setSourceMcVersion(Services.PLATFORM.get().getMcVersion());
             data.setDataVersion(NbtVersion.currentRuntime());
-            data.setSourceTlmVersion(Services.PLATFORM.getModVersion("touhou_little_maid"));
+            data.setSourceTlmVersion(Services.PLATFORM.get().getModVersion("touhou_little_maid"));
             data.setTamed(tamed);
             data.setOwnerUuid(ownerUuid);
             data.setOwnerName(ownerName);
             data.setData(fullNbt);
             data.setModelId(modelId);
             data.setDisplayName(getDisplayName(modelId));
-            Constants.LOG.info("[maid_file_manager] doSerializeMaid: SUCCESS modelId={} ownerUuid={}", modelId, ownerUuid);
+            // 成就收集：服务端开启允许成就导入时，收集原主人 TLM 成就并按女仆属性过滤
+            if (MaidConfigManager.isAdvancementsAllowed() && tamed && owner instanceof ServerPlayer serverPlayer) {
+                try {
+                    CompoundTag advData = AdvancementTransfer.collectForMaid(serverPlayer, maid);
+                    if (!advData.isEmpty()) {
+                        data.setAdvancements(advData);
+                    }
+                } catch (Throwable t) {
+                    Constants.LOG.warn("[maid_file_manager] 成就收集失败（已忽略，不阻断导出）: {}", t.toString());
+                }
+            }
+            // 药水效果
+            if (effectsTag != null) {
+                data.setEffects(effectsTag);
+            }
+            Constants.LOG.debug("[maid_file_manager] 序列化成功 modelId={} owner={}", modelId, ownerName);
             return data;
         } catch (Exception e) {
-            Constants.LOG.error("[maid_file_manager] doSerializeMaid FAILED: maidId={}", maid == null ? -1 : maid.getId(), e);
+            Constants.LOG.error("[maid_file_manager] 序列化失败 maidId={}", maid.getId(), e);
             return null;
         }
     }
 
-    public static Component importMaidFromData(ServerPlayer player, MaidFileData data, boolean keepBaubles) {
+    private static void clearInventoryItems(CompoundTag root, String key) {
+        if (!root.contains(key, Tag.TAG_COMPOUND)) {
+            return;
+        }
+        root.getCompound(key).put("Items", new ListTag());
+    }
+
+    /**
+     * 从效果数据中过滤出万法皆通常驻效果：duration=-1 AND 效果 ID 命中白名单。
+     * 用于禁药水服务器只保留万法皆通特殊女仆的常驻 buff，其他效果（含普通女仆被施加的非常驻效果、
+     * 万法皆通结构女仆身上的短时情境效果如 nourishment/sober/caffeinated、超长时长效果如虚弱 V）
+     * 一律丢弃。同步过滤 active_effects 与 normalized 两个列表并保持索引对齐
+     * （导入恢复时按相同索引配对原始 NBT 与标准化数据）。
+     *
+     * @return 仅含白名单常驻效果的新 CompoundTag；无任何白名单常驻效果时返回 null
+     */
+    private static CompoundTag extractSpellPermanentEffects(CompoundTag effectsData) {
+        if (effectsData == null || !effectsData.contains("active_effects", Tag.TAG_LIST)) {
+            return null;
+        }
+        ListTag raw = effectsData.getList("active_effects", Tag.TAG_COMPOUND);
+        ListTag norm = effectsData.contains("normalized", Tag.TAG_LIST)
+                ? effectsData.getList("normalized", Tag.TAG_COMPOUND) : new ListTag();
+        ListTag outRaw = new ListTag();
+        ListTag outNorm = new ListTag();
+        for (int i = 0; i < raw.size(); i++) {
+            CompoundTag e = raw.getCompound(i);
+            int dur;
+            if (e.contains("Duration", Tag.TAG_INT)) {
+                dur = e.getInt("Duration");
+            } else if (i < norm.size()) {
+                dur = norm.getCompound(i).getInt("duration");
+            } else {
+                dur = 0;
+            }
+            if (dur != -1) {
+                continue;
+            }
+            // 效果 ID 命中白名单才保留（不依赖女仆身份判定）
+            String effectId = e.contains("forge:id", Tag.TAG_STRING)
+                    ? e.getString("forge:id")
+                    : e.getString("id");
+            if (effectId.isEmpty() && i < norm.size()) {
+                effectId = norm.getCompound(i).getString("id");
+            }
+            if (effectId.isEmpty() || !SPELL_PERMANENT_EFFECT_IDS.contains(effectId)) {
+                continue;
+            }
+            outRaw.add(e.copy());
+            if (i < norm.size()) {
+                outNorm.add(norm.getCompound(i).copy());
+            }
+        }
+        if (outRaw.isEmpty()) {
+            return null;
+        }
+        CompoundTag out = new CompoundTag();
+        out.put("active_effects", outRaw);
+        out.put("normalized", outNorm);
+        return out;
+    }
+
+    /**
+     * 构建标准化效果数据列表，用于跨 MC 版本重建 MobEffectInstance。
+     * <p>跨版本差异点（1.20.x ↔ 1.21+）：
+     * <ul>
+     *   <li>1.20.x save：{@code Id(int)}、{@code Amplifier}、{@code Duration}、{@code Ambient}、
+     *       {@code ShowParticles}、{@code ShowIcon}、Forge 额外写 {@code forge:id(string)}</li>
+     *   <li>1.21+ save：{@code id(string)}、{@code amplifier}、{@code duration}、{@code ambient}、
+     *       {@code show_particles}、{@code show_icon}（小写驼峰）</li>
+     *   <li>跨版本直读 {@link net.minecraft.world.effect.MobEffectInstance#load} 会失败：
+     *       1.20 不识别 1.21 的 id 字符串；1.21 的 byId 兜底依赖注册表数字 ID，跨版本不稳定</li>
+     * </ul>
+     * <p>normalized 统一存小写驼峰键名，导入端用 ResourceLocation 查 BuiltInRegistries.MOB_EFFECT 重建，
+     * 不依赖任何版本特定的字段名或数字 ID。
+     */
+    private static ListTag buildNormalizedEffects(ListTag rawList) {
+        ListTag out = new ListTag();
+        for (int i = 0; i < rawList.size(); i++) {
+            CompoundTag src = rawList.getCompound(i);
+            CompoundTag item = new CompoundTag();
+            // 解析效果 ResourceLocation 字符串
+            //   1.20.x: 优先读 forge:id（Forge 写入），其次用 Id 数字 ID 反查
+            //   1.21+:  直接读 id 字符串
+            String effectId = "";
+            if (src.contains("forge:id", Tag.TAG_STRING)) {
+                effectId = src.getString("forge:id");
+            } else if (src.contains("id", Tag.TAG_STRING)) {
+                effectId = src.getString("id");
+            }
+            if (effectId.isEmpty() && src.contains("Id", Tag.TAG_ANY_NUMERIC)) {
+                // 兜底：同版本导出时，数字 ID 反查 ResourceLocation
+                int numericId = src.getInt("Id");
+                net.minecraft.world.effect.MobEffect effect =
+                        net.minecraft.world.effect.MobEffect.byId(numericId);
+                if (effect != null) {
+                    net.minecraft.resources.ResourceLocation rl =
+                            net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT.getKey(effect);
+                    if (rl != null) {
+                        effectId = rl.toString();
+                    }
+                }
+            }
+            if (effectId.isEmpty()) {
+                Constants.LOG.warn("[maid_file_manager] 药水效果 #{} 无法解析 ResourceLocation，已跳过", i);
+                continue;
+            }
+            item.putString("id", effectId);
+            // PascalCase 与小写驼峰双兼容读取（1.20 用 PascalCase，1.21 用小写驼峰）
+            int amplifier = src.contains("Amplifier", Tag.TAG_INT)
+                    ? src.getInt("Amplifier")
+                    : src.getInt("amplifier");
+            int duration = src.contains("Duration", Tag.TAG_INT)
+                    ? src.getInt("Duration")
+                    : src.getInt("duration");
+            byte ambient = src.contains("Ambient", Tag.TAG_BYTE)
+                    ? src.getByte("Ambient")
+                    : src.getByte("ambient");
+            byte showParticles = src.contains("ShowParticles", Tag.TAG_BYTE)
+                    ? src.getByte("ShowParticles")
+                    : src.getByte("show_particles");
+            byte showIcon = src.contains("ShowIcon", Tag.TAG_BYTE)
+                    ? src.getByte("ShowIcon")
+                    : src.getByte("show_icon");
+            item.putInt("amplifier", amplifier);
+            item.putInt("duration", duration);
+            item.putByte("ambient", ambient);
+            item.putByte("show_particles", showParticles);
+            item.putByte("show_icon", showIcon);
+            out.add(item);
+        }
+        return out;
+    }
+
+    /**
+     * 从 normalized 标准化数据重建 MobEffectInstance（跨版本恢复路径）。
+     * 通过 ResourceLocation 查 BuiltInRegistries.MOB_EFFECT，避免数字 ID 跨版本漂移。
+     * <p>1.20.x: MobEffectInstance 构造器直接接受 {@code MobEffect}。
+     */
+    private static net.minecraft.world.effect.MobEffectInstance rebuildEffectFromNormalized(CompoundTag item) {
+        try {
+            String idStr = item.getString("id");
+            if (idStr.isEmpty()) return null;
+            net.minecraft.resources.ResourceLocation rl =
+                    net.minecraft.resources.ResourceLocation.tryParse(idStr);
+            if (rl == null) return null;
+            net.minecraft.world.effect.MobEffect effect =
+                    net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT.get(rl);
+            if (effect == null) {
+                Constants.LOG.warn("[maid_file_manager] 跨版本恢复：目标世界未注册效果 {}，已跳过", idStr);
+                return null;
+            }
+            int duration = item.getInt("duration");
+            int amplifier = item.getInt("amplifier");
+            boolean ambient = item.getByte("ambient") != 0;
+            boolean showParticles = item.getByte("show_particles") != 0;
+            boolean showIcon = item.getByte("show_icon") != 0;
+            return new net.minecraft.world.effect.MobEffectInstance(
+                    effect, duration, amplifier, ambient, showParticles, showIcon);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] rebuildEffectFromNormalized 失败: {}", t.toString());
+            return null;
+        }
+    }
+
+    // ============================ 导入 ============================
+
+    public static ImportResult importMaidFromData(ServerPlayer player, MaidFileData data, boolean keepBaubles) {
         if (data == null || data.getData() == null) {
-            return Component.translatable("maid_file_manager.import.fail.exception", "invalid maid data");
+            return ImportResult.failed(
+                    Component.translatable("maid_file_manager.import.fail.invalid"));
         }
-        // 服务端闸门 1：是否允许客户端导入女仆（OP 可在设置界面切换，默认允许）
+        // 闸门 1：服务端是否允许客户端导入
         if (!MaidConfigManager.isClientImportAllowed()) {
-            Constants.LOG.info("[maid_file_manager] Import rejected: server config allow_client_import=false, player={}",
+            Constants.LOG.info("[maid_file_manager] 导入被拒绝: allow_client_import=false, player={}",
                     player.getName().getString());
-            return Component.translatable("maid_file_manager.import.fail.server_disallowed");
+            return ImportResult.disallowed(
+                    Component.translatable("maid_file_manager.import.fail.server_disallowed"));
         }
-        // 服务端闸门 2：是否允许携带饰品（与客户端勾选双闸门，方法内再各自判断）
-        // 请求被服务端拦截时给出明确提示（非静默丢弃）
+        // 闸门 2：饰品双开关
         boolean baublesRequested = keepBaubles;
         if (baublesRequested && !MaidConfigManager.isBaublesAllowed()) {
             keepBaubles = false;
         }
+
         Level level = player.level();
-        EntityMaid maid = new EntityMaid(level);
-        Object registryAccess = getRegistryAccess(level);
-
-        // ---------- 最终保护网：从原始 data.getData() 读出源值，供后续二次恢复 ----------
-        // NbtMigration.migrate 会删一些东西，extractTlmData 又会再删，
-        // 但 data.getData() 是原始导出 NBT，好感度 & 渡劫标记一定在这里面。
+        // 快照必须在迁移之前从原始 NBT 读取（迁移会删除运行时标签）
         CompoundTag originalNbt = data.getData();
-        int sourceFavorability = -1;
-        if (originalNbt.contains("MaidFavorability", Tag.TAG_INT)) {
-            sourceFavorability = originalNbt.getInt("MaidFavorability");
-            Constants.LOG.info("[maid_file_manager] FINAL SAFETY NET: source favorability from NBT: {}", sourceFavorability);
-        } else if (originalNbt.contains("MaidFavorabilityManagerCounter", Tag.TAG_INT)) {
-            sourceFavorability = originalNbt.getInt("MaidFavorabilityManagerCounter");
-            Constants.LOG.info("[maid_file_manager] FINAL SAFETY NET: source fav counter from NBT: {}", sourceFavorability);
-        }
-        // 渡劫标记 FINAL SAFETY NET：从原始未处理 NBT 读出，无论后续加载流程怎么折腾都用这个值最终兜底
-        boolean sourceStruckByLightning = false;
-        if (originalNbt.contains("StruckByLightning", Tag.TAG_BYTE)) {
-            sourceStruckByLightning = originalNbt.getBoolean("StruckByLightning");
-            Constants.LOG.info("[maid_file_manager] FINAL SAFETY NET: source StruckByLightning from NBT: {}", sourceStruckByLightning);
-        }
-        // 源血量 FINAL SAFETY NET：反馈「女仆血量>20但导出后只有20血」
-        // 根因：maid.load 失败走 fallback 路径时 Health 字段未还原，getHealth() 停留 Mob 默认初始 20
-        float sourceHealth = -1f;
-        if (originalNbt.contains("Health", Tag.TAG_FLOAT)) {
-            sourceHealth = originalNbt.getFloat("Health");
-            Constants.LOG.info("[maid_file_manager] FINAL SAFETY NET: source Health from NBT: {}", sourceHealth);
-        }
+        int sourceFavorability = readSourceFavorability(originalNbt);
+        boolean sourceStruckByLightning = originalNbt.contains("StruckByLightning", Tag.TAG_BYTE)
+                && originalNbt.getBoolean("StruckByLightning");
+        float sourceHealth = originalNbt.contains("Health", Tag.TAG_FLOAT)
+                ? originalNbt.getFloat("Health") : -1f;
 
+        EntityMaid maid = new EntityMaid(level);
         try {
             int sourceVersion = data.getDataVersion() > 0
                     ? data.getDataVersion()
                     : NbtVersion.fromMcVersion(data.getSourceMcVersion());
             int targetVersion = NbtVersion.currentRuntime();
-            CompoundTag migratedData = NbtMigration.migrate(data.getData(), sourceVersion, targetVersion);
-            invokeLoadMaid(maid, registryAccess, migratedData, keepBaubles);
+            // migrate 返回清理后的副本，不修改原始 data
+            CompoundTag migrated = NbtMigration.migrate(originalNbt, sourceVersion, targetVersion);
+            CompoundTag tlmTag = extractTlmData(migrated);
+            loadMaidNbt(maid, migrated, tlmTag, keepBaubles, sourceStruckByLightning);
         } catch (Exception e) {
-            Constants.LOG.error("[maid_file_manager] 导入女仆时加载 NBT 失败", e);
-            return Component.translatable("maid_file_manager.import.fail.exception", e.getMessage());
+            // 异常原文可能含内部类名/NBT 结构信息，只进日志；回执给通用文案，不把内部信息透传给客户端
+            Constants.LOG.error("[maid_file_manager] 加载女仆 NBT 失败", e);
+            return ImportResult.failed(
+                    Component.translatable("maid_file_manager.import.fail.nbt_load"));
         }
 
-        // ---------- 最终保护网 1/2：如果 maid.getFavorability() == 0，但源数据有 > 0 的值，强制恢复 ----------
+        // 好感度保护网：当前为 0 而源数据 >0 时，用公开 API 强制恢复
         try {
-            int currentFav = maid.getFavorability();
-            if (currentFav == 0 && sourceFavorability > 0) {
-                Constants.LOG.warn("[maid_file_manager] FINAL FIX: favorability was 0 (lost), restoring to source={}", sourceFavorability);
-                restoreFavorability(maid, sourceFavorability);
-            } else {
-                Constants.LOG.info("[maid_file_manager] FINAL CHECK: current fav={}, source fav={}", currentFav, sourceFavorability);
+            if (maid.getFavorability() == 0 && sourceFavorability > 0) {
+                Constants.LOG.warn("[maid_file_manager] 好感度加载后为 0，按源数据恢复为 {}", sourceFavorability);
+                maid.setFavorability(sourceFavorability);
             }
         } catch (Throwable t) {
-            if (sourceFavorability > 0) {
-                Constants.LOG.warn("[maid_file_manager] FINAL FIX: cannot read current fav, fallback force restore source={}", sourceFavorability, t);
-                restoreFavorability(maid, sourceFavorability);
-            }
+            Constants.LOG.warn("[maid_file_manager] 好感度保护网失败: {}", t.toString());
         }
-
-        // ---------- 最终保护网 2/2：渡劫标记 StruckByLightning 最终强制同步（bug 根因：少 20 HP + 重新劈不生效）
-        // 同步时机必须在 invokeLoadMaid 之后、rebuildAttributesAndModel 之前，确保 rebuild 中 isStruckByLightning() 读到正确值
-        try {
-            boolean currentStruck = maid.isStruckByLightning();
-            if (currentStruck != sourceStruckByLightning) {
-                Constants.LOG.warn("[maid_file_manager] FINAL FIX: StruckByLightning mismatch (ent={}, src={}) — force sync to src",
-                        currentStruck, sourceStruckByLightning);
-                maid.setStruckByLightning(sourceStruckByLightning);
-            } else {
-                Constants.LOG.info("[maid_file_manager] FINAL CHECK: StruckByLightning consistent (ent={}, src={})",
-                        currentStruck, sourceStruckByLightning);
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] FINAL FIX: cannot read current StruckByLightning, fallback force sync to src={}",
-                    sourceStruckByLightning, t);
-            maid.setStruckByLightning(sourceStruckByLightning);
-        }
+        // 渡劫标记最终同步（必须在 rebuildAttributes 之前）
+        maid.setStruckByLightning(sourceStruckByLightning);
 
         rebuildAttributesAndModel(maid, data, sourceStruckByLightning);
         validateMaidAttributes(maid);
-        float fMax = maid.getMaxHealth();
-        // 血量恢复优先级：源 NBT Health（截断到 [1, fMax]）> fMax 满血兜底
-        // bug 根因：maid.load 失败导致 getHealth() 停留默认 20，rebuild 后未恢复
-        float finalHealth;
-        if (sourceHealth > 0 && sourceHealth <= fMax) {
-            finalHealth = sourceHealth;
-        } else {
-            finalHealth = fMax;  // 源血量超过新上限或异常，默认满血
-        }
-        maid.setHealth(finalHealth);
-        Constants.LOG.info("[maid_file_manager] Restored health: source={}, maxHealth={}, final={}", sourceHealth, fMax, finalHealth);
-        // 清空残留药水效果（双保险：导出已删 ActiveEffects，导入再清一次防止 maid.load 路径读到）
-        // 反馈「生命恢复2是驯服自带的，残留让玩家误以为不是同一个女仆」
+        float maxHealth = maid.getMaxHealth();
+        maid.setHealth(sourceHealth > 0 && sourceHealth <= maxHealth ? sourceHealth : maxHealth);
+
         try {
             maid.removeAllEffects();
-            Constants.LOG.info("[maid_file_manager] Cleared all active effects (avoid stale buffs like Regeneration II)");
+            // 药水效果恢复逻辑：始终从 .maid 文件读取，按配置决定是否恢复到实体
+            CompoundTag effectsData = data.getEffects();
+            if (effectsData != null && effectsData.contains("active_effects", Tag.TAG_LIST)) {
+                if (MaidConfigManager.isEffectsAllowed()) {
+                    // 配置允许：恢复药水效果到实体
+                    // 双路径恢复策略：
+                    //   1. 先尝试原始 NBT 直读（MobEffectInstance.load）—— 同版本路径
+                    //   2. 失败时（跨版本格式不匹配）从 normalized 重建—— 通过 ResourceLocation 查注册表
+                    ListTag effectList = effectsData.getList("active_effects", Tag.TAG_COMPOUND);
+                    ListTag normalized = effectsData.contains("normalized", Tag.TAG_LIST)
+                            ? effectsData.getList("normalized", Tag.TAG_COMPOUND) : null;
+                    int restored = 0;
+                    int rebuildCount = 0;
+                    for (int i = 0; i < effectList.size(); i++) {
+                        CompoundTag effectNbt = effectList.getCompound(i);
+                        net.minecraft.world.effect.MobEffectInstance instance = null;
+                        try {
+                            instance = net.minecraft.world.effect.MobEffectInstance.load(effectNbt);
+                        } catch (Throwable t) {
+                            // 同版本直读异常（跨版本字段名/格式不匹配），下面走 normalized 重建
+                        }
+                        if (instance == null && normalized != null && i < normalized.size()) {
+                            instance = rebuildEffectFromNormalized(normalized.getCompound(i));
+                            if (instance != null) {
+                                rebuildCount++;
+                            }
+                        }
+                        if (instance != null) {
+                            maid.addEffect(instance);
+                            restored++;
+                        } else {
+                            Constants.LOG.warn("[maid_file_manager] 药水效果 #{} 恢复失败（已跳过）", i);
+                        }
+                    }
+                    Constants.LOG.debug("[maid_file_manager] 药水效果恢复: 成功 {} 个，其中跨版本重建 {} 个",
+                            restored, rebuildCount);
+                } else {
+                    // 配置不允许药水效果：仅万法皆通特殊女仆的常驻效果（duration=-1 AND ID 命中白名单）
+                    // 写入持久化标签保留，防止禁药水服务器再导出时常驻 buff 永久丢失；
+                    // 普通女仆效果、特殊女仆的临时效果、超长时长效果（非 -1）一律丢弃
+                    CompoundTag permanentOnly = extractSpellPermanentEffects(effectsData);
+                    if (permanentOnly != null) {
+                        Services.PLATFORM.get().storeEffects(maid, permanentOnly);
+                        Constants.LOG.debug("[maid_file_manager] 禁药水：已保留万法皆通常驻效果到持久化标签");
+                    }
+                }
+            }
         } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] removeAllEffects failed: {}", t.toString());
+            Constants.LOG.warn("[maid_file_manager] 药水效果处理失败: {}", t.toString());
         }
         maid.hurtTime = 0;
         maid.deathTime = 0;
         maid.clearFire();
         maid.setTicksFrozen(0);
         ensureSchedulePosNonNull(maid);
-        Constants.LOG.info("[maid_file_manager] post-load state: isAlive={}, health={}/{}, uuid={}",
-                maid.isAlive(), maid.getHealth(), fMax, maid.getUUID());
+
         Vec3 forward = player.getLookAngle().scale(Constants.IMPORT_SPAWN_DISTANCE);
         Vec3 basePos = player.position().add(forward);
         BlockPos safePos = findSafeSpawnPos(level,
                 new BlockPos((int) basePos.x, (int) basePos.y, (int) basePos.z));
         if (safePos == null) {
-            safePos = new BlockPos(player.blockPosition().above());
+            safePos = player.blockPosition().above();
         }
-        Constants.LOG.info("[maid_file_manager] importMaidFromData: spawnPos={}", safePos);
         maid.setPos(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
         maid.setTask(TaskManager.getIdleTask());
         maid.setInSittingPose(false);
         maid.setOrderedToSit(false);
         boolean ownerMatched = matchOwner(maid, player, data);
-        ensurePersistence(maid);
+        maid.setPersistenceRequired();
         if (!level.addFreshEntity(maid)) {
-            return Component.translatable("maid_file_manager.import.fail.add_entity");
+            Constants.LOG.error("[maid_file_manager] addFreshEntity 被拒绝 pos={}", safePos);
+            return ImportResult.failed(
+                    Component.translatable("maid_file_manager.import.fail.add_entity"));
         }
-        // 调试日志：记录实体状态
-        postImportDebug(maid, level);
         registerMaidWorldData(maid);
-        net.minecraft.network.chat.MutableComponent success =
-                Component.translatable("maid_file_manager.import.success");
-        // 请求了保留饰品但被服务端配置拦截 → 非静默提示
-        if (baublesRequested && !keepBaubles) {
-            success.append(Component.translatable("maid_file_manager.import.baubles_dropped"));
-        }
-        return ownerMatched
-                ? success
-                : Component.translatable("maid_file_manager.import.fail.not_found_owner");
-    }
-
-    public static Component importMaid(ServerPlayer player, String fileName, boolean keepBaubles) {
-        // 服务端闸门：与 importMaidFromData 相同的双检查
-        if (!MaidConfigManager.isClientImportAllowed()) {
-            return Component.translatable("maid_file_manager.import.fail.server_disallowed");
-        }
-        if (keepBaubles && !MaidConfigManager.isBaublesAllowed()) {
-            keepBaubles = false;
-        }
-        Path gameDir = Services.PLATFORM.getGameDir().toAbsolutePath();
-        Path dir = MaidFileIo.ensureImportsDir(gameDir);
-        Path file = dir.resolve(fileName).normalize();
-        if (!file.startsWith(dir)) {
-            return Component.translatable("maid_file_manager.import.fail.exception", "invalid path");
-        }
-        if (!java.nio.file.Files.exists(file)) {
-            return Component.translatable("maid_file_manager.import.fail.exception", "file not found");
-        }
-        MaidFileData data = MaidFileIo.readMaidFile(file);
-        if (data == null || data.getData() == null) {
-            return Component.translatable("maid_file_manager.import.fail.exception", "invalid maid file");
-        }
-        Level level = player.level();
-        EntityMaid maid = new EntityMaid(level);
-        Object registryAccess = getRegistryAccess(level);
-
-        // 渡劫标记 FINAL SAFETY NET：从原始未处理 NBT 读出（与 importMaidFromData 完全一致）
-        CompoundTag originalNbt = data.getData();
-        boolean sourceStruckByLightning = false;
-        if (originalNbt.contains("StruckByLightning", Tag.TAG_BYTE)) {
-            sourceStruckByLightning = originalNbt.getBoolean("StruckByLightning");
-            Constants.LOG.info("[maid_file_manager] importMaid(file) SAFETY NET: source StruckByLightning from NBT: {}", sourceStruckByLightning);
-        }
-        // 源血量 FINAL SAFETY NET（与 importMaidFromData 完全一致）
-        float sourceHealth = -1f;
-        if (originalNbt.contains("Health", Tag.TAG_FLOAT)) {
-            sourceHealth = originalNbt.getFloat("Health");
-            Constants.LOG.info("[maid_file_manager] importMaid(file) SAFETY NET: source Health from NBT: {}", sourceHealth);
-        }
-
-        try {
-            int sourceVersion = data.getDataVersion() > 0
-                    ? data.getDataVersion()
-                    : NbtVersion.fromMcVersion(data.getSourceMcVersion());
-            int targetVersion = NbtVersion.currentRuntime();
-            CompoundTag migratedData = NbtMigration.migrate(data.getData(), sourceVersion, targetVersion);
-            invokeLoadMaid(maid, registryAccess, migratedData, keepBaubles);
-        } catch (Exception e) {
-            Constants.LOG.error("[maid_file_manager] 导入女仆时加载 NBT 失败", e);
-            return Component.translatable("maid_file_manager.import.fail.exception", e.getMessage());
-        }
-
-        // 渡劫标记 FINAL FIX：invokeLoadMaid 后 rebuild 前显式同步（与 importMaidFromData 完全一致）
-        try {
-            boolean currentStruck = maid.isStruckByLightning();
-            if (currentStruck != sourceStruckByLightning) {
-                Constants.LOG.warn("[maid_file_manager] importMaid(file) FINAL FIX: StruckByLightning mismatch (ent={}, src={}) — force sync",
-                        currentStruck, sourceStruckByLightning);
-                maid.setStruckByLightning(sourceStruckByLightning);
-            } else {
-                Constants.LOG.info("[maid_file_manager] importMaid(file) FINAL CHECK: StruckByLightning consistent (ent={}, src={})",
-                        currentStruck, sourceStruckByLightning);
+        // 成就合并：仅当导入者本人即为女仆原主人时才应用，防止伪造 .maid 文件给他人刷成就
+        if (ownerMatched && MaidConfigManager.isAdvancementsAllowed() && data.getAdvancements() != null) {
+            boolean isSelfImport = data.getOwnerUuid() != null
+                    && data.getOwnerUuid().equals(player.getUUID().toString());
+            if (isSelfImport) {
+                try {
+                    AdvancementTransfer.applyToPlayer(player, data.getAdvancements());
+                } catch (Throwable t) {
+                    Constants.LOG.warn("[maid_file_manager] 成就合并失败（已忽略）: {}", t.toString());
+                }
             }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] importMaid(file) FINAL FIX: cannot read current, fallback sync src={}",
-                    sourceStruckByLightning, t);
-            maid.setStruckByLightning(sourceStruckByLightning);
         }
+        Constants.LOG.info("[maid_file_manager] 导入完成 modelId={} ownerMatched={} pos={}",
+                maid.getModelId(), ownerMatched, safePos);
 
-        rebuildAttributesAndModel(maid, data, sourceStruckByLightning);
-        validateMaidAttributes(maid);
-        float fMax = maid.getMaxHealth();
-        // 血量恢复优先级：源 NBT Health（截断到 [1, fMax]）> fMax 满血兜底（与 importMaidFromData 完全一致）
-        float finalHealth;
-        if (sourceHealth > 0 && sourceHealth <= fMax) {
-            finalHealth = sourceHealth;
-        } else {
-            finalHealth = fMax;
-        }
-        maid.setHealth(finalHealth);
-        Constants.LOG.info("[maid_file_manager] importMaid(file) Restored health: source={}, maxHealth={}, final={}", sourceHealth, fMax, finalHealth);
-        // 清空残留药水效果（双保险，与 importMaidFromData 完全一致）
-        try {
-            maid.removeAllEffects();
-            Constants.LOG.info("[maid_file_manager] importMaid(file) Cleared all active effects");
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] importMaid(file) removeAllEffects failed: {}", t.toString());
-        }
-        maid.hurtTime = 0;
-        maid.deathTime = 0;
-        maid.clearFire();
-        maid.setTicksFrozen(0);
-        ensureSchedulePosNonNull(maid);
-        Constants.LOG.info("[maid_file_manager] post-load state: isAlive={}, health={}/{}, uuid={}",
-                maid.isAlive(), maid.getHealth(), fMax, maid.getUUID());
-        Vec3 forward = player.getLookAngle().scale(Constants.IMPORT_SPAWN_DISTANCE);
-        Vec3 basePos = player.position().add(forward);
-        BlockPos safePos = findSafeSpawnPos(level,
-                new BlockPos((int) basePos.x, (int) basePos.y, (int) basePos.z));
-        if (safePos == null) {
-            safePos = new BlockPos(player.blockPosition().above());
-            Constants.LOG.warn("[maid_file_manager] importMaid: 未找到安全位置，回退到玩家上方 {}", safePos);
-        }
-        Constants.LOG.info("[maid_file_manager] importMaid: file={} spawnPos={}", fileName, safePos);
-        maid.setPos(safePos.getX() + 0.5, safePos.getY(), safePos.getZ() + 0.5);
-        maid.setTask(TaskManager.getIdleTask());
-        maid.setInSittingPose(false);
-        maid.setOrderedToSit(false);
-        boolean ownerMatched = matchOwner(maid, player, data);
-        ensurePersistence(maid);
-        if (!level.addFreshEntity(maid)) {
-            return Component.translatable("maid_file_manager.import.fail.add_entity");
-        }
-        postImportDebug(maid, level);
-        registerMaidWorldData(maid);
-        return ownerMatched
+        Component message = ownerMatched
                 ? Component.translatable("maid_file_manager.import.success")
                 : Component.translatable("maid_file_manager.import.fail.not_found_owner");
+        ImportResult result = ownerMatched
+                ? ImportResult.ok(message)
+                : ImportResult.okUntamed(message);
+        // 请求了保留饰品但被服务端配置拦截 → 非静默提示
+        if (baublesRequested && !keepBaubles) {
+            result = result.withBaublesStripped();
+        }
+        return result;
+    }
+
+    private static int readSourceFavorability(CompoundTag originalNbt) {
+        if (originalNbt.contains("MaidFavorability", Tag.TAG_INT)) {
+            return originalNbt.getInt("MaidFavorability");
+        }
+        if (originalNbt.contains("MaidFavorabilityManagerCounter", Tag.TAG_INT)) {
+            return originalNbt.getInt("MaidFavorabilityManagerCounter");
+        }
+        return -1;
+    }
+
+    /**
+     * maid.load 主路径 + 失败兜底。
+     *
+     * <p>注意：从 Entity.class 反射取得的 load 方法 invoke 时仍走虚分派，
+     * 必然落到 EntityMaid 的重写方法上，无法调到基类实现（已用 javap 验证），
+     * 因此失败后不再做无意义的二次反射调用，只走 TLM 数据兜底恢复。
+     */
+    private static void loadMaidNbt(EntityMaid maid, CompoundTag migrated, CompoundTag tlmTag,
+                                   boolean keepBaubles, boolean tagStruckByLightning) {
+        boolean loadOk = false;
+        try {
+            maid.load(migrated);
+            loadOk = true;
+        } catch (Throwable t) {
+            Throwable root = t;
+            while (root.getCause() != null) {
+                root = root.getCause();
+            }
+            Constants.LOG.error("[maid_file_manager] maid.load 失败，走 TLM 数据兜底恢复。根因: {}: {}",
+                    root.getClass().getSimpleName(), root.getMessage());
+        }
+        restoreTlmData(maid, tlmTag, keepBaubles);
+        maid.setStruckByLightning(tagStruckByLightning);
+        if (!loadOk) {
+            Constants.LOG.warn("[maid_file_manager] 该女仆为兜底加载，非物品类 TLM 数据可能不完整（详见上方抽取日志）");
+        }
+    }
+
+    /**
+     * 从 tag 中移除会导致 maid.load 跨版本崩溃的复杂容器并返回其副本。
+     * 简单值字段（MaidFavorability / MaidExperience / MaidHunger / ModelId 等）一律保留，
+     * 交给 TLM 自己的 readAdditionalSaveData 还原。
+     */
+    private static CompoundTag extractTlmData(CompoundTag tag) {
+        CompoundTag extracted = new CompoundTag();
+        String[] keys = {
+                // 物品容器
+                "MaidBaubleInventory", "MaidInventory", "MaidHideInventory", "MaidTaskInventory",
+                "MaidGameSkillData",
+                // 跨版本结构可能不一致的复杂容器
+                "MaidTaskDataMaps",
+                "MaidAIChat", "MaidHistoryChat", "MaidHistorySummary", "MaidLastChatTokenUsage",
+                "MaidConfig", "MaidSubConfig", "MaidWorldData",
+                "MaidBackpackData", "MaidTask",
+                "MaidGameRecord", "MaidKillRecord",
+                "MaidSchedulePos", "YsmRoamingVars", "Brain",
+        };
+        for (String key : keys) {
+            if (tag.contains(key)) {
+                extracted.put(key, tag.get(key).copy());
+                tag.remove(key);
+            }
+        }
+        return extracted;
+    }
+
+    /**
+     * 恢复被抽取的 TLM 数据：饰品、ModelId、好感度、AI 对话/人设。
+     * 其余纯数据容器（任务记录/战绩/配置等）当前无安全回填入口，
+     * 不做静默处理：逐条 WARN 日志明示丢失，绝不在成功提示中掩盖。
+     */
+    private static void restoreTlmData(EntityMaid maid, CompoundTag tlmData, boolean keepBaubles) {
+        restoreBaubles(maid, tlmData, keepBaubles);
+
+        if (tlmData.contains("ModelId", Tag.TAG_STRING)) {
+            String modelId = tlmData.getString("ModelId");
+            if (modelId != null && !modelId.isEmpty()
+                    && (maid.getModelId() == null || maid.getModelId().isEmpty())) {
+                maid.setModelId(modelId);
+            }
+        }
+
+        if (tlmData.contains("MaidFavorability", Tag.TAG_INT)) {
+            int fav = tlmData.getInt("MaidFavorability");
+            if (maid.getFavorability() == 0 && fav > 0) {
+                maid.setFavorability(fav);
+            }
+        }
+
+        restoreAiChat(maid, tlmData);
+
+        // 明示未能恢复的数据（不静默丢失）
+        List<String> notRestored = new ArrayList<>();
+        for (String key : tlmData.getAllKeys()) {
+            if (!"MaidBaubleInventory".equals(key) && !"ModelId".equals(key)
+                    && !"MaidFavorability".equals(key)
+                    && !"MaidAIChat".equals(key) && !"MaidHistoryChat".equals(key)
+                    && !"MaidHistorySummary".equals(key) && !"MaidLastChatTokenUsage".equals(key)) {
+                notRestored.add(key);
+            }
+        }
+        if (!notRestored.isEmpty()) {
+            Constants.LOG.warn("[maid_file_manager] 以下 TLM 数据因跨版本安全策略未恢复: {}", notRestored);
+        }
+    }
+
+    /**
+     * AI 对话恢复双路径：
+     * (A) 调本体 readFromTag 还原聊天历史/摘要/token；
+     * (B) 直接给 {@link MaidAIChatSerializable} 的 8 个 public 人设字段赋值，
+     *     兼容 CamelCase/小驼峰双键名，仅在源值非空时覆盖。
+     */
+    private static void restoreAiChat(EntityMaid maid, CompoundTag tlmData) {
+        boolean hasAiData = tlmData.contains("MaidAIChat", Tag.TAG_COMPOUND)
+                || tlmData.contains("MaidHistoryChat")
+                || tlmData.contains("MaidHistorySummary", Tag.TAG_STRING);
+        if (!hasAiData) {
+            return;
+        }
+        try {
+            maid.getAiChatManager().readFromTag(tlmData);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] AI 聊天历史恢复失败: {}", t.toString());
+        }
+        if (!tlmData.contains("MaidAIChat", Tag.TAG_COMPOUND)) {
+            return;
+        }
+        try {
+            CompoundTag ai = tlmData.getCompound("MaidAIChat");
+            MaidAIChatSerializable persona = maid.getAiChatManager();
+            String[][] fieldMap = {
+                    {"llmSite",      "LLMSite",      "llmSite"},
+                    {"llmModel",     "LLMModel",     "llmModel"},
+                    {"ttsSite",      "TTSSiteName",  "ttsSiteName"},
+                    {"ttsModel",     "TTSModel",     "ttsModel"},
+                    {"ttsLanguage",  "TTSLanguage",  "ttsLanguage"},
+                    {"chatLanguage", "ChatLanguage", "chatLanguage"},
+                    {"ownerName",    "OwnerName",    "ownerName"},
+                    {"customSetting","CustomSetting","customSetting"},
+            };
+            int forced = 0;
+            for (String[] row : fieldMap) {
+                String value = null;
+                if (ai.contains(row[1], Tag.TAG_STRING)) {
+                    value = ai.getString(row[1]);
+                } else if (ai.contains(row[2], Tag.TAG_STRING)) {
+                    value = ai.getString(row[2]);
+                }
+                if (value != null && !value.isEmpty()) {
+                    switch (row[0]) {
+                        case "llmSite" -> persona.llmSite = value;
+                        case "llmModel" -> persona.llmModel = value;
+                        case "ttsSite" -> persona.ttsSite = value;
+                        case "ttsModel" -> persona.ttsModel = value;
+                        case "ttsLanguage" -> persona.ttsLanguage = value;
+                        case "chatLanguage" -> persona.chatLanguage = value;
+                        case "ownerName" -> persona.ownerName = value;
+                        case "customSetting" -> persona.customSetting = value;
+                        default -> { }
+                    }
+                    forced++;
+                }
+            }
+            Constants.LOG.debug("[maid_file_manager] AI 人设字段覆盖 {} 个", forced);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] AI 人设恢复失败: {}", t.toString());
+        }
+    }
+
+    /**
+     * 饰品恢复。规则：
+     * 双闸门（客户端勾选 + 服务端 allow_baubles）；白名单仅 touhou_little_maid /
+     * touhou_little_maid_spell；全新化重建（无附魔、满耐久）；目标世界缺物品安全跳过；
+     * 槽位按数据最大槽位经平台接口扩容。全程异常兜底，不影响女仆本体导入。
+     */
+    private static void restoreBaubles(EntityMaid maid, CompoundTag tlmData, boolean keepBaubles) {
+        if (!tlmData.contains("MaidBaubleInventory", Tag.TAG_COMPOUND) || !keepBaubles
+                || !MaidConfigManager.isBaublesAllowed()) {
+            return;
+        }
+        try {
+            ListTag items = tlmData.getCompound("MaidBaubleInventory").getList("Items", Tag.TAG_COMPOUND);
+            if (items.isEmpty()) {
+                return;
+            }
+            int currentSlots = Services.PLATFORM.get().baubleGetSlots(maid);
+            if (currentSlots <= 0) {
+                Constants.LOG.warn("[maid_file_manager] 饰品栏不可用，{} 件饰品全部跳过", items.size());
+                return;
+            }
+            int needed = currentSlots;
+            int oversized = 0;
+            for (int i = 0; i < items.size(); i++) {
+                CompoundTag entry = items.getCompound(i);
+                int slot = entry.contains("Slot", Tag.TAG_INT) ? entry.getInt("Slot") : i;
+                // 槽位号取自网络 NBT，绝不可信：负值或越过硬上限按坏数据丢弃，绝不据此扩容
+                if (slot < 0 || slot >= MAX_BAUBLE_SLOTS) {
+                    oversized++;
+                    continue;
+                }
+                if (slot + 1 > needed) {
+                    needed = slot + 1;
+                }
+            }
+            if (oversized > 0) {
+                Constants.LOG.warn("[maid_file_manager] 饰品数据含 {} 个非法槽位号（硬上限 {} 槽），对应饰品已丢弃",
+                        oversized, MAX_BAUBLE_SLOTS);
+            }
+            if (needed > currentSlots) {
+                // setSize 必须在写入前一次性完成（会重建槽位列表）
+                Services.PLATFORM.get().baubleResize(maid, needed);
+                currentSlots = needed;
+                Constants.LOG.debug("[maid_file_manager] 饰品栏扩容至 {} 槽", needed);
+            }
+            int restored = 0;
+            int droppedForeign = 0;
+            int droppedMissing = 0;
+            int droppedFailed = 0;
+            for (int i = 0; i < items.size(); i++) {
+                CompoundTag entry = items.getCompound(i);
+                try {
+                    int slot = entry.contains("Slot", Tag.TAG_INT) ? entry.getInt("Slot") : i;
+                    // 硬上限外的非法槽位已在第一遍计入 oversized 并 WARN，这里直接跳过，避免同一批条目被重复计数
+                    if (slot < 0 || slot >= MAX_BAUBLE_SLOTS) {
+                        continue;
+                    }
+                    if (slot >= currentSlots) {
+                        droppedFailed++;
+                        continue;
+                    }
+                    String id = entry.contains("id", Tag.TAG_STRING) ? entry.getString("id") : "";
+                    if (id.isEmpty()) {
+                        droppedFailed++;
+                        continue;
+                    }
+                    String namespace = namespaceOf(id);
+                    if (!"touhou_little_maid".equals(namespace)
+                            && !"touhou_little_maid_spell".equals(namespace)) {
+                        droppedForeign++;
+                        continue;
+                    }
+                    Item item = resolveItem(id);
+                    if (item == null || Items.AIR.equals(item)) {
+                        droppedMissing++;
+                        continue;
+                    }
+                    int count = 1;
+                    if (entry.contains("Count", Tag.TAG_ANY_NUMERIC)) {
+                        count = entry.getInt("Count");
+                    } else if (entry.contains("count", Tag.TAG_ANY_NUMERIC)) {
+                        count = entry.getInt("count");
+                    }
+                    count = Math.max(1, count);
+                    ItemStack fresh = new ItemStack(item, count);
+                    fresh.setCount(Math.min(count, fresh.getMaxStackSize()));
+                    Services.PLATFORM.get().baubleSetStack(maid, slot, fresh);
+                    restored++;
+                } catch (Throwable t) {
+                    droppedFailed++;
+                    Constants.LOG.warn("[maid_file_manager] 单件饰品恢复失败，跳过: {}", t.toString());
+                }
+            }
+            Constants.LOG.info("[maid_file_manager] 饰品恢复完成: 成功={} 非白名单={} 目标世界缺失={} 失败={} 非法槽位={}",
+                    restored, droppedForeign, droppedMissing, droppedFailed, oversized);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 饰品整体恢复失败（不影响女仆导入）: {}", t.toString());
+        }
+    }
+
+    private static String namespaceOf(String id) {
+        int colon = id.indexOf(':');
+        return colon >= 0 ? id.substring(0, colon) : "minecraft";
+    }
+
+    private static Item resolveItem(String id) {
+        try {
+            net.minecraft.resources.ResourceLocation rl = net.minecraft.resources.ResourceLocation.tryParse(id);
+            return rl == null ? null
+                    : net.minecraft.core.registries.BuiltInRegistries.ITEM.getOptional(rl).orElse(null);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 解析物品 {} 失败: {}", id, t.toString());
+            return null;
+        }
+    }
+
+    private static void rebuildAttributesAndModel(EntityMaid maid, MaidFileData data,
+                                                  boolean sourceStruckByLightning) {
+        int favorability = maid.getFavorability();
+        // 好感等级与属性曲线直接委托 TLM 公开 API，避免硬编码表随 TLM 改版漂移
+        FavorabilityManager manager = maid.getFavorabilityManager();
+        int level = manager.getLevel();
+        int healthByLevel = manager.getHealthByLevel(level);
+        int attackByLevel = manager.getAttackByLevel(level);
+        if (maid.isStruckByLightning() || sourceStruckByLightning) {
+            healthByLevel += 20;
+        }
+        AttributeInstance health = maid.getAttribute(Attributes.MAX_HEALTH);
+        if (health != null) {
+            health.setBaseValue(healthByLevel);
+            if (maid.getHealth() > maid.getMaxHealth()) {
+                maid.setHealth(maid.getMaxHealth());
+            }
+        }
+        AttributeInstance attack = maid.getAttribute(Attributes.ATTACK_DAMAGE);
+        if (attack != null) {
+            attack.setBaseValue(attackByLevel);
+        }
+        Constants.LOG.debug("[maid_file_manager] 重建属性: fav={} level={} health={} attack={}",
+                favorability, level, healthByLevel, attackByLevel);
+        if (data != null && data.getModelId() != null && !data.getModelId().isEmpty()
+                && !data.getModelId().equals(maid.getModelId())) {
+            maid.setModelId(data.getModelId());
+        }
+    }
+
+    private static void validateMaidAttributes(EntityMaid maid) {
+        double baseCap = MAID_MAX_HEALTH + (maid.isStruckByLightning() ? 20.0D : 0.0D);
+        double currentMax = maid.getAttributeValue(Attributes.MAX_HEALTH);
+        double effectiveCap = Math.min(Math.max(baseCap, currentMax), ABSOLUTE_MAX_HEALTH_CAP);
+        AttributeInstance healthAttr = maid.getAttribute(Attributes.MAX_HEALTH);
+        if (healthAttr != null) {
+            double maxHealth = healthAttr.getBaseValue();
+            if (maxHealth > effectiveCap) {
+                Constants.LOG.warn("[maid_file_manager] 血量上限 {} 超限，截断到 {}", maxHealth, effectiveCap);
+                healthAttr.setBaseValue(effectiveCap);
+                if (maid.getHealth() > effectiveCap) {
+                    maid.setHealth((float) effectiveCap);
+                }
+            }
+        }
+        AttributeInstance attackAttr = maid.getAttribute(Attributes.ATTACK_DAMAGE);
+        if (attackAttr != null) {
+            double attackDamage = attackAttr.getBaseValue();
+            if (attackDamage <= 0 || attackDamage > MAID_MAX_ATTACK_DAMAGE) {
+                Constants.LOG.warn("[maid_file_manager] 攻击伤害 {} 异常，回退默认值 {}",
+                        attackDamage, MAID_DEFAULT_ATTACK_DAMAGE);
+                attackAttr.setBaseValue(MAID_DEFAULT_ATTACK_DAMAGE);
+            }
+        }
+    }
+
+    private static void ensureSchedulePosNonNull(EntityMaid maid) {
+        try {
+            BlockPos pos = maid.blockPosition();
+            SchedulePos schedulePos = maid.getSchedulePos();
+            schedulePos.setWorkPos(pos);
+            schedulePos.setIdlePos(pos);
+            schedulePos.setSleepPos(pos);
+            schedulePos.setDimension(maid.level().dimension().location());
+            schedulePos.setConfigured(false);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] SchedulePos 初始化失败: {}", t.toString());
+        }
     }
 
     private static void registerMaidWorldData(EntityMaid maid) {
@@ -1633,335 +995,11 @@ public final class MaidTransferService {
                 MaidWorldData data = MaidWorldData.get(maid.level());
                 if (data != null) {
                     data.addInfo(maid);
-                    Constants.LOG.info("[maid_file_manager] registered MaidWorldData: maidUuid={}, ownerUuid={}",
-                            maid.getUUID(), maid.getOwnerUUID());
                 }
             }
         } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] registerMaidWorldData failed: {}", t.toString());
+            Constants.LOG.warn("[maid_file_manager] 注册 MaidWorldData 失败: {}", t.toString());
         }
-    }
-
-    private static void ensureSchedulePosNonNull(EntityMaid maid) {
-        try {
-            BlockPos safePos = maid.blockPosition();
-            var schedulePos = maid.getSchedulePos();
-            schedulePos.setWorkPos(safePos);
-            schedulePos.setIdlePos(safePos);
-            schedulePos.setSleepPos(safePos);
-            schedulePos.setDimension(maid.level().dimension().location());
-            schedulePos.setConfigured(false);
-            Constants.LOG.info("[maid_file_manager] ensureSchedulePosNonNull ok at {}, dim={}",
-                    safePos, maid.level().dimension().location());
-        } catch (Throwable t) {
-            try {
-                BlockPos safePos = maid.blockPosition();
-                var schedulePos = maid.getSchedulePos();
-                for (String field : new String[]{"workPos", "idlePos", "sleepPos"}) {
-                    try {
-                        var f = schedulePos.getClass().getDeclaredField(field);
-                        f.setAccessible(true);
-                        f.set(schedulePos, safePos);
-                    } catch (Throwable ignored) {}
-                }
-                try {
-                    var fDim = schedulePos.getClass().getDeclaredField("dimension");
-                    fDim.setAccessible(true);
-                    fDim.set(schedulePos, maid.level().dimension().location());
-                } catch (Throwable ignored) {}
-                try {
-                    var fCfg = schedulePos.getClass().getDeclaredField("configured");
-                    fCfg.setAccessible(true);
-                    fCfg.set(schedulePos, false);
-                } catch (Throwable ignored) {}
-                Constants.LOG.info("[maid_file_manager] ensureSchedulePosNonNull (reflect) ok at {}", safePos);
-            } catch (Throwable t2) {
-                Constants.LOG.warn("[maid_file_manager] ensureSchedulePosNonNull BOTH FAILED: {} / {}",
-                        t.toString(), t2.toString());
-            }
-        }
-    }
-
-    private static void ensurePersistence(EntityMaid maid) {
-        maid.setPersistenceRequired();
-        Constants.LOG.info("[maid_file_manager] ensurePersistence: tame={}, persistenceRequired={}",
-                maid.isTame(), maid.isPersistenceRequired());
-    }
-
-    /**
-     * 导入后调试：记录实体状态并启动 tick 监控。
-     * Forge 1.20 中实体可能在 tick 阶段被移除（TLM 内部逻辑）。
-     */
-    private static void postImportDebug(EntityMaid maid, Level level) {
-        try {
-            Constants.LOG.info("[maid_file_manager] postImportDebug: uuid={}, alive={}, removed={}, pos={}",
-                    maid.getUUID(), maid.isAlive(), maid.isRemoved(), maid.blockPosition());
-
-            // 注册到监控系统（使用实体引用）
-            monitoredMaids.put(maid, System.currentTimeMillis());
-            Constants.LOG.info("[maid_file_manager] Entity registered for tick monitoring: uuid={}", maid.getUUID());
-
-            // 启动 tick 监听器（如果尚未启动）
-            if (!tickListenerRegistered) {
-                registerTickListener();
-            }
-        } catch (Throwable t) {
-            Constants.LOG.error("[maid_file_manager] postImportDebug failed", t);
-        }
-    }
-
-    /**
-     * 注册服务端 tick 监听器。
-     * 由于 Forge 1.20 事件总线的复杂性，这里使用更简单的方式：
-     * 在 importMaid 中直接记录 tick 时间戳，由 Mod 主类在 ServerTickEvent 中检查。
-     */
-    private static synchronized void registerTickListener() {
-        if (tickListenerRegistered) return;
-        try {
-            // 不直接注册事件监听器，而是设置一个标记
-            // Forge 事件注册将在 MaidFileModForge 中完成
-            tickListenerRegistered = true;
-            Constants.LOG.info("[maid_file_manager] Tick monitoring system initialized (listeners registered in mod constructor)");
-        } catch (Throwable t) {
-            Constants.LOG.error("[maid_file_manager] registerTickListener failed: {}", t.toString());
-        }
-    }
-
-    /**
-     * 处理服务端 tick，检查监控中的实体状态。
-     * 由 MaidFileModForge.onServerTick() 调用。
-     */
-    public static void onServerTick() {
-        handleServerTick();
-    }
-
-    /**
-     * 处理服务端 tick，检查监控中的实体状态（内部实现）。
-     * 关键：如果实体被标记为 removed，立即清除其 removal reason。
-     */
-    private static void handleServerTick() {
-        tickCounter++;
-        // 每 5 tick (0.25秒) 检查一次，更频繁地保护
-        if (tickCounter % 5 != 0) return;
-
-        if (monitoredMaids.isEmpty()) return;
-
-        Constants.LOG.info("[maid_file_manager] === Tick Check (tick={}, monitored={}) ===",
-                tickCounter, monitoredMaids.size());
-
-        List<EntityMaid> toRemove = new ArrayList<>();
-        for (EntityMaid maid : monitoredMaids.keySet()) {
-            try {
-                // 检查引用是否仍然有效
-                if (maid == null) {
-                    Constants.LOG.warn("[maid_file_manager] MONITORED MAID: null reference!");
-                    toRemove.add(maid);
-                    continue;
-                }
-
-                // 检查实体状态
-                boolean alive = maid.isAlive();
-                boolean removed = maid.isRemoved();
-                boolean persistent = checkPersistence(maid);
-
-                Constants.LOG.info("[maid_file_manager] MONITORED MAID: uuid={}, alive={}, removed={}, persistent={}",
-                        maid.getUUID(), alive, removed, persistent);
-
-                // 如果实体被标记为 removed，立即清除
-                if (removed) {
-                    Constants.LOG.warn("[maid_file_manager] MAID IS REMOVED! uuid={}", maid.getUUID());
-                    clearRemovalReason(maid);
-                    // 清除后再次检查
-                    removed = maid.isRemoved();
-                    Constants.LOG.info("[maid_file_manager] After clearing: removed={}", removed);
-                }
-
-                // 如果实体不健康，恢复生命值
-                if (alive && maid.getHealth() < maid.getMaxHealth() * 0.5f) {
-                    maid.setHealth(maid.getMaxHealth());
-                    Constants.LOG.info("[maid_file_manager] Restored health for uuid={}", maid.getUUID());
-                }
-
-                // 强制设置持久化
-                if (!persistent) {
-                    forcePersistence(maid);
-                }
-
-                // 检查实体是否仍在 Level 中
-                if (maid.level() != null) {
-                    // Forge 1.20: getEntity(int) 接受的是 entityId 而不是 UUID
-                    // 直接使用实体引用检查是否仍然有效
-                    if (maid.isRemoved()) {
-                        Constants.LOG.warn("[maid_file_manager] MAID IS MARKED REMOVED! uuid={}", maid.getUUID());
-                    }
-                }
-
-            } catch (Throwable t) {
-                Constants.LOG.error("[maid_file_manager] Error checking maid: {}", t.toString(), t);
-            }
-        }
-
-        // 清理已死亡的实体引用（但保持监控以尝试复活）
-        // 不立即移除监控，给实体一个恢复的机会
-    }
-
-    /**
-     * 检查实体的持久化状态。
-     */
-    private static boolean checkPersistence(EntityMaid maid) {
-        try {
-            // 方法1: 使用公共方法
-            return maid.isPersistenceRequired();
-        } catch (Throwable ignored) {
-        }
-
-        try {
-            // 方法2: 反射检查字段
-            for (java.lang.reflect.Field f : Entity.class.getDeclaredFields()) {
-                if (f.getType() == boolean.class) {
-                    String name = f.getName().toLowerCase();
-                    if (name.contains("persistent") || name.contains("save")) {
-                        f.setAccessible(true);
-                        return f.getBoolean(maid);
-                    }
-                }
-            }
-        } catch (Throwable ignored) {
-        }
-
-        return false;
-    }
-
-    /**
-     * 强制设置实体持久化。
-     */
-    private static void forcePersistence(EntityMaid maid) {
-        // 方法1: 公共方法
-        try {
-            maid.setPersistenceRequired();
-            Constants.LOG.info("[maid_file_manager] Force persistence via method: {}", maid.isPersistenceRequired());
-            if (maid.isPersistenceRequired()) return;
-        } catch (Throwable ignored) {
-        }
-
-        // 方法2: 直接设置字段
-        try {
-            setPersistenceDirect(maid, true);
-            Constants.LOG.info("[maid_file_manager] Force persistence via field: {}", checkPersistence(maid));
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] forcePersistence failed: {}", t.toString());
-        }
-    }
-
-    /**
-     * 清除实体的 removal reason。
-     */
-    private static void clearRemovalReason(EntityMaid maid) {
-        // 方法1: 尝试 setRemovalReason(null)
-        try {
-            java.lang.reflect.Method m = Entity.class.getMethod("setRemovalReason", net.minecraft.world.entity.Entity.RemovalReason.class);
-            m.invoke(maid, (Object) null);
-            Constants.LOG.info("[maid_file_manager] Cleared removal via setRemovalReason(null)");
-            return;
-        } catch (NoSuchMethodException ignored) {
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] setRemovalReason failed: {}", t.toString());
-        }
-
-        // 方法2: 查找任何设置 removal 的方法
-        try {
-            for (java.lang.reflect.Method m : Entity.class.getDeclaredMethods()) {
-                if (m.getName().toLowerCase().contains("removal") && m.getParameterCount() <= 1) {
-                    m.setAccessible(true);
-                    if (m.getParameterCount() == 0) {
-                        m.invoke(maid);
-                    } else {
-                        m.invoke(maid, (Object) null);
-                    }
-                    Constants.LOG.info("[maid_file_manager] Cleared removal via {}.{}", Entity.class.getSimpleName(), m.getName());
-                    return;
-                }
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] Method search failed: {}", t.toString());
-        }
-
-        // 方法3: 直接修改 removed 字段
-        try {
-            for (java.lang.reflect.Field f : Entity.class.getDeclaredFields()) {
-                if (f.getType() == boolean.class && (f.getName().contains("removed") || f.getName().contains("Removal"))) {
-                    f.setAccessible(true);
-                    f.setBoolean(maid, false);
-                    Constants.LOG.info("[maid_file_manager] Set removed=false via field: {}", f.getName());
-                    return;
-                }
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] Field modification failed: {}", t.toString());
-        }
-
-        // 方法4: 搜索所有 boolean 字段中与 removed 相关的
-        try {
-            for (java.lang.reflect.Field f : Entity.class.getDeclaredFields()) {
-                if (f.getType() == boolean.class) {
-                    String name = f.getName().toLowerCase();
-                    if (name.contains("remove") || name.contains("despawn") || name.contains("discard")) {
-                        f.setAccessible(true);
-                        f.setBoolean(maid, false);
-                        Constants.LOG.info("[maid_file_manager] Set {}=false via field search", f.getName());
-                        return;
-                    }
-                }
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] Fallback field search failed: {}", t.toString());
-        }
-    }
-
-    /**
-     * 通过 UUID 在所有服务器级别中查找实体。
-     */
-    private static Entity findEntityByUUID(UUID uuid) {
-        try {
-            // 获取 MinecraftServer 的所有级别
-            Class<?> serverClass = Class.forName("net.minecraft.server.MinecraftServer");
-            Object server = null;
-
-            // 尝试获取服务器实例
-            try {
-                java.lang.reflect.Method getServer = serverClass.getMethod("getInstance");
-                server = getServer.invoke(null);
-            } catch (NoSuchMethodException ignored) {
-                // 回退：通过字段查找
-                for (java.lang.reflect.Field f : serverClass.getDeclaredFields()) {
-                    if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) && f.getType() == serverClass) {
-                        f.setAccessible(true);
-                        server = f.get(null);
-                        break;
-                    }
-                }
-            }
-
-            if (server == null) {
-                return null;
-            }
-
-            // 获取所有级别
-            java.lang.reflect.Method getLevels = serverClass.getMethod("getAllLevels");
-            Iterable<?> levels = (Iterable<?>) getLevels.invoke(server);
-
-            for (Object level : levels) {
-                if (level instanceof net.minecraft.server.level.ServerLevel serverLevel) {
-                    Entity entity = serverLevel.getEntity(uuid);
-                    if (entity != null) {
-                        return entity;
-                    }
-                }
-            }
-        } catch (Throwable t) {
-            Constants.LOG.debug("[maid_file_manager] findEntityByUUID failed: {}", t.toString());
-        }
-        return null;
     }
 
     private static BlockPos findSafeSpawnPos(Level level, BlockPos start) {
@@ -1973,18 +1011,16 @@ public final class MaidTransferService {
             if (feetBlock.isCollisionShapeFullBlock(level, feet)
                     && headBlock.isAir()
                     && level.getBlockState(head.above()).isAir()) {
-                return feet.above();
+                return head;
             }
         }
         return null;
     }
 
-    public static List<String> listImportableFiles(ServerPlayer player) {
-        Path gameDir = Services.PLATFORM.getGameDir().toAbsolutePath();
-        Path dir = MaidFileIo.ensureImportsDir(gameDir);
-        return MaidFileIo.listMaidFiles(dir);
-    }
-
+    /**
+     * 主人匹配：UUID 精确 > 在线玩家名 > 未驯服。
+     * 1.20.x 的 setTame 为单参签名（仅是否驯服）。
+     */
     private static boolean matchOwner(EntityMaid maid, ServerPlayer player, MaidFileData data) {
         if (!data.isTamed()) {
             maid.setTame(false);
@@ -1998,20 +1034,18 @@ public final class MaidTransferService {
                     maid.setTame(true);
                     return true;
                 }
-                PlayerList playerList = player.server.getPlayerList();
-                ServerPlayer owner = playerList.getPlayer(uuid);
+                ServerPlayer owner = player.getServer().getPlayerList().getPlayer(uuid);
                 if (owner != null) {
                     maid.setOwnerUUID(uuid);
                     maid.setTame(true);
                     return true;
                 }
             } catch (IllegalArgumentException e) {
-                Constants.LOG.warn("[maid_file_manager] 无效的 owner UUID: {}", data.getOwnerUuid());
+                Constants.LOG.warn("[maid_file_manager] 无效的主人 UUID: {}", data.getOwnerUuid());
             }
         }
         if (data.getOwnerName() != null && !data.getOwnerName().isEmpty()) {
-            PlayerList playerList = player.server.getPlayerList();
-            ServerPlayer owner = playerList.getPlayerByName(data.getOwnerName());
+            ServerPlayer owner = player.getServer().getPlayerList().getPlayerByName(data.getOwnerName());
             if (owner != null) {
                 maid.setOwnerUUID(owner.getUUID());
                 maid.setTame(true);
@@ -2023,28 +1057,59 @@ public final class MaidTransferService {
         return false;
     }
 
-    private static void clearInventoryItems(CompoundTag root, String key) {
-        if (!root.contains(key, Tag.TAG_COMPOUND)) {
-            return;
+    /**
+     * 查找女仆原主人的在线 ServerPlayer（用于成就合并应用）。
+     * 逻辑与 matchOwner 一致：UUID 精确 > 在线玩家名 > null。
+     */
+    private static ServerPlayer findOriginalOwner(ServerPlayer player, MaidFileData data) {
+        if (data.getOwnerUuid() != null) {
+            try {
+                UUID uuid = UUID.fromString(data.getOwnerUuid());
+                if (uuid.equals(player.getUUID())) {
+                    return player;
+                }
+                return player.getServer().getPlayerList().getPlayer(uuid);
+            } catch (IllegalArgumentException ignored) {
+            }
         }
-        CompoundTag invTag = root.getCompound(key);
-        invTag.put("Items", new ListTag());
+        if (data.getOwnerName() != null && !data.getOwnerName().isEmpty()) {
+            return player.getServer().getPlayerList().getPlayerByName(data.getOwnerName());
+        }
+        return null;
     }
 
-    private static void clearHandItems(CompoundTag root) {
-        if (!root.contains("HandItems", Tag.TAG_LIST)) {
-            return;
-        }
-        ListTag handItems = root.getList("HandItems", Tag.TAG_COMPOUND);
-        for (int i = 0; i < handItems.size(); i++) {
-            CompoundTag empty = new CompoundTag();
-            empty.putString("id", "minecraft:air");
-            empty.putInt("count", 0);
-            handItems.set(i, empty);
-        }
-    }
+    // ============================ 批量结果汇总（全平台共用，禁止在平台层反解文案） ============================
 
-    public static Logger logger() {
-        return Constants.LOG;
+    /**
+     * 把多条结构化导入结果汇总为一条展示文案。
+     * 成功/失败统计只基于 {@link ImportResult.State}，与语言无关。
+     */
+    public static Component buildBatchSummary(List<ImportResult> results) {
+        int ok = 0;
+        int untamed = 0;
+        int blocked = 0;
+        int failed = 0;
+        boolean baublesStripped = false;
+        for (ImportResult r : results) {
+            switch (r.state()) {
+                case OK -> ok++;
+                case OK_UNTAMED -> untamed++;
+                case SERVER_DISALLOWED -> blocked++;
+                case FAILED -> failed++;
+            }
+            baublesStripped |= r.baublesStripped();
+        }
+        StringBuilder sb = new StringBuilder(String.format(java.util.Locale.ROOT,
+                "批量导入完成：成功 %d 个，失败 %d 个", ok + untamed, blocked + failed));
+        if (untamed > 0) {
+            sb.append(String.format(java.util.Locale.ROOT, "（其中 %d 个未匹配到主人，已生成为野生女仆）", untamed));
+        }
+        if (blocked > 0) {
+            sb.append("。失败原因：服务器已禁止导入女仆（管理员可在服务端设置中开启「允许客户端导入女仆」）");
+        }
+        if (baublesStripped) {
+            sb.append("。服务端未开启饰品导入，本次导入的女仆均未携带饰品");
+        }
+        return Component.literal(sb.toString());
     }
 }

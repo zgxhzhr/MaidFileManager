@@ -21,8 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <ul>
  *   <li>服务端配置 {@code config/maid_file_manager-server.properties}（专用服务器=服务器根目录；局域网联机=宿主 gameDir）：
  *     <ul>
- *       <li>{@code allow_client_import}：是否允许客户端导入女仆（默认 true）</li>
- *       <li>{@code allow_baubles}：导入时是否允许携带饰品（默认 true）</li>
+ *       <li>{@code allow_client_import}：是否允许客户端导入女仆（默认开启）</li>
+ *       <li>{@code allow_baubles}：导入时是否允许携带饰品（默认开启）</li>
  *     </ul>
  *   </li>
  *   <li>客户端配置 {@code config/maid_file_manager-client.properties}：
@@ -44,12 +44,18 @@ public final class MaidConfigManager {
     public static final String KEY_ALLOW_CLIENT_IMPORT = "allow_client_import";
     /** 服务端配置键：导入时允许携带饰品 */
     public static final String KEY_ALLOW_BAUBLES = "allow_baubles";
+    /** 服务端配置键：导入时允许一并转移 TLM 成就 */
+    public static final String KEY_ALLOW_ADVANCEMENTS = "allow_advancements";
+    /** 服务端配置键：导入时允许恢复药水效果到实体（关闭则效果保留在持久化标签，不恢复到实体） */
+    public static final String KEY_ALLOW_EFFECTS = "allow_effects";
     /** 客户端配置键：允许服务端统一导出你的女仆 */
     public static final String KEY_ALLOW_SERVER_EXPORT = "allow_server_export";
 
-    /** 服务端配置内存值（volatile 保证跨线程可见：网络线程写、服务端逻辑线程读）；默认禁止（安全优先） */
-    private static volatile boolean serverAllowClientImport = false;
-    private static volatile boolean serverAllowBaubles = false;
+    /** 服务端配置内存值（volatile 保证跨线程可见：网络线程写、服务端逻辑线程读）；默认开启（方便单人玩家） */
+    private static volatile boolean serverAllowClientImport = true;
+    private static volatile boolean serverAllowBaubles = true;
+    private static volatile boolean serverAllowAdvancements = true;
+    private static volatile boolean serverAllowEffects = true;
     /** 客户端配置内存值 */
     private static volatile boolean clientAllowServerExport = false;
     /** 服务端侧记录的各客户端同意状态（UUID → allowServerExport），登录默认 false */
@@ -81,6 +87,16 @@ public final class MaidConfigManager {
         return serverAllowBaubles;
     }
 
+    /** 导入时是否允许一并转移 TLM 成就 */
+    public static boolean isAdvancementsAllowed() {
+        return serverAllowAdvancements;
+    }
+
+    /** 导入时是否允许恢复药水效果到实体 */
+    public static boolean isEffectsAllowed() {
+        return serverAllowEffects;
+    }
+
     /** 指定玩家是否同意服务端统一导出（默认 false） */
     public static boolean getClientConsent(UUID playerId) {
         return CLIENT_CONSENT.getOrDefault(playerId, false);
@@ -96,17 +112,26 @@ public final class MaidConfigManager {
         CLIENT_CONSENT.put(playerId, allow);
     }
 
-    /** 服务端修改配置（C2S 包处理，调用方已做 OP 权限校验） */
-    public static synchronized void setServerConfig(String key, boolean value) {
+    /**
+     * 服务端修改配置（C2S 包处理，调用方已做 OP 权限校验）。
+     *
+     * @return true=配置键合法且已生效；false=未知键，调用方须回执失败且不得触发全服广播
+     */
+    public static synchronized boolean setServerConfig(String key, boolean value) {
         if (KEY_ALLOW_CLIENT_IMPORT.equals(key)) {
             serverAllowClientImport = value;
         } else if (KEY_ALLOW_BAUBLES.equals(key)) {
             serverAllowBaubles = value;
+        } else if (KEY_ALLOW_ADVANCEMENTS.equals(key)) {
+            serverAllowAdvancements = value;
+        } else if (KEY_ALLOW_EFFECTS.equals(key)) {
+            serverAllowEffects = value;
         } else {
             Constants.LOG.warn("[女仆文件管理] 收到未知服务端配置键: {}", key);
-            return;
+            return false;
         }
         saveServer();
+        return true;
     }
 
     // ==================== 客户端配置 ====================
@@ -128,9 +153,12 @@ public final class MaidConfigManager {
     }
 
     /** 客户端收到服务端配置同步（S2C 包处理）：更新本地缓存并回发同意状态 */
-    public static void handleServerConfigSync(boolean allowImport, boolean allowBaubles) {
+    public static void handleServerConfigSync(boolean allowImport, boolean allowBaubles, boolean allowAdvancements,
+                                              boolean allowEffects) {
         serverAllowClientImport = allowImport;
         serverAllowBaubles = allowBaubles;
+        serverAllowAdvancements = allowAdvancements;
+        serverAllowEffects = allowEffects;
         IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
         if (net != null) {
             net.sendClientConsent(clientAllowServerExport);
@@ -146,6 +174,16 @@ public final class MaidConfigManager {
         return serverAllowBaubles;
     }
 
+    /** 客户端读取服务端配置缓存（设置界面显示用） */
+    public static boolean cachedAdvancementsAllowed() {
+        return serverAllowAdvancements;
+    }
+
+    /** 客户端读取服务端配置缓存（设置界面显示用） */
+    public static boolean cachedEffectsAllowed() {
+        return serverAllowEffects;
+    }
+
     // ==================== 文件 IO ====================
 
     private static void loadServer() {
@@ -155,8 +193,10 @@ public final class MaidConfigManager {
         } catch (IOException ignored) {
             // 文件不存在时使用默认值
         }
-        serverAllowClientImport = parse(props, KEY_ALLOW_CLIENT_IMPORT, false);
-        serverAllowBaubles = parse(props, KEY_ALLOW_BAUBLES, false);
+        serverAllowClientImport = parse(props, KEY_ALLOW_CLIENT_IMPORT, true);
+        serverAllowBaubles = parse(props, KEY_ALLOW_BAUBLES, true);
+        serverAllowAdvancements = parse(props, KEY_ALLOW_ADVANCEMENTS, true);
+        serverAllowEffects = parse(props, KEY_ALLOW_EFFECTS, true);
     }
 
     private static void loadClient() {
@@ -164,6 +204,7 @@ public final class MaidConfigManager {
         try (Reader reader = Files.newBufferedReader(clientConfigFile, StandardCharsets.UTF_8)) {
             props.load(reader);
         } catch (IOException ignored) {
+            // 首次运行配置文件尚不存在属正常情况：props 保持为空，下方 parse 全部走默认值（默认拒绝），无需告警
         }
         clientAllowServerExport = parse(props, KEY_ALLOW_SERVER_EXPORT, false);
     }
@@ -172,6 +213,8 @@ public final class MaidConfigManager {
         Properties props = new Properties();
         props.setProperty(KEY_ALLOW_CLIENT_IMPORT, String.valueOf(serverAllowClientImport));
         props.setProperty(KEY_ALLOW_BAUBLES, String.valueOf(serverAllowBaubles));
+        props.setProperty(KEY_ALLOW_ADVANCEMENTS, String.valueOf(serverAllowAdvancements));
+        props.setProperty(KEY_ALLOW_EFFECTS, String.valueOf(serverAllowEffects));
         store(props, serverConfigFile, "Maid File Manager server config (edited via in-game settings, OP only)");
     }
 
@@ -181,13 +224,20 @@ public final class MaidConfigManager {
         store(props, clientConfigFile, "Maid File Manager client config");
     }
 
+    /** 原子写：先写 .tmp 再移动替换，避免写一半崩溃导致配置文件损坏丢失全部设置 */
     private static void store(Properties props, Path file, String comment) {
         try {
             if (file.getParent() != null) {
                 Files.createDirectories(file.getParent());
             }
-            try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
+            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+            try (Writer writer = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
                 props.store(writer, comment);
+            }
+            try {
+                Files.move(tmp, file, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
             Constants.LOG.error("[女仆文件管理] 保存配置文件失败: {}", file, e);
