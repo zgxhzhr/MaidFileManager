@@ -27,18 +27,11 @@ public final class FabricNetwork implements IMaidFileNetwork {
     }
 
     @Override
-    public void sendImportFile(MaidFileData data, boolean keepBaubles) {
-        FriendlyByteBuf buf = MaidPayload.buffer();
-        MaidFilePackets.writeMaidFileData(buf, data);
-        buf.writeBoolean(keepBaubles);
-        sendC2S(MaidFilePackets.ID_IMPORT_FILE, buf);
-    }
-
-    @Override
-    public void sendImportFiles(List<MaidFileData> dataList, boolean keepBaubles) {
+    public void sendImportFiles(List<MaidFileData> dataList, boolean keepBaubles, boolean deleteAfterImport) {
         FriendlyByteBuf buf = MaidPayload.buffer();
         MaidFilePackets.writeMaidFileDataList(buf, dataList);
         buf.writeBoolean(keepBaubles);
+        buf.writeBoolean(deleteAfterImport);
         sendC2S(MaidFilePackets.ID_IMPORT_BATCH, buf);
     }
 

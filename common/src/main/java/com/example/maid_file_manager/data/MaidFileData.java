@@ -53,6 +53,10 @@ public class MaidFileData {
     private String modelId;
     /** 模型显示名（中文名），用于导出文件命名 */
     private String displayName;
+    /** 源玩家 TLM 成就数据（仅命名空间 touhou_little_maid 的已完成成就），可空 */
+    private CompoundTag advancements;
+    /** 药水效果 NBT（从 ActiveEffects 提取，始终序列化，不受配置影响），可空 */
+    private CompoundTag effects;
 
     public MaidFileData() {
     }
@@ -80,6 +84,12 @@ public class MaidFileData {
         }
         if (displayName != null) {
             root.putString("display_name", displayName);
+        }
+        if (advancements != null) {
+            root.put("advancements", advancements);
+        }
+        if (effects != null) {
+            root.put("effects", effects);
         }
         return root;
     }
@@ -119,6 +129,15 @@ public class MaidFileData {
         if (root.contains("display_name", Tag.TAG_STRING)) {
             data.displayName = root.getString("display_name");
         }
+        // v3 新增：成就数据（旧 v2 文件无此字段，容错为 null）
+        if (root.contains("advancements", Tag.TAG_COMPOUND)) {
+            data.advancements = root.getCompound("advancements");
+        }
+        // v4 药水效果字段（旧 v3 文件无此字段，容错处理）
+        if (root.contains("effects", Tag.TAG_COMPOUND)) {
+            data.effects = root.getCompound("effects");
+        }
+        // 旧 v4 文件可能含 spell_maid 键，本次改造已删除该字段，直接忽略（向后兼容）
         return data;
     }
 
@@ -218,5 +237,21 @@ public class MaidFileData {
 
     public void setDataVersion(int dataVersion) {
         this.dataVersion = dataVersion;
+    }
+
+    public CompoundTag getAdvancements() {
+        return advancements;
+    }
+
+    public void setAdvancements(CompoundTag advancements) {
+        this.advancements = advancements;
+    }
+
+    public CompoundTag getEffects() {
+        return effects;
+    }
+
+    public void setEffects(CompoundTag effects) {
+        this.effects = effects;
     }
 }
