@@ -5,7 +5,6 @@ import com.example.maid_file_manager.network.IMaidFileNetwork;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -24,7 +23,8 @@ import java.util.List;
  * <p>分为两个区块：
  * <ul>
  *   <li><b>服务端设置</b>（仅 OP/联机宿主可修改，修改后发包到服务端并广播同步）：
- *     允许客户端导入女仆（默认开）/ 导入时允许携带饰品（默认开）</li>
+ *     允许客户端导入女仆（默认开启）/ 导入时允许携带饰品（默认开启）/ 导入时一并转移女仆相关成就（默认开启）/
+ *     导入时允许恢复药水效果（默认开启；关闭则效果保留在持久化标签但不恢复到实体，防止禁药水服务器丢效果）</li>
  *   <li><b>客户端设置</b>（本人随时可改，写本地配置）：
  *     允许服务端统一导出你的女仆（默认关）</li>
  * </ul>
@@ -72,7 +72,7 @@ public class MaidConfigScreen extends Screen {
 
         // 先按内容结构算出面板高度，再垂直居中
         panelH = 8 + 16 + 4   // 标题
-                + 14 + ROW_H + ROW_H   // 服务端区块标题 + 2 行
+                + 14 + ROW_H + ROW_H + ROW_H + ROW_H   // 服务端区块标题 + 4 行（导入/饰品/成就/药水）
                 + (hasServerPerm ? 0 : 14)   // 无权限提示行（仅无权限时）
                 + 16 + ROW_H   // 客户端区块标题 + 1 行
                 + 12 + 20 + 10;   // 完成按钮 + 底部边距
@@ -93,6 +93,12 @@ public class MaidConfigScreen extends Screen {
         y = addRow(labelX, switchX, y, Component.translatable("gui.maid_file_manager.config.allow_baubles"),
                 MaidConfigManager.cachedBaublesAllowed(), true,
                 MaidConfigManager.KEY_ALLOW_BAUBLES, hasServerPerm);
+        y = addRow(labelX, switchX, y, Component.translatable("gui.maid_file_manager.config.allow_advancements"),
+                MaidConfigManager.cachedAdvancementsAllowed(), true,
+                MaidConfigManager.KEY_ALLOW_ADVANCEMENTS, hasServerPerm);
+        y = addRow(labelX, switchX, y, Component.translatable("gui.maid_file_manager.config.allow_effects"),
+                MaidConfigManager.cachedEffectsAllowed(), true,
+                MaidConfigManager.KEY_ALLOW_EFFECTS, hasServerPerm);
         if (!hasServerPerm) {
             rowLabels.add(new RowLabel(Component.translatable("gui.maid_file_manager.config.no_permission"),
                     labelX, y + 2, SUBTEXT_COLOR));
@@ -129,9 +135,9 @@ public class MaidConfigScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        // ① 先画全屏不透明深色底（把 gui_blur shader 的世界层完全盖死）
+        // ① 全屏不透明深色底（把世界层完全盖死；renderBackground 已空实现，不会有泥土底/模糊层）
         graphics.fill(0, 0, this.width, this.height, SCREEN_BG);
-        // ② 再画主面板 + 边框
+        // ② 主面板 + 边框
         graphics.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, PANEL_BG);
         graphics.renderOutline(panelX, panelY, PANEL_W, panelH, PANEL_BORDER);
         // ③ 标题（禁用阴影，清晰显示）
@@ -141,40 +147,16 @@ public class MaidConfigScreen extends Screen {
         for (RowLabel row : rowLabels) {
             graphics.drawString(this.font, row.text(), row.x(), row.y(), row.color(), false);
         }
-        // ⑤ 子组件（Switch / 完成按钮等）
+        // ⑤ 子组件（滑动开关 / 完成按钮）在面板之上正常绘制一次即可。
+        //    禁止再全屏盖色+反射重绘：Forge 生产环境反射 Screen 私有字段会被模块限制拒绝，
+        //    盖色后滑动开关与按钮全部隐形，是设置界面缺件的根因。
         super.render(graphics, mouseX, mouseY, partialTick);
-        // ⑥ 再盖一次全屏不透明底（兜底：防止 super.render 内部通过 4 参 renderBackground 重新叠加 blur shader 盖过我们已画内容）
-        graphics.fill(0, 0, this.width, this.height, SCREEN_BG);
-        // ⑦ 再次画主面板、标题、行标签（否则会被第 ⑥ 步盖掉）
-        graphics.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, PANEL_BG);
-        graphics.renderOutline(panelX, panelY, PANEL_W, panelH, PANEL_BORDER);
-        graphics.drawString(this.font, this.title,
-                this.width / 2 - this.font.width(this.title) / 2, panelY + 8, HEADER_COLOR, false);
-        for (RowLabel row : rowLabels) {
-            graphics.drawString(this.font, row.text(), row.x(), row.y(), row.color(), false);
-        }
-        // ⑧ 把所有 widget 再画一遍（Switch 的状态/完成按钮）。
-        //    1.21 Screen.renderables 是 private；用反射读（ScreenWidgetAccess 失败时返回空 List → 不重画只轻微 blur，绝不崩）。
-        List<Renderable> widgets = ScreenWidgetAccess.getRenderables(this);
-        for (Renderable w : widgets) {
-            w.render(graphics, mouseX, mouseY, partialTick);
-        }
     }
 
-    /** 打断 Screen 默认的 4 参 renderBackground 调用链（它会 apply gui_blur shader + 画泥土背景） */
+    /** 打断 Screen 默认的 4 参 renderBackground 调用链（1.21.x 会画泥土背景并触发背景模糊） */
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         // 什么都不做 —— 全屏底色 + 面板统一在 render() 开头绘制
-    }
-
-    /** 打断 Screen 默认的单参 renderBackground 调用链 */
-    public void renderBackground(GuiGraphics graphics) {
-        // 什么都不做
-    }
-
-    /** 打断 Screen 默认的泥土背景绘制链路 */
-    public void renderDirtBackground(GuiGraphics graphics) {
-        // 什么都不做
     }
 
     @Override

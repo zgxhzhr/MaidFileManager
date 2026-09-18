@@ -1,13 +1,13 @@
 modLoader="javafml"
 loaderVersion="[4,)"
-license="MIT"
+license="CC0-1.0"
 [[mods]]
 modId="maid_file_manager"
 version="${version}"
 displayName="Maid File Manager"
-authors="..."
+authors="zgxhzhr"
 description='''
-女仆数据导入导出管理器，跨版本兼容 1.20.1 / 1.21+
+女仆数据导入导出管理器，支持 1.21 女仆数据跨版本导入导出
 '''
 
 [[dependencies.maid_file_manager]]
@@ -27,6 +27,6 @@ description='''
 [[dependencies.maid_file_manager]]
     modId="minecraft"
     mandatory=true
-    versionRange="[1.21.1,1.22)"
+    versionRange="[1.21,1.22)"
     ordering="NONE"
     side="BOTH"

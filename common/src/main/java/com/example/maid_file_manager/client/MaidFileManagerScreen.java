@@ -5,11 +5,11 @@ import com.example.maid_file_manager.data.MaidFileData;
 import com.example.maid_file_manager.data.MaidFileIo;
 import com.example.maid_file_manager.data.MaidInfo;
 import com.example.maid_file_manager.network.IMaidFileNetwork;
+import com.example.maid_file_manager.network.MaidFilePackets;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.ObjectSelectionList;
-import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -86,6 +86,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private Button keepMaidsBtn;
     /** 导入 Tab：保留饰品开关（仅车万本体/万法皆通，全新无附魔） */
     private Button keepBaublesBtn;
+    /** 导入 Tab：导入成功后删除源文件开关（默认关闭，危险操作） */
+    private Button deleteImportFileBtn;
     /** 标题栏设置入口（进入 MaidConfigScreen） */
     private Button settingsBtn;
     /** 导出 Tab 全选状态 */
@@ -108,6 +110,13 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private boolean keepMaidsInWorldState;
     /** 导入时是否保留饰品：true=恢复（默认开启），false=不恢复 */
     private boolean keepBaublesState;
+    /** 导入成功后是否删除源文件：true=删除（默认关闭，危险操作） */
+    private boolean deleteImportFileState;
+    /**
+     * 最近一次批量导入实际发送的源文件名（与 dataList/服务端回传 spawned 严格同序）。
+     * 仅在 deleteImportFileState=true 时用于删除本地文件；无效文件在发送前已被跳过，不在此列表中。
+     */
+    private final List<String> pendingImportFileNames = new ArrayList<>();
     /** 当前导出 Tab 被勾选的女仆 entityId（Set 方便 O(1) 查询、去重） */
     private final Set<Integer> selectedMaidIds = new HashSet<>();
     /** 当前导入 Tab 被勾选的文件名（Set 方便 O(1) 查询、去重） */
@@ -186,6 +195,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         int sideY1 = panelY + HEADER_TOTAL_H + 2;          // UI无问题版：第 1 行（全选）起始
         int sideY2 = sideY1 + toolBtnH + rowGap;           // 第 2 行：保留女仆 / 保留饰品
         int sideY3 = sideY2 + toolBtnH + rowGap;           // 第 3 行：打开导出/导入文件夹
+        int sideY4 = sideY3 + toolBtnH + rowGap;           // 第 4 行（仅导入 Tab）：导入后删除源文件
 
         // 行 1：全选（导出/导入 各一，共用 X/Y，Tab 切换 visible）
         selectAllState = false;
@@ -214,8 +224,16 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         keepBaublesBtn.visible = false;
         keepBaublesBtn.active = false;
 
+        // 行 4（仅导入 Tab）：导入成功后删除源文件（默认关闭，危险操作；仅删除服务端确认生成成功的文件）
+        deleteImportFileState = false;
+        deleteImportFileBtn = Button.builder(deleteImportFileLabel(deleteImportFileState),
+                        b -> { deleteImportFileState = !deleteImportFileState; refreshDeleteImportFileLabel(); })
+                .bounds(sideX, sideY4, keepBtnW, toolBtnH).build();
+        deleteImportFileBtn.visible = false;
+        deleteImportFileBtn.active = false;
+
         // 行 3：打开导出/导入文件夹（共用左侧第 3 行位置，Tab 切换 visible）
-        openExportDirBtn = Button.builder(Component.literal("📁 打开导出文件夹"),
+        openExportDirBtn = Button.builder(Component.literal("打开导出文件夹"),
                         b -> onOpenExportDir())
                 .bounds(sideX, sideY3, sideBtnW, toolBtnH).build();
         openImportDirBtn = Button.builder(
@@ -225,7 +243,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
         // 【v4-3Fix 截图3：Tab行左侧大按钮 → 模式动态切换：单独导出→开独立确认界面；统一导出→直接返回单独导出】
         //   与导出/导入 Tab 同高(tabH=20)同Y(tabY)，视觉一体对齐；宽 SERVER_EXPORT_BTN_W=122，左边界 panelX+10
-        serverExportTriggerBtn = Button.builder(Component.literal("🌐 统一导出"),
+        serverExportTriggerBtn = Button.builder(Component.literal("统一导出"),
                         b -> onServerExportButtonClick())
                 .bounds(serverExportBtnX, tabY, SERVER_EXPORT_BTN_W, tabH).build();
 
@@ -248,6 +266,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         addRenderableWidget(keepMaidsBtn);
         addRenderableWidget(selectAllImportBtn);
         addRenderableWidget(keepBaublesBtn);
+        addRenderableWidget(deleteImportFileBtn);
         addRenderableWidget(openExportDirBtn);
         addRenderableWidget(openImportDirBtn);
         addRenderableWidget(serverExportTriggerBtn);
@@ -291,7 +310,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         // 【v4-3Fix 双重保险：直接 setMessage 防止 updateTabSpecificControlsVisibility 因 isOp/时序被跳过】
         if (serverExportTriggerBtn != null && serverExportTriggerBtn.visible) {
             serverExportTriggerBtn.setMessage(Component.literal(
-                    serverExportMode ? "↩ 返回单独导出" : "🌐 统一导出"));
+                    serverExportMode ? "返回单独导出" : "统一导出"));
         }
         refreshCurrentTab();
     }
@@ -316,16 +335,15 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
 
     // ---------- Button 模拟复选框的 label 生成与刷新 ----------
+    // 注意：MC 默认字体不含 ☐/☑ 字形（渲染成空方框），复选框由 drawCheckBox 手绘，消息文本不带前缀
     private static Component selectAllLabel(boolean selected) {
-        String prefix = selected ? "☑ " : "☐ ";
-        return Component.literal(prefix + "全选");
+        return Component.literal("全选");
     }
     /** 保留女仆按钮：默认开启=保留原女仆在世界（友好默认）。 */
     private static Component keepMaidsLabel(boolean keep) {
-        String prefix = keep ? "☑ " : "☐ ";
-        String txt = keep ? "保留原女仆在世界（默认开启）" : "保留原女仆在世界";
+        String txt = "保留原女仆在世界";
         // 金色系：与 UI 木色/标题金色协调，醒目但不刺眼
-        return Component.literal(prefix + txt).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
+        return Component.literal(txt).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
     }
     private void refreshSelectAllLabel() {
         if (selectAllBtn != null) selectAllBtn.setMessage(selectAllLabel(selectAllState));
@@ -338,12 +356,21 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
     /** 保留饰品按钮：默认开启=导入时恢复饰品（仅车万本体/万法皆通，全新无附魔）。 */
     private static Component keepBaublesLabel(boolean keep) {
-        String prefix = keep ? "☑ " : "☐ ";
         String txt = keep ? "保留饰品（默认开启）" : "保留饰品";
-        return Component.literal(prefix + txt).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
+        return Component.literal(txt).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
     }
     private void refreshKeepBaublesLabel() {
         if (keepBaublesBtn != null) keepBaublesBtn.setMessage(keepBaublesLabel(keepBaublesState));
+    }
+    /** 导入后删除源文件按钮：默认关闭；开启时红色提示危险 */
+    private static Component deleteImportFileLabel(boolean delete) {
+        String txt = delete ? "导入后删除文件（已开启）" : "导入后删除文件（默认关闭）";
+        return delete
+                ? Component.literal(txt).withStyle(ChatFormatting.RED, ChatFormatting.BOLD)
+                : Component.literal(txt).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
+    }
+    private void refreshDeleteImportFileLabel() {
+        if (deleteImportFileBtn != null) deleteImportFileBtn.setMessage(deleteImportFileLabel(deleteImportFileState));
     }
 
     /** 根据当前 Tab 显示/隐藏 Tab 专属控件：
@@ -363,6 +390,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         selectAllImportBtn.active = showImport;
         keepBaublesBtn.visible = showImport;
         keepBaublesBtn.active = showImport;
+        deleteImportFileBtn.visible = showImport;
+        deleteImportFileBtn.active = showImport;
         // 工具栏②（打开文件夹按钮）
         openExportDirBtn.visible = showExport;
         openExportDirBtn.active = showExport;
@@ -376,9 +405,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         // 模式动态文字：单独导出→统一导出入口；统一导出→返回单独导出
         if (showExport && isOp) {
             if (serverExportMode) {
-                serverExportTriggerBtn.setMessage(Component.literal("↩ 返回单独导出"));
+                serverExportTriggerBtn.setMessage(Component.literal("返回单独导出"));
             } else {
-                serverExportTriggerBtn.setMessage(Component.literal("🌐 统一导出"));
+                serverExportTriggerBtn.setMessage(Component.literal("统一导出"));
             }
         }
     }
@@ -437,60 +466,60 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
 
     private void onOpenImportDir() {
-        try {
-            File dir = new File(this.minecraft.gameDirectory, Constants.MAID_IMPORTS_DIR);
-            if (!dir.exists()) {
-                dir.mkdirs();
-            }
-            if (Desktop.isDesktopSupported()) {
-                Desktop.getDesktop().open(dir);
-            } else {
-                String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-                ProcessBuilder pb;
-                if (os.contains("win")) {
-                    pb = new ProcessBuilder("explorer", dir.getAbsolutePath());
-                } else if (os.contains("mac")) {
-                    pb = new ProcessBuilder("open", dir.getAbsolutePath());
-                } else {
-                    pb = new ProcessBuilder("xdg-open", dir.getAbsolutePath());
-                }
-                pb.start();
-            }
-            Constants.LOG.info("[maid_file_manager] Opened import dir: {}", dir.getAbsolutePath());
-        } catch (Exception e) {
-            Constants.LOG.error("[maid_file_manager] Failed to open import dir", e);
+        File dir = new File(this.minecraft.gameDirectory, Constants.MAID_IMPORTS_DIR);
+        if (!dir.exists() && !dir.mkdirs()) {
+            Constants.LOG.warn("[maid_file_manager] 无法创建导入目录: {}", dir.getAbsolutePath());
             setFeedback(Component.translatable("maid_file_manager.gui.error.open_dir_failed"));
+            return;
         }
+        openSystemDirInBackground(dir);
     }
 
     /** 打开导出文件夹（跟 onOpenImportDir 对称实现）；直接打开当前玩家名子目录 maid_exports/<玩家名>/ */
     private void onOpenExportDir() {
-        try {
-            String playerName = this.minecraft.player != null ? this.minecraft.player.getName().getString() : "";
-            File dir = new File(this.minecraft.gameDirectory,
-                    Constants.MAID_EXPORTS_DIR + File.separatorChar + MaidFileIo.sanitizePlayerName(playerName));
-            if (!dir.exists()) {
-                dir.mkdirs();
-            }
-            if (Desktop.isDesktopSupported()) {
-                Desktop.getDesktop().open(dir);
-            } else {
-                String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
-                ProcessBuilder pb;
-                if (os.contains("win")) {
-                    pb = new ProcessBuilder("explorer", dir.getAbsolutePath());
-                } else if (os.contains("mac")) {
-                    pb = new ProcessBuilder("open", dir.getAbsolutePath());
-                } else {
-                    pb = new ProcessBuilder("xdg-open", dir.getAbsolutePath());
-                }
-                pb.start();
-            }
-            Constants.LOG.info("[maid_file_manager] Opened export dir: {}", dir.getAbsolutePath());
-        } catch (Exception e) {
-            Constants.LOG.error("[maid_file_manager] Failed to open export dir", e);
+        String playerName = this.minecraft.player != null ? this.minecraft.player.getName().getString() : "";
+        // 与写文件路径使用同一个 resolvePlayerDir（normalize+startsWith 断言），不自行字符串拼接目录
+        Path exportRoot = this.minecraft.gameDirectory.toPath()
+                .resolve(Constants.MAID_EXPORTS_DIR);
+        File dir = MaidFileIo.resolvePlayerDir(exportRoot, playerName).toFile();
+        if (!dir.exists() && !dir.mkdirs()) {
+            Constants.LOG.warn("[maid_file_manager] 无法创建导出目录: {}", dir.getAbsolutePath());
             setFeedback(Component.translatable("maid_file_manager.gui.error.open_dir_failed"));
+            return;
         }
+        openSystemDirInBackground(dir);
+    }
+
+    /**
+     * 在后台守护线程中调起系统文件管理器。
+     * Desktop.open（部分平台实现）与 xdg-open 都可能阻塞数秒，
+     * 在渲染线程直接执行会让点击瞬间整客户端卡死，故统一异步；打开失败只记日志，
+     * 不跨线程触碰界面状态。
+     */
+    private static void openSystemDirInBackground(File dir) {
+        Thread t = new Thread(() -> {
+            try {
+                if (Desktop.isDesktopSupported()) {
+                    Desktop.getDesktop().open(dir);
+                } else {
+                    String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+                    ProcessBuilder pb;
+                    if (os.contains("win")) {
+                        pb = new ProcessBuilder("explorer", dir.getAbsolutePath());
+                    } else if (os.contains("mac")) {
+                        pb = new ProcessBuilder("open", dir.getAbsolutePath());
+                    } else {
+                        pb = new ProcessBuilder("xdg-open", dir.getAbsolutePath());
+                    }
+                    pb.start();
+                }
+                Constants.LOG.info("[maid_file_manager] Opened dir: {}", dir.getAbsolutePath());
+            } catch (Exception e) {
+                Constants.LOG.error("[maid_file_manager] Failed to open dir: {}", dir.getAbsolutePath(), e);
+            }
+        }, "maid_file_manager-open-dir");
+        t.setDaemon(true);
+        t.start();
     }
 
     private void updateListVisibility() {
@@ -561,11 +590,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
 
     private void setFeedback(Component msg) {
-        if (msg != null && System.currentTimeMillis() < serverExportSuppressFeedbackUntil
-                && msg.getString().contains("共成功")) {
-            Constants.LOG.info("[maid_file_manager] setFeedback suppressed: {}", msg.getString());
-            return;
+        if (msg == null) {
+            msg = Component.empty();
         }
+        // 注意：统一导出异步窗口内的服务端回执已在 onFeedbackReceived 中整体改道聊天栏，
+        // 此处不得再靠 contains("共成功") 之类的中文字面量反解服务端文案（契约禁止，且措辞变更即失效）
         this.feedbackMsg = msg;
         this.feedbackExpireAt = System.currentTimeMillis() + 6000;
     }
@@ -610,6 +639,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 return;
             }
             List<MaidFileData> dataList = new ArrayList<>();
+            pendingImportFileNames.clear();
             int skipped = 0;
             try {
                 Path gameDir = this.minecraft.gameDirectory.toPath().toAbsolutePath();
@@ -626,60 +656,59 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                         continue;
                     }
                     dataList.add(data);
+                    pendingImportFileNames.add(fileName);
                 }
             } catch (Exception e) {
                 Constants.LOG.error("[maid_file_manager] Failed to batch read import files", e);
-                setFeedback(Component.translatable("maid_file_manager.import.fail.exception", e.getMessage()));
+                // 异常原文可能含本地路径/内部类名，界面只给通用提示，细节看日志
+                setFeedback(Component.translatable("maid_file_manager.import.fail.local_read"));
                 return;
             }
             if (dataList.isEmpty()) {
-                setFeedback(Component.translatable("maid_file_manager.import.fail.exception", "没有可导入的有效文件"));
+                setFeedback(Component.translatable("maid_file_manager.import.fail.empty"));
+                return;
+            }
+            // 发送前契约预检：严格镜像服务端解码上限（64 条/单文件 512 KiB/整包 1 MiB 自律红线），
+            // 任一维度不过就在本地明确提示，绝不发出会在服务端 netty 解码线程炸包断连的请求
+            List<byte[]> importBlobs = MaidFilePackets.serializeMaidDataBatch(dataList);
+            if (importBlobs == null) {
+                setFeedback(Component.translatable("maid_file_manager.import.fail.unserializable"));
+                return;
+            }
+            String importReject = MaidFilePackets.checkMaidDataBatchForWire(
+                    importBlobs, MaidFilePackets.MAX_IMPORT_BATCH_FILES);
+            if (importReject != null) {
+                setFeedback(Component.literal(importReject));
                 return;
             }
             setFeedback(Component.literal(String.format(Locale.ROOT,
                     "正在批量导入 %d 个女仆（已跳过 %d 个无效文件）...", dataList.size(), skipped)));
-            Constants.LOG.info("[maid_file_manager] BATCH IMPORT START: count={}, skipped={}, keepBaubles={}",
-                    dataList.size(), skipped, keepBaublesState);
-            net.sendImportFiles(dataList, keepBaublesState);
+            Constants.LOG.info("[maid_file_manager] BATCH IMPORT START: count={}, skipped={}, keepBaubles={}, deleteAfter={}",
+                    dataList.size(), skipped, keepBaublesState, deleteImportFileState);
+            net.sendImportFiles(dataList, keepBaublesState, deleteImportFileState);
         }
     }
 
-    public void renderBackground(GuiGraphics graphics) {
-        // 1.21 Screen 有两套 renderBackground：单参（空）和 4 参。super.render() 走 4 参版本，
-        // 4 参版本默认会调用 renderDirtBackground + 叠加 GUI blur shader。
-        // 我们在 4 参版本里直接画不透明深色底，彻底打断 blur/泥土背景绘制链路。
-    }
-
+    /**
+     * 1.21.x 官方映射（javap 核实）只有四参 renderBackground。
+     * 留空以打断默认泥土背景 + GUI blur shader 调用链；全屏不透明底色统一在 render() 里绘制。
+     */
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        // 注意：Screen.super.render() 内部会再次调用这个 4 参 renderBackground，
-        // 如果这里再 fill 全屏底色，会把我们 render() 开头已画好的面板/标题覆盖掉。
-        // 因此 4 参版本什么都不做，全屏底 + 面板统一在 render() 开头一次性绘制，
-        // 同时不调用 super.renderBackground → 打断默认泥土背景 + GUI blur shader。
+        // 不调用 super：本界面自带不透明背景
     }
 
-    public void renderDirtBackground(GuiGraphics graphics) {
-        // 彻底覆盖：不绘制泥土背景
-    }
-
-    // 1.21 Mojang 官方映射里暂停判断方法从 isPauseScreen 改名为 returnsPauseScreen。
-    // 工程基于官方映射编译，而 TLM 源码使用 Parchment 映射仍保留 isPauseScreen；
-    // 两个名字都写（不加 @Override），运行时只要命中其一即可阻止 pause menu 的 gui_blur shader。
-    // （但为了彻底杜绝 blur，render() 末尾再盖全屏不透明色 + 重绘内容，双保险兜底）
-    @SuppressWarnings("unused")
-    public boolean returnsPauseScreen() {
-        return false;
-    }
-    @SuppressWarnings("unused")
+    /** 非暂停界面：阻止暂停菜单模糊效果（1.21.x 官方映射方法名为 isPauseScreen） */
+    @Override
     public boolean isPauseScreen() {
         return false;
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        // ① 先画全屏不透明深色底（盖死世界帧 → blur shader 即便后续叠也先把世界层盖没）
+        // ① 全屏不透明深色底（renderBackground 已空实现，不会有泥土底/blur 层叠上来）
         graphics.fill(0, 0, this.width, this.height, SCREEN_BG);
-        // ② 再画主面板 + 标题 + Tab 下划线
+        // ② 主面板 + 标题 + Tab 下划线
         drawPanel(graphics, panelX, panelY, panelW, panelH);
         drawCenteredStringNoShadow(graphics, this.font,
                 Component.translatable("maid_file_manager.gui.title"),
@@ -688,28 +717,17 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         graphics.fill(activeTab.getX(), activeTab.getY() + activeTab.getHeight(),
                 activeTab.getX() + activeTab.getWidth(), activeTab.getY() + activeTab.getHeight() + 2,
                 0xFFFFD700);
-        // ③ 子组件（Tab / 工具列 / 列表 / action 按钮等）。
-        //    注意：Screen.super.render() 内部在 1.21 会先调用 4 参 renderBackground →
-        //    虽然我们 4 参版本已经是空实现，但 MC 还有可能在 render 尾部叠加 blur post-process；
-        //    因此 super.render 之后我们再盖一次全屏不透明色并重新画面板/文字/widget。
+        // ③ 子组件（Tab / 工具列 / 列表 / action 按钮等）在面板之上正常绘制一次即可。
+        //    禁止再全屏盖色+反射重绘：生产环境反射 Screen 私有字段可能被模块限制拒绝，
+        //    盖色后按钮/开关全部隐形（只剩文字），是界面缺件的根因。
         super.render(graphics, mouseX, mouseY, partialTick);
-        // ④ 再盖一次全屏不透明色（彻底覆盖任何 gui_blur shader 后处理叠加的半透明层）
-        graphics.fill(0, 0, this.width, this.height, SCREEN_BG);
-        // ⑤ 重画主面板 + 标题 + Tab 下划线（否则会被第 ④ 步盖掉）
-        drawPanel(graphics, panelX, panelY, panelW, panelH);
-        drawCenteredStringNoShadow(graphics, this.font,
-                Component.translatable("maid_file_manager.gui.title"),
-                this.width / 2, panelY + 10, HEADER_COLOR);
-        graphics.fill(activeTab.getX(), activeTab.getY() + activeTab.getHeight(),
-                activeTab.getX() + activeTab.getWidth(), activeTab.getY() + activeTab.getHeight() + 2,
-                0xFFFFD700);
-        // ⑥ 重画所有 widget（保留当前状态/悬停/高亮）。
-        //    1.21 Screen.renderables 是 private；用反射读（失败返回空 List → 最多轻微 blur 绝不 CCE 崩溃世界）。
-        List<Renderable> widgets = ScreenWidgetAccess.getRenderables(this);
-        for (Renderable w : widgets) {
-            w.render(graphics, mouseX, mouseY, partialTick);
-        }
-        // ⑦ 反馈消息（UI无问题版公式 fbY + Fix A fbX=面板中心。drawCenteredStringNoShadow 保留 1.21 锐利无投影；ScreenWidgetAccess 重绘段保留）
+        // ④ 工具按钮左侧的手绘复选框（按钮文本不含 ☐/☑ 缺字字符，框体统一在这里画）
+        drawButtonCheckBox(graphics, selectAllBtn, selectAllState);
+        drawButtonCheckBox(graphics, selectAllImportBtn, selectAllImportState);
+        drawButtonCheckBox(graphics, keepMaidsBtn, keepMaidsInWorldState);
+        drawButtonCheckBox(graphics, keepBaublesBtn, keepBaublesState);
+        drawButtonCheckBox(graphics, deleteImportFileBtn, deleteImportFileState);
+        // ⑤ 反馈消息（fbX=面板中心；无阴影文字保持锐利）
         if (!feedbackMsg.getString().isEmpty() && System.currentTimeMillis() < feedbackExpireAt) {
             int fbX = panelX + panelW / 2;                           // Fix A：面板木框中心（不是窄列表中心，长文不溢出，直观居中）
             int fbY = panelY + panelH - LIST_BOTTOM_PAD + 6;         // UI无问题版：fbY=面板底-62（黄字 overlay 列表底上方 6px，与 action 按钮 btnY=panel底-42 留 11px 间距零纵叠）
@@ -718,8 +736,47 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             if (fbY < listTopV + 12) fbY = listTopV + 6;
             drawCenteredStringNoShadow(graphics, this.font, feedbackMsg, fbX, fbY, 0xFFFFAA00);
         }
-        // ⑧ Hover tooltip（最后画，不被任何层覆盖）
+        // ⑥ Hover tooltip（最后画，不被任何层覆盖）
         drawHoverTooltip(graphics, mouseX, mouseY);
+    }
+
+    /** 在工具按钮左侧绘制手绘复选框（不可见时跳过） */
+    private static void drawButtonCheckBox(GuiGraphics graphics, Button button, boolean checked) {
+        if (button != null && button.visible) {
+            drawCheckBox(graphics, button.getX() + 5,
+                    button.getY() + (button.getHeight() - CHECK_SIZE) / 2, checked);
+        }
+    }
+
+    /**
+     * 手绘复选框：MC 默认字体不含 U+2610/U+2611（☐/☑）字形，直接写字符只会得到空方框（豆腐块），
+     * 因此所有勾选状态一律用像素绘制：1px 暗色边框 + 深色内底 + 选中时金色对勾。
+     */
+    private static final int CHECK_SIZE = 9;
+    private static final int CHECK_BORDER = 0xFFA89070;
+    private static final int CHECK_INNER = 0xFF18120C;
+    private static final int CHECK_MARK = 0xFFFFD700;
+    /** 对勾图案（7×7 网格内 1=填充像素）：左下短笔 + 向右上挑的长笔 */
+    private static final int[][] CHECK_PIXELS = {
+            {5, 0},
+            {4, 1}, {5, 1},
+            {3, 2}, {4, 2},
+            {1, 3}, {2, 3}, {3, 3}, {4, 3},
+            {0, 4}, {1, 4}, {2, 4}, {3, 4},
+            {1, 5}, {2, 5},
+            {2, 6}
+    };
+
+    /** 在 (x,y) 绘制 CHECK_SIZE×CHECK_SIZE 复选框；checked=true 时填充金色对勾 */
+    private static void drawCheckBox(GuiGraphics graphics, int x, int y, boolean checked) {
+        graphics.fill(x, y, x + CHECK_SIZE, y + CHECK_SIZE, CHECK_BORDER);
+        graphics.fill(x + 1, y + 1, x + CHECK_SIZE - 1, y + CHECK_SIZE - 1, CHECK_INNER);
+        if (checked) {
+            for (int[] p : CHECK_PIXELS) {
+                // 内底区域为 7×7（x+1..x+7），像素逐格填充
+                graphics.fill(x + 1 + p[0], y + 1 + p[1], x + 2 + p[0], y + 2 + p[1], CHECK_MARK);
+            }
+        }
     }
 
     /** 1.21 GuiGraphics.drawCenteredString 默认 dropShadow=true，阴影会把彩色字糊成一团。
@@ -837,7 +894,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     @Override
     public void onExportResultReceived(List<MaidFileData> dataList) {
         if (dataList == null || dataList.isEmpty()) {
-            setFeedback(Component.translatable("maid_file_manager.export.fail", "导出数据为空"));
+            setFeedback(Component.translatable("maid_file_manager.export.fail.empty"));
             return;
         }
         int success = 0;
@@ -847,7 +904,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             Path gameDir = this.minecraft.gameDirectory.toPath().toAbsolutePath();
             // 目录结构：maid_exports/<玩家名>/<女仆文件>
             String playerName = this.minecraft.player != null ? this.minecraft.player.getName().getString() : "";
-            Path dir = MaidFileIo.ensureExportsDir(gameDir).resolve(MaidFileIo.sanitizePlayerName(playerName));
+            Path dir = MaidFileIo.resolvePlayerDir(MaidFileIo.ensureExportsDir(gameDir), playerName);
             Files.createDirectories(dir);
             for (MaidFileData data : dataList) {
                 if (data == null) {
@@ -866,7 +923,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             }
         } catch (Exception e) {
             Constants.LOG.error("[maid_file_manager] Failed to save export file locally", e);
-            setFeedback(Component.translatable("maid_file_manager.export.fail", e.getMessage()));
+            // 异常原文可能含本地路径/内部类名，界面只给通用提示，细节看日志
+            setFeedback(Component.translatable("maid_file_manager.export.fail.local_save"));
             return;
         }
 
@@ -908,50 +966,56 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
 
     @Override
+    public void onImportBatchResultReceived(Component summary, List<Boolean> spawned) {
+        setFeedback(summary);
+        if (this.minecraft != null && this.minecraft.player != null) {
+            this.minecraft.player.displayClientMessage(summary, false);
+        }
+        if (pendingImportFileNames.isEmpty() || spawned == null || spawned.isEmpty()) {
+            pendingImportFileNames.clear();
+            return;
+        }
+        int deleted = 0;
+        int failed = 0;
+        try {
+            Path gameDir = this.minecraft.gameDirectory.toPath().toAbsolutePath();
+            Path dir = MaidFileIo.ensureImportsDir(gameDir);
+            int n = Math.min(pendingImportFileNames.size(), spawned.size());
+            for (int i = 0; i < n; i++) {
+                if (!spawned.get(i)) {
+                    failed++;
+                    continue;
+                }
+                String fileName = pendingImportFileNames.get(i);
+                Path file = dir.resolve(fileName).normalize();
+                if (!file.startsWith(dir)) {
+                    Constants.LOG.warn("[maid_file_manager] delete-after-import: path traversal blocked: {}", fileName);
+                    failed++;
+                    continue;
+                }
+                try {
+                    Files.deleteIfExists(file);
+                    selectedImportFileNames.remove(fileName);
+                    fileList.remove(fileName);
+                    deleted++;
+                } catch (Exception e) {
+                    Constants.LOG.warn("[maid_file_manager] delete-after-import: failed to delete: {}", fileName, e);
+                    failed++;
+                }
+            }
+        } catch (Exception e) {
+            Constants.LOG.error("[maid_file_manager] delete-after-import: unexpected error", e);
+        } finally {
+            pendingImportFileNames.clear();
+        }
+        Constants.LOG.info("[maid_file_manager] delete-after-import: deleted={}, failed={}", deleted, failed);
+        fileListWidget.refresh();
+    }
+
+    @Override
     public void onClose() {
         IMaidFileNetwork.ClientHandlerHolder.set(null);
         super.onClose();
-    }
-
-    // ---------- 跨版本滚动条修复：反射强制设置父类字段，彻底屏蔽 super() 参数顺序差异 ----------
-    // NeoForge 1.21.x 使用 Mojang 官方映射，字段名是 width/left/right/top/bottom/height/y0/y1/x0/x1
-    private static final String[] SRG_WIDTH   = { "width" };
-    private static final String[] SRG_HEIGHT  = { "height" };
-    private static final String[] SRG_TOP     = { "top", "y0" };
-    private static final String[] SRG_BOTTOM  = { "bottom", "y1" };
-    private static final String[] SRG_RIGHT   = { "right", "x1" };
-    private static final String[] SRG_LEFT    = { "left", "x0" };
-
-    private static void trySetFieldMulti(Object obj, String[] names, Object value) {
-        for (String n : names) trySetField(obj, n, value);
-    }
-
-    private static void trySetField(Object obj, String fieldName, Object value) {
-        Class<?> c = obj.getClass();
-        for (int i = 0; i < 6; i++) {
-            try {
-                java.lang.reflect.Field f = c.getDeclaredField(fieldName);
-                f.setAccessible(true);
-                f.set(obj, value);
-                return;
-            } catch (Exception ignore) { /* 继续往父类找 */ }
-            c = c.getSuperclass();
-            if (c == null || c == Object.class) return;
-        }
-    }
-
-    /** v3 Fix【根治 enableScissor 剪刀错 = 列表只剩右下角小块 / 点不到】：Widget 公开层几何赋值（跨 Forge/NeoForge 1.20~1.21.1 稳定）。
-     *  ListWidget.enableScissor() 用 Widget.getX()/getWidth() 作为剪刀边界；先用 setX/setY/setWidth/setHeight 公开方法（MC 1.19.3+），
-     *  失败兜底写 x/y/width/height 公开字段。本层赋值 100% 命中 enableScissor 基准，不随 mapping 变名失效。 */
-    private static void applyWidgetGeometry(Object widget, int x, int y, int width, int height) {
-        try { widget.getClass().getMethod("setX", int.class).invoke(widget, x); } catch (Throwable ignore) {}
-        try { widget.getClass().getMethod("setY", int.class).invoke(widget, y); } catch (Throwable ignore) {}
-        try { widget.getClass().getMethod("setWidth", int.class).invoke(widget, width); } catch (Throwable ignore) {}
-        try { widget.getClass().getMethod("setHeight", int.class).invoke(widget, height); } catch (Throwable ignore) {}
-        trySetField(widget, "x", x);
-        trySetField(widget, "y", y);
-        trySetField(widget, "width", width);
-        trySetField(widget, "height", height);
     }
 
     // ---------- MaidListWidget ----------
@@ -970,19 +1034,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             this.listW = listW;
             this.listTop = listTop;
             this.listBottom = listBottom;
-            // ====== v3 Fix【列表=右下角小块 / 点不到 根治】：Widget 公开层几何赋值 100% 命中 enableScissor 剪刀边界 ======
-            applyWidgetGeometry(this, listX, listTop, listW, listBottom - listTop);
-            // SRG 反射兜底（UI无问题版严格顺序：top→bottom→height→width→right→left → 锚定两遍 width+right，防内部派生覆盖 right/x1）
-            trySetFieldMulti(this, SRG_TOP, listTop);
-            trySetFieldMulti(this, SRG_BOTTOM, listBottom);
-            trySetFieldMulti(this, SRG_HEIGHT, listBottom - listTop);
-            trySetFieldMulti(this, SRG_WIDTH, listW);
-            trySetFieldMulti(this, SRG_RIGHT, listX + listW);
-            trySetFieldMulti(this, SRG_LEFT, listX);
-            trySetFieldMulti(this, SRG_WIDTH, listW);
-            trySetFieldMulti(this, SRG_RIGHT, listX + listW);
-            trySetFieldMulti(this, SRG_WIDTH, listW);
-            trySetFieldMulti(this, SRG_RIGHT, listX + listW);
+            // 1.21 起列表继承 AbstractWidget，几何直接走公开 setter；
+            // 自绘 renderWidget 的 scissor、行定位与滚动量计算都以这四个值为唯一基准
+            this.setX(listX);
+            this.setY(listTop);
+            this.setWidth(listW);
+            this.setHeight(listBottom - listTop);
             refresh();
         }
 
@@ -998,7 +1055,23 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
 
         public ListRow getHovered(double mouseX, double mouseY) {
-            return this.getEntryAtPosition(mouseX, mouseY);
+            return this.hitRow(mouseX, mouseY);
+        }
+
+        /** v14b FabricFix：父类 getEntryAtPosition 是 final 不能覆写 → 命中逻辑独立成 hitRow（自有 listX/listTop 直判，滚动量仍复用 getScrollAmount()） */
+        private ListRow hitRow(double mouseX, double mouseY) {
+            if (mouseX < (double) this.listX || mouseX > (double) (this.listX + this.listW)) {
+                return null;
+            }
+            if (mouseY < (double) this.listTop || mouseY > (double) this.listBottom) {
+                return null;
+            }
+            int index = (int) ((mouseY - this.listTop - 4 + this.getScrollAmount()) / ROW_HEIGHT);
+            java.util.List<ListRow> rows = this.children();
+            if (index < 0 || index >= rows.size()) {
+                return null;
+            }
+            return rows.get(index);
         }
 
         void refresh() {
@@ -1061,6 +1134,45 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
             if (!this.isMouseOver(mouseX, mouseY)) return false;
             return super.mouseScrolled(mouseX, mouseY, horizontal, vertical);
+        }
+
+        /** v14 FabricFix【Fabric 生产环境列表行不可见根治】：Fabric 运行时的字段/方法全是 intermediary 名，
+         *  官方名(top/y0/setX)的字符串反射全部静默失败 → 父类 scissor/行坐标/滚动条全部错位（行画在看不见的位置）。
+         *  改为完全自绘：不调 super.render，用本类 listX/listTop/listW/listBottom 裁剪+摆行+画滚动条；
+         *  滚动量复用父类 getScrollAmount()（构造期已正确；编译期调用会被 loom 重映射，跨加载器稳定）。 */
+        @Override
+        public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+            if (!this.visible) {
+                return;
+            }
+            this.renderListBackground(graphics);
+            java.util.List<ListRow> rows = this.children();
+            int viewH = this.listBottom - this.listTop;
+            int scroll = (int) this.getScrollAmount();
+            graphics.enableScissor(this.listX, this.listTop, this.listX + this.listW, this.listBottom);
+            for (int i = 0; i < rows.size(); i++) {
+                int top = this.listTop + 4 - scroll + i * ROW_HEIGHT;
+                if (top >= this.listBottom || top + ROW_HEIGHT <= this.listTop) {
+                    continue;
+                }
+                boolean hovering = mouseX >= this.listX && mouseX < this.listX + this.listW
+                        && mouseY >= top && mouseY < top + ROW_HEIGHT;
+                rows.get(i).render(graphics, i, top, this.listX + 2,
+                        this.getRowWidth(), ROW_HEIGHT, mouseX, mouseY, hovering, partialTick);
+            }
+            graphics.disableScissor();
+            // 滚动条：内容溢出时贴列表右缘画（位置基于我们自己的 listX/listW，不再依赖父类内部几何）
+            int contentH = rows.size() * ROW_HEIGHT + 8;
+            if (contentH > viewH) {
+                int trackH = viewH - 4;
+                int thumbH = Math.max(20, trackH * viewH / contentH);
+                int maxScroll = contentH - viewH;
+                int progress = Math.min(trackH - thumbH,
+                        (int) ((long) scroll * (trackH - thumbH) / Math.max(1, maxScroll)));
+                int barX = this.listX + this.listW - 3;
+                graphics.fill(barX, this.listTop + 2 + progress, barX + 2,
+                        this.listTop + 2 + progress + thumbH, 0x66FFFFFF);
+            }
         }
 
         /** 统一导出浏览：玩家标题行（可点击展开/收起该玩家的女仆列表） */
@@ -1154,11 +1266,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 if (hovering) {
                     graphics.fill(rowX, top - 1, rowX + rowW, top + height + 1, ROW_HOVER);
                 }
-                // 勾选框 + 文字：rowX 对齐 LIST_BG 左边缘
-                String mark = selected ? "☑" : "☐";
-                int markColor = selected ? 0xFFFFD700 : TEXT_COLOR;
-                graphics.drawString(MaidFileManagerScreen.this.font,
-                        Component.literal(mark), rowX + 28, top + 5, markColor, false);
+                // 勾选框 + 文字：rowX 对齐 LIST_BG 左边缘（框体手绘，避免 ☐/☑ 豆腐块）
+                drawCheckBox(graphics, rowX + 28, top + 4, selected);
                 int textLeft = rowX + 49;
                 int contentRight = rowX + rowW - 10;
                 int contentW = contentRight - textLeft;
@@ -1224,7 +1333,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             @Override
             public Component getNarration() {
                 boolean sel = selectedMaidIds.contains(info.entityId());
-                return Component.literal((sel ? "☑ " : "☐ ") + info.displayName());
+                return Component.literal((sel ? "（已选）" : "（未选）") + info.displayName());
             }
         }
     }
@@ -1241,19 +1350,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             this.listW = listW;
             this.listTop = listTop;
             this.listBottom = listBottom;
-            // ====== v3 Fix【列表=右下角小块 / 点不到 根治】：Widget 公开层几何赋值 100% 命中 enableScissor 剪刀边界 ======
-            applyWidgetGeometry(this, listX, listTop, listW, listBottom - listTop);
-            // SRG 反射兜底（UI无问题版严格顺序：top→bottom→height→width→right→left → 锚定两遍 width+right，防内部派生覆盖 right/x1）
-            trySetFieldMulti(this, SRG_TOP, listTop);
-            trySetFieldMulti(this, SRG_BOTTOM, listBottom);
-            trySetFieldMulti(this, SRG_HEIGHT, listBottom - listTop);
-            trySetFieldMulti(this, SRG_WIDTH, listW);
-            trySetFieldMulti(this, SRG_RIGHT, listX + listW);
-            trySetFieldMulti(this, SRG_LEFT, listX);
-            trySetFieldMulti(this, SRG_WIDTH, listW);
-            trySetFieldMulti(this, SRG_RIGHT, listX + listW);
-            trySetFieldMulti(this, SRG_WIDTH, listW);
-            trySetFieldMulti(this, SRG_RIGHT, listX + listW);
+            // 几何走公开 setter（与 MaidListWidget 同一套唯一基准）
+            this.setX(listX);
+            this.setY(listTop);
+            this.setWidth(listW);
+            this.setHeight(listBottom - listTop);
             refresh();
         }
 
@@ -1313,7 +1414,58 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
 
         public Entry getHovered(double mouseX, double mouseY) {
-            return this.getEntryAtPosition(mouseX, mouseY);
+            return this.hitRow(mouseX, mouseY);
+        }
+
+        /** v14b FabricFix：父类 getEntryAtPosition 是 final 不能覆写 → 命中逻辑独立成 hitRow（自有 listX/listTop 直判，滚动量仍复用 getScrollAmount()） */
+        private Entry hitRow(double mouseX, double mouseY) {
+            if (mouseX < (double) this.listX || mouseX > (double) (this.listX + this.listW)) {
+                return null;
+            }
+            if (mouseY < (double) this.listTop || mouseY > (double) this.listBottom) {
+                return null;
+            }
+            int index = (int) ((mouseY - this.listTop - 4 + this.getScrollAmount()) / ROW_HEIGHT);
+            java.util.List<Entry> rows = this.children();
+            if (index < 0 || index >= rows.size()) {
+                return null;
+            }
+            return rows.get(index);
+        }
+
+        /** v14 FabricFix：与 MaidListWidget 相同的自绘渲染（Fabric intermediary 环境下父类几何反射失效） */
+        @Override
+        public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+            if (!this.visible) {
+                return;
+            }
+            this.renderListBackground(graphics);
+            java.util.List<Entry> rows = this.children();
+            int viewH = this.listBottom - this.listTop;
+            int scroll = (int) this.getScrollAmount();
+            graphics.enableScissor(this.listX, this.listTop, this.listX + this.listW, this.listBottom);
+            for (int i = 0; i < rows.size(); i++) {
+                int top = this.listTop + 4 - scroll + i * ROW_HEIGHT;
+                if (top >= this.listBottom || top + ROW_HEIGHT <= this.listTop) {
+                    continue;
+                }
+                boolean hovering = mouseX >= this.listX && mouseX < this.listX + this.listW
+                        && mouseY >= top && mouseY < top + ROW_HEIGHT;
+                rows.get(i).render(graphics, i, top, this.listX + 2,
+                        this.getRowWidth(), ROW_HEIGHT, mouseX, mouseY, hovering, partialTick);
+            }
+            graphics.disableScissor();
+            int contentH = rows.size() * ROW_HEIGHT + 8;
+            if (contentH > viewH) {
+                int trackH = viewH - 4;
+                int thumbH = Math.max(20, trackH * viewH / contentH);
+                int maxScroll = contentH - viewH;
+                int progress = Math.min(trackH - thumbH,
+                        (int) ((long) scroll * (trackH - thumbH) / Math.max(1, maxScroll)));
+                int barX = this.listX + this.listW - 3;
+                graphics.fill(barX, this.listTop + 2 + progress, barX + 2,
+                        this.listTop + 2 + progress + thumbH, 0x66FFFFFF);
+            }
         }
 
         final class Entry extends ObjectSelectionList.Entry<Entry> {
@@ -1338,11 +1490,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 if (hovering) {
                     graphics.fill(rowX, top - 1, rowX + rowW, top + height + 1, ROW_HOVER);
                 }
-                // 勾选框：rowX 对齐 LIST_BG 左边缘
-                String mark = selected ? "☑" : "☐";
-                int markColor = selected ? 0xFFFFD700 : TEXT_COLOR;
-                graphics.drawString(MaidFileManagerScreen.this.font,
-                        Component.literal(mark), rowX + 28, top + 5, markColor, false);
+                // 勾选框：rowX 对齐 LIST_BG 左边缘（框体手绘，避免 ☐/☑ 豆腐块）
+                drawCheckBox(graphics, rowX + 28, top + 4, selected);
                 int textLeft = rowX + 49;
                 int contentRight = rowX + rowW - 10;
                 int contentW = contentRight - textLeft;
@@ -1409,12 +1558,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             @Override
             public Component getNarration() {
                 boolean sel = selectedImportFileNames.contains(fileName);
-                return Component.literal((sel ? "☑ " : "☐ ") + fileName);
+                return Component.literal((sel ? "（已选）" : "（未选）") + fileName);
             }
         }
     }
 
-    // ============= 左上角「🌐 统一导出」入口 → 独立确认界面 / 返回单独导出（模式动态切换，用户指示新增） =============
+    // ============= 左上角「🌐 统一导出」入口 → 独立确认界面 / 返回单独导出（模式动态切换，按需求新增） =============
 
     /** 左上角按钮点击：根据当前模式切换行为（单独导出→开确认界面；统一导出→直接返回） */
     private void onServerExportButtonClick() {
@@ -1433,7 +1582,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         this.minecraft.setScreen(new MaidServerExportScreen(this));
     }
 
-    /** 统一导出全员独立确认界面（用户指示新增独立界面；确认后回到主界面，切换到统一导出模式并自动执行导出） */
+    /** 统一导出全员独立确认界面（按需求新增的独立界面；确认后回到主界面，切换到统一导出模式并自动执行导出） */
     public static class MaidServerExportScreen extends Screen {
         private final MaidFileManagerScreen parent;
         private final boolean hasPermission;
@@ -1455,12 +1604,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             int gap = 20;
             int baseX = this.width / 2 - btnW - gap / 2;
             // 确认按钮（仅 OP 可用）
-            Button confirmBtn = Button.builder(Component.literal("✅ 确认导出"), b -> onConfirm())
+            Button confirmBtn = Button.builder(Component.literal("确认导出"), b -> onConfirm())
                     .bounds(baseX, centerY, btnW, btnH).build();
             confirmBtn.active = hasPermission;
             addRenderableWidget(confirmBtn);
             // 取消按钮（所有人都可用）
-            addRenderableWidget(Button.builder(Component.literal("❌ 取消返回"), b -> {
+            addRenderableWidget(Button.builder(Component.literal("取消返回"), b -> {
                 if (this.minecraft != null) this.minecraft.setScreen(parent);
             }).bounds(baseX + btnW + gap, centerY, btnW, btnH).build());
         }
@@ -1479,23 +1628,50 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             // 直接调用主动作按钮（= 导出选中女仆 → 统一导出模式即为全员）
             parent.onActionButtonClick(parent.actionBtn);
             // 【Fix：消去多余"共成功 0 个"提示】统一导出为服务端异步，结果走聊天栏显示，主界面黄字强制覆盖为"请求已发送"提示
-            parent.setFeedback(Component.literal("📤 统一导出请求已发送（服务端异步处理），结果请查看聊天栏 / 服务器日志。"));
+            parent.setFeedback(Component.literal("统一导出请求已发送（服务端异步处理），结果请查看聊天栏 / 服务器日志。"));
+        }
+
+        /** 留空打断默认泥土背景 + GUI blur shader（与主界面同一硬约束：不透明、无模糊） */
+        @Override
+        public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        }
+
+        @Override
+        public boolean isPauseScreen() {
+            return false;
+        }
+
+        /** 无阴影居中文字（drawCenteredString 默认带阴影会发虚） */
+        private void drawCenteredNoShadow(GuiGraphics graphics, String text, int centerX, int y, int color) {
+            graphics.drawString(this.font, Component.literal(text),
+                    centerX - this.font.width(text) / 2, y, color, false);
         }
 
         @Override
         public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            renderBackground(graphics, mouseX, mouseY, partialTick);
-            super.render(graphics, mouseX, mouseY, partialTick);
             int cx = this.width / 2;
-            int y = this.height / 2 - 70;
-            // 标题
-            graphics.drawCenteredString(this.font, "【统一导出全员 确认】", cx, y, 0xFFFFD700);
+            // 单次绘制：全屏不透明深色底 + 居中面板 + 说明文字（renderBackground 已空实现，无需再盖色）
+            graphics.fill(0, 0, this.width, this.height, SCREEN_BG);
+            int panelW = 380;
+            int panelH = 240;
+            int px = (this.width - panelW) / 2;
+            int py = (this.height - panelH) / 2;
+            graphics.fill(px, py, px + panelW, py + panelH, PANEL_BG);
+            graphics.renderOutline(px, py, panelW, panelH, PANEL_BORDER);
+            drawTextBlock(graphics, cx, py);
+            // 按钮由 super 在面板之上正常绘制一次，禁止全屏盖色+反射重绘
+            super.render(graphics, mouseX, mouseY, partialTick);
+        }
+
+        /** 绘制标题与说明文字（纯函数无副作用） */
+        private void drawTextBlock(GuiGraphics graphics, int cx, int py) {
+            int y = py + 20;
+            drawCenteredNoShadow(graphics, "【统一导出全员 确认】", cx, y, HEADER_COLOR);
             y += 26;
-            // 说明文字
             String[] lines;
             if (!hasPermission) {
                 lines = new String[] {
-                    "⚠ 权限不足：仅 OP（权限等级 2+）可使用此功能",
+                    "权限不足：仅 OP（权限等级 2+）可使用此功能",
                     "",
                     "你当前不是服务器 OP，无法统一导出所有玩家的女仆。",
                     "",
@@ -1503,19 +1679,19 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 };
             } else {
                 lines = new String[] {
-                    "将导出「所有在线玩家」的女仆（以各玩家为单位分组）。",
+                    "将导出「所有在线且已同意」玩家的女仆（按玩家分组）。",
                     "",
-                    "导出规则：是否保留原女仆在世界 = 主界面「保留原女仆在世界」开关",
-                    "导入规则：是否保留饰品 = 主界面「保留饰品」开关（导入时生效）",
+                    "规则一：仅导出在设置中同意「允许服务端统一导出」的玩家。",
+                    "规则二：统一导出不会移除世界中的女仆（强制全部保留）。",
+                    "规则三：文件保存到服务端 maid_exports/<玩家名>/ 目录。",
                     "",
-                    "※ 每个女仆会单独生成 .maid 文件，文件名包含玩家名和女仆名。",
-                    "※ OP 无法删除其他玩家的女仆（统一导出模式强制保留原女仆）。",
+                    "注意：每个女仆单独生成一个 .maid 文件，文件名含玩家名与女仆名。",
                     "",
                     "点击「确认导出」开始处理，结果将显示在聊天栏 / 服务器日志中。"
                 };
             }
             for (String line : lines) {
-                graphics.drawCenteredString(this.font, line, cx, y, 0xFFFFFFFF);
+                drawCenteredNoShadow(graphics, line, cx, y, TEXT_COLOR);
                 y += 14;
             }
         }
