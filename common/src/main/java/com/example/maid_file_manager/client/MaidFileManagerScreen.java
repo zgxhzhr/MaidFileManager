@@ -806,7 +806,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             if (hovered instanceof MaidListWidget.Entry sel) {
                 MaidInfo info = sel.info;
                 List<Component> lines = new ArrayList<>();
-                lines.add(Component.literal(info.displayName())
+                lines.add(Component.literal(
+                        info.customName() != null
+                                ? info.customName() + " · " + info.displayName()
+                                : info.displayName())
                         .withStyle(ChatFormatting.GOLD));
                 lines.add(Component.literal("Model ID: " + info.modelId())
                         .withStyle(ChatFormatting.GRAY));
@@ -914,6 +917,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 String displayName = data.getDisplayName() != null
                         ? data.getDisplayName()
                         : (data.getModelId() != null ? data.getModelId() : "unknown");
+                // 若有自定义名（命名牌所取），拼到模型名前面，便于在文件名中体现
+                displayName = MaidFileIo.composeDisplayName(data.getCustomName(), displayName);
                 String ownerUuid = data.getOwnerUuid();
                 String fileName = MaidFileIo.writeMaidFile(dir, displayName, data.getModelId(),
                         ownerUuid, data, LocalDateTime.now());
@@ -1270,7 +1275,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 int contentW = contentRight - textLeft;
                 net.minecraft.client.gui.Font font = MaidFileManagerScreen.this.font;
                 // 第一行：name 超长 → 截断+省略号…（不滚避免勾选框右晃动）
-                String name = info.displayName();
+                String name = info.customName() != null
+                        ? info.customName() + " · " + info.displayName()
+                        : info.displayName();
                 String drawName;
                 if (font.width(name) > contentW) {
                     drawName = font.plainSubstrByWidth(name, contentW - font.width("…")) + "…";
@@ -1330,7 +1337,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             @Override
             public Component getNarration() {
                 boolean sel = selectedMaidIds.contains(info.entityId());
-                return Component.literal((sel ? "（已选）" : "（未选）") + info.displayName());
+                String name = info.customName() != null
+                        ? info.customName() + " · " + info.displayName()
+                        : info.displayName();
+                return Component.literal((sel ? "（已选）" : "（未选）") + name);
             }
         }
     }
