@@ -96,6 +96,25 @@ public final class MaidFileIo {
         return sanitize(path);
     }
 
+    /**
+     * 组合自定义名与模型显示名，用于导出文件名。
+     *
+     * <p>规则：自定义名为空时直接返回模型显示名；非空时拼接为
+     * {@code <自定义名>_<模型显示名>}（自定义名在前、模型名在后）。
+     * 两段均由 {@link #buildExportFileName} 内部的 {@link #sanitize} 统一清洗非法字符。
+     *
+     * @param customName  女仆自定义名（命名牌所取），可空
+     * @param displayName 模型显示名（中文名），可空
+     * @return 用于传给 {@link #buildExportFileName} 的合并显示名
+     */
+    public static String composeDisplayName(String customName, String displayName) {
+        if (customName == null || customName.isEmpty()) {
+            return displayName;
+        }
+        String model = (displayName == null || displayName.isEmpty()) ? "unknown_model" : displayName;
+        return customName + SEP + model;
+    }
+
     /** 把任意字符串清洗为文件名安全字符串 */
     public static String sanitize(String s) {
         if (s == null || s.isEmpty()) {

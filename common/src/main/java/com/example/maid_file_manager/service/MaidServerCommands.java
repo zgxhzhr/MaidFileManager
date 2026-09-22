@@ -75,8 +75,9 @@ public final class MaidServerCommands {
                     if (data == null) {
                         continue;
                     }
-                    MaidFileIo.writeMaidFile(playerDir, data.getDisplayName(), data.getModelId(),
-                            data.getOwnerUuid(), data, LocalDateTime.now());
+                    MaidFileIo.writeMaidFile(playerDir,
+                            MaidFileIo.composeDisplayName(data.getCustomName(), data.getDisplayName()),
+                            data.getModelId(), data.getOwnerUuid(), data, LocalDateTime.now());
                     count++;
                 } catch (Exception e) {
                     Constants.LOG.error("[女仆文件管理] 统一导出女仆失败: player={}, maid={}", playerName, maid.getId(), e);
@@ -164,8 +165,9 @@ public final class MaidServerCommands {
                                 name, owner.getUUID(), entityId);
                         continue;
                     }
-                    MaidFileIo.writeMaidFile(playerDir, data.getDisplayName(), data.getModelId(),
-                            data.getOwnerUuid(), data, LocalDateTime.now());
+                    MaidFileIo.writeMaidFile(playerDir,
+                            MaidFileIo.composeDisplayName(data.getCustomName(), data.getDisplayName()),
+                            data.getModelId(), data.getOwnerUuid(), data, LocalDateTime.now());
                     ok++;
                 } catch (Exception e) {
                     fail++;
