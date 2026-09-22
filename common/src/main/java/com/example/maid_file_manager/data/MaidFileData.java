@@ -53,6 +53,8 @@ public class MaidFileData {
     private String modelId;
     /** 模型显示名（中文名），用于导出文件命名 */
     private String displayName;
+    /** 女仆自定义名（命名牌所取），可空；非空时拼到文件名模型名前 */
+    private String customName;
     /** 源玩家 TLM 成就数据（仅命名空间 touhou_little_maid 的已完成成就），可空 */
     private CompoundTag advancements;
     /** 药水效果 NBT（从 ActiveEffects 提取，始终序列化，不受配置影响），可空 */
@@ -84,6 +86,9 @@ public class MaidFileData {
         }
         if (displayName != null) {
             root.putString("display_name", displayName);
+        }
+        if (customName != null) {
+            root.putString("custom_name", customName);
         }
         if (advancements != null) {
             root.put("advancements", advancements);
@@ -128,6 +133,9 @@ public class MaidFileData {
         }
         if (root.contains("display_name", Tag.TAG_STRING)) {
             data.displayName = root.getString("display_name");
+        }
+        if (root.contains("custom_name", Tag.TAG_STRING)) {
+            data.customName = root.getString("custom_name");
         }
         // v3 新增：成就数据（旧 v2 文件无此字段，容错为 null）
         if (root.contains("advancements", Tag.TAG_COMPOUND)) {
@@ -229,6 +237,14 @@ public class MaidFileData {
 
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
+    }
+
+    public String getCustomName() {
+        return customName;
+    }
+
+    public void setCustomName(String customName) {
+        this.customName = customName;
     }
 
     public int getDataVersion() {
