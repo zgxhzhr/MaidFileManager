@@ -8,7 +8,6 @@ import com.example.maid_file_manager.data.MaidInfo;
 import com.example.maid_file_manager.data.NbtMigration;
 import com.example.maid_file_manager.data.NbtVersion;
 import com.example.maid_file_manager.platform.Services;
-import com.github.tartaricacid.touhoulittlemaid.ai.manager.entity.MaidAIChatSerializable;
 import com.github.tartaricacid.touhoulittlemaid.entity.favorability.FavorabilityManager;
 import com.github.tartaricacid.touhoulittlemaid.entity.info.ServerCustomPackLoader;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
@@ -278,6 +277,13 @@ public final class MaidTransferService {
             data.setData(fullNbt);
             data.setModelId(modelId);
             data.setDisplayName(getDisplayName(modelId));
+            // 自定义命名（命名牌所取），用于文件名拼接与列表显示
+            if (maid.hasCustomName()) {
+                String cn = maid.getCustomName().getString();
+                if (cn != null && !cn.isEmpty()) {
+                    data.setCustomName(cn);
+                }
+            }
             // 成就收集：服务端开启允许成就导入时，收集原主人 TLM 成就并按女仆属性过滤
             if (MaidConfigManager.isAdvancementsAllowed() && tamed && owner instanceof ServerPlayer serverPlayer) {
                 try {
@@ -746,8 +752,8 @@ public final class MaidTransferService {
     /**
      * AI 对话恢复双路径：
      * (A) 调本体 readFromTag 还原聊天历史/摘要/token；
-     * (B) 直接给 {@link MaidAIChatSerializable} 的 8 个 public 人设字段赋值，
-     *     兼容 CamelCase/小驼峰双键名，仅在源值非空时覆盖。
+     * (B) 反射给人设字段赋值，兼容旧名 MaidAIChatSerializable（llmSite 等 8 字段）
+     *     与新名 MaidAIDataSerializable（chatSiteName 等 6 字段）。
      */
     private static void restoreAiChat(EntityMaid maid, CompoundTag tlmData) {
         boolean hasAiData = tlmData.contains("MaidAIChat", Tag.TAG_COMPOUND)
@@ -766,44 +772,64 @@ public final class MaidTransferService {
         }
         try {
             CompoundTag ai = tlmData.getCompound("MaidAIChat");
-            MaidAIChatSerializable persona = maid.getAiChatManager();
+            Object persona = maid.getAiChatManager();
+            // 每行：[NBT键名1, NBT键名2, 候选字段名1, 候选字段名2, ...]
             String[][] fieldMap = {
-                    {"llmSite",      "LLMSite",      "llmSite"},
-                    {"llmModel",     "LLMModel",     "llmModel"},
-                    {"ttsSite",      "TTSSiteName",  "ttsSiteName"},
-                    {"ttsModel",     "TTSModel",     "ttsModel"},
-                    {"ttsLanguage",  "TTSLanguage",  "ttsLanguage"},
-                    {"chatLanguage", "ChatLanguage", "chatLanguage"},
-                    {"ownerName",    "OwnerName",    "ownerName"},
-                    {"customSetting","CustomSetting","customSetting"},
+                    {"LLMSite",     "llmSite",     "llmSite",      "chatSiteName"},
+                    {"LLMModel",    "llmModel",    "llmModel",     "chatModel"},
+                    {"TTSSiteName", "ttsSiteName", "ttsSite",      "ttsSiteName"},
+                    {"TTSModel",    "ttsModel",    "ttsModel",     "ttsModel"},
+                    {"TTSLanguage", "ttsLanguage", "ttsLanguage",  "ttsLanguage"},
+                    {"ChatLanguage","chatLanguage","chatLanguage"},
+                    {"OwnerName",   "ownerName",   "ownerName"},
+                    {"CustomSetting","customSetting","customSetting"},
             };
             int forced = 0;
+            Class<?> clazz = persona.getClass();
             for (String[] row : fieldMap) {
+                // 先在 NBT 里找值：row[0] 优先，row[1] 兜底
                 String value = null;
-                if (ai.contains(row[1], Tag.TAG_STRING)) {
+                if (row[0] != null && ai.contains(row[0], Tag.TAG_STRING)) {
+                    value = ai.getString(row[0]);
+                } else if (row[1] != null && ai.contains(row[1], Tag.TAG_STRING)) {
                     value = ai.getString(row[1]);
-                } else if (ai.contains(row[2], Tag.TAG_STRING)) {
-                    value = ai.getString(row[2]);
                 }
-                if (value != null && !value.isEmpty()) {
-                    switch (row[0]) {
-                        case "llmSite" -> persona.llmSite = value;
-                        case "llmModel" -> persona.llmModel = value;
-                        case "ttsSite" -> persona.ttsSite = value;
-                        case "ttsModel" -> persona.ttsModel = value;
-                        case "ttsLanguage" -> persona.ttsLanguage = value;
-                        case "chatLanguage" -> persona.chatLanguage = value;
-                        case "ownerName" -> persona.ownerName = value;
-                        case "customSetting" -> persona.customSetting = value;
-                        default -> { }
+                if (value == null || value.isEmpty()) {
+                    continue;
+                }
+                // 候选字段名：row[2], row[3], ...
+                boolean set = false;
+                for (int i = 2; i < row.length && !set; i++) {
+                    if (row[i] == null) continue;
+                    try {
+                        java.lang.reflect.Field f = findField(clazz, row[i]);
+                        if (f != null) {
+                            f.setAccessible(true);
+                            f.set(persona, value);
+                            set = true;
+                        }
+                    } catch (Throwable ignored) {
                     }
-                    forced++;
                 }
+                if (set) forced++;
             }
             Constants.LOG.debug("[maid_file_manager] AI 人设字段覆盖 {} 个", forced);
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] AI 人设恢复失败: {}", t.toString());
         }
+    }
+
+    /** 在 clazz 及其父类中按名称查找 public 字段（忽略访问修饰符）。 */
+    private static java.lang.reflect.Field findField(Class<?> clazz, String name) {
+        Class<?> c = clazz;
+        while (c != null && c != Object.class) {
+            try {
+                return c.getDeclaredField(name);
+            } catch (NoSuchFieldException ignored) {
+            }
+            c = c.getSuperclass();
+        }
+        return null;
     }
 
     /**
