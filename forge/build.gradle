@@ -1,6 +1,7 @@
 plugins {
     id 'multiloader-loader'
     id 'net.neoforged.moddev.legacyforge'
+    id 'me.modmuss50.mod-publish-plugin' version '2.2.0'
 }
 
 legacyForge {
@@ -46,4 +47,18 @@ dependencies {
 
 jar {
     finalizedBy('reobfJar')
+}
+
+publishMods {
+    file = tasks.named('jar').get().archiveFile
+    changelog = file("${rootDir}/CHANGELOG.md").exists() ? file("${rootDir}/CHANGELOG.md").text : 'See release notes on GitHub'
+    type = STABLE
+    modLoaders.add('forge')
+
+    curseforge {
+        projectId = '1681684'
+        accessToken = providers.environmentVariable('CURSEFORGE_TOKEN')
+        minecraftVersions.add('1.20.1')
+        displayName = 'Maid File Manager v' + project.version + ' forge 1.20.1'
+    }
 }
