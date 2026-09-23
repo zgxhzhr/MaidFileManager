@@ -1,6 +1,7 @@
 plugins {
     id 'multiloader-loader'
     id 'net.neoforged.moddev'
+    id 'me.modmuss50.mod-publish-plugin' version '2.2.0'
 }
 
 neoForge {
@@ -40,4 +41,18 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 dependencies {
     compileOnly files(rootProject.file(tlm_jar_path))
+}
+
+publishMods {
+    file = tasks.named('jar').get().archiveFile
+    changelog = file("${rootDir}/CHANGELOG.md").exists() ? file("${rootDir}/CHANGELOG.md").text : 'See release notes on GitHub'
+    type = STABLE
+    modLoaders.add('neoforge')
+
+    curseforge {
+        projectId = '1681684'
+        accessToken = providers.environmentVariable('CURSEFORGE_TOKEN')
+        minecraftVersions.add('1.21')
+        displayName = 'Maid File Manager v' + project.version + ' neoforge 1.21'
+    }
 }
