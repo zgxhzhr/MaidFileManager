@@ -1,0 +1,68 @@
+package io.github.zgxhzhr.maidfm.network;
+
+import io.github.zgxhzhr.maidfm.data.MaidFileData;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.resources.ResourceLocation;
+
+import java.util.List;
+
+/**
+ * Fabric 客户端网络实现。
+ * 实现 {@link IMaidFileNetwork}，通过 Fabric Networking API 发送 C2S 包。
+ */
+public final class FabricNetwork implements IMaidFileNetwork {
+    @Override
+    public void sendRequestMaidList() {
+        sendC2S(MaidFilePackets.ID_REQUEST_MAID_LIST, PacketByteBufs.create());
+    }
+
+    @Override
+    public void sendExportMaids(List<Integer> entityIds, boolean removeAfterExport) {
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        MaidFilePackets.writeIntList(buf, entityIds);
+        buf.writeBoolean(removeAfterExport);
+        sendC2S(MaidFilePackets.ID_EXPORT_BATCH, buf);
+    }
+
+    @Override
+    public void sendImportFiles(List<MaidFileData> dataList, boolean keepBaubles, boolean deleteAfterImport) {
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        MaidFilePackets.writeMaidFileDataList(buf, dataList);
+        buf.writeBoolean(keepBaubles);
+        buf.writeBoolean(deleteAfterImport);
+        sendC2S(MaidFilePackets.ID_IMPORT_BATCH, buf);
+    }
+
+    @Override
+    public void sendClientConsent(boolean allow) {
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        buf.writeBoolean(allow);
+        sendC2S(MaidFilePackets.ID_CLIENT_CONSENT, buf);
+    }
+
+    @Override
+    public void sendSetServerConfig(String key, boolean value) {
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        buf.writeUtf(key, MaidFilePackets.MAX_TEXT_LEN);
+        buf.writeBoolean(value);
+        sendC2S(MaidFilePackets.ID_SET_SERVER_CONFIG, buf);
+    }
+
+    @Override
+    public void sendRequestServerExportList() {
+        sendC2S(MaidFilePackets.ID_REQUEST_SERVER_EXPORT_LIST, PacketByteBufs.create());
+    }
+
+    @Override
+    public void sendServerExportBatch(List<PlayerExportRequest> groups) {
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        MaidFilePackets.writePlayerExportRequests(buf, groups);
+        sendC2S(MaidFilePackets.ID_SERVER_EXPORT_BATCH, buf);
+    }
+
+    private static void sendC2S(ResourceLocation id, FriendlyByteBuf buf) {
+        ClientPlayNetworking.send(id, buf);
+    }
+}
