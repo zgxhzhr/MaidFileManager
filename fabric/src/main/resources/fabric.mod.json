@@ -12,10 +12,10 @@
     "environment": "*",
     "entrypoints": {
         "main": [
-            "com.example.maid_file_manager.MaidFileModFabric"
+            "io.github.zgxhzhr.maidfm.MaidFileModFabric"
         ],
         "client": [
-            "com.example.maid_file_manager.MaidFileModFabricClient"
+            "io.github.zgxhzhr.maidfm.MaidFileModFabricClient"
         ]
     },
     "depends": {
