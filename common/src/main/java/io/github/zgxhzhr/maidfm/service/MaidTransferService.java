@@ -8,6 +8,8 @@ import io.github.zgxhzhr.maidfm.data.MaidInfo;
 import io.github.zgxhzhr.maidfm.data.NbtMigration;
 import io.github.zgxhzhr.maidfm.data.NbtVersion;
 import io.github.zgxhzhr.maidfm.platform.Services;
+import io.github.zgxhzhr.maidfm.spi.MaidMigrationProvider;
+import io.github.zgxhzhr.maidfm.spi.MaidMigrationRegistry;
 import com.github.tartaricacid.touhoulittlemaid.entity.favorability.FavorabilityManager;
 import com.github.tartaricacid.touhoulittlemaid.entity.info.ServerCustomPackLoader;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
@@ -299,6 +301,22 @@ public final class MaidTransferService {
             if (effectsTag != null) {
                 data.setEffects(effectsTag);
             }
+            // 附属模组扩展数据：遍历已注册且可用的 provider
+            CompoundTag extras = new CompoundTag();
+            for (MaidMigrationProvider p : MaidMigrationRegistry.getAvailable()) {
+                try {
+                    CompoundTag tag = p.export(maid);
+                    if (tag != null && !tag.isEmpty()) {
+                        extras.put(p.getId().toString(), tag);
+                    }
+                } catch (Throwable t) {
+                    Constants.LOG.warn("[maid_file_manager] provider {} 导出失败（已跳过）: {}",
+                            p.getId(), t.toString());
+                }
+            }
+            if (!extras.isEmpty()) {
+                data.setExtras(extras);
+            }
             Constants.LOG.debug("[maid_file_manager] 序列化成功 modelId={} owner={}", modelId, ownerName);
             return data;
         } catch (Exception e) {
@@ -399,11 +417,9 @@ public final class MaidTransferService {
             }
             if (effectId.isEmpty() && src.contains("Id", Tag.TAG_ANY_NUMERIC)) {
                 // 兜底：同版本导出时，数字 ID 反查 ResourceLocation
-                // 1.21: MobEffect.byId 已移除，byId 在 DefaultedRegistry 上（MOB_EFFECT 运行时是 DefaultedRegistry）
                 int numericId = src.getInt("Id");
                 net.minecraft.world.effect.MobEffect effect =
-                        ((net.minecraft.core.DefaultedRegistry<net.minecraft.world.effect.MobEffect>)
-                                net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT).byId(numericId);
+                        net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT.byId(numericId);
                 if (effect != null) {
                     net.minecraft.resources.ResourceLocation rl =
                             net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT.getKey(effect);
@@ -446,8 +462,7 @@ public final class MaidTransferService {
     /**
      * 从 normalized 标准化数据重建 MobEffectInstance（跨版本恢复路径）。
      * 通过 ResourceLocation 查 BuiltInRegistries.MOB_EFFECT，避免数字 ID 跨版本漂移。
-     * <p>1.21+: MobEffectInstance 构造器接受 {@code Holder<MobEffect>} 而非 MobEffect，
-     * 用 Registry.getHolder(ResourceLocation) 取得 Holder。
+     * <p>1.21+: MobEffectInstance 构造器接受 {@code Holder<MobEffect>}。
      */
     private static net.minecraft.world.effect.MobEffectInstance rebuildEffectFromNormalized(CompoundTag item) {
         try {
@@ -456,9 +471,9 @@ public final class MaidTransferService {
             net.minecraft.resources.ResourceLocation rl =
                     net.minecraft.resources.ResourceLocation.tryParse(idStr);
             if (rl == null) return null;
-            java.util.Optional<net.minecraft.core.Holder.Reference<net.minecraft.world.effect.MobEffect>> holderOpt =
-                    net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT.getHolder(rl);
-            if (holderOpt == null || holderOpt.isEmpty()) {
+            net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect =
+                    net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT.getHolder(rl).orElse(null);
+            if (effect == null) {
                 Constants.LOG.warn("[maid_file_manager] 跨版本恢复：目标世界未注册效果 {}，已跳过", idStr);
                 return null;
             }
@@ -468,7 +483,7 @@ public final class MaidTransferService {
             boolean showParticles = item.getByte("show_particles") != 0;
             boolean showIcon = item.getByte("show_icon") != 0;
             return new net.minecraft.world.effect.MobEffectInstance(
-                    holderOpt.get(), duration, amplifier, ambient, showParticles, showIcon);
+                    effect, duration, amplifier, ambient, showParticles, showIcon);
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] rebuildEffectFromNormalized 失败: {}", t.toString());
             return null;
@@ -627,6 +642,24 @@ public final class MaidTransferService {
                 }
             }
         }
+        // 附属模组扩展数据导入：遍历 extras，按 provider id 匹配并写回
+        CompoundTag extras = data.getExtras();
+        if (extras != null) {
+            for (String key : extras.getAllKeys()) {
+                net.minecraft.resources.ResourceLocation rl =
+                        net.minecraft.resources.ResourceLocation.tryParse(key);
+                MaidMigrationProvider p = MaidMigrationRegistry.get(rl);
+                if (p == null || !p.isAvailable()) {
+                    // 软依赖：对应 provider 未注册或模组未加载，跳过该段数据
+                    continue;
+                }
+                try {
+                    p.importData(maid, extras.getCompound(key));
+                } catch (Throwable t) {
+                    Constants.LOG.warn("[maid_file_manager] provider {} 导入失败（已跳过）: {}", key, t.toString());
+                }
+            }
+        }
         Constants.LOG.info("[maid_file_manager] 导入完成 modelId={} ownerMatched={} pos={}",
                 maid.getModelId(), ownerMatched, safePos);
 
@@ -749,7 +782,7 @@ public final class MaidTransferService {
         }
     }
 
-    /**
+        /**
      * AI 对话恢复双路径：
      * (A) 调本体 readFromTag 还原聊天历史/摘要/token；
      * (B) 反射给人设字段赋值，兼容旧名 MaidAIChatSerializable（llmSite 等 8 字段）
@@ -787,7 +820,6 @@ public final class MaidTransferService {
             int forced = 0;
             Class<?> clazz = persona.getClass();
             for (String[] row : fieldMap) {
-                // 先在 NBT 里找值：row[0] 优先，row[1] 兜底
                 String value = null;
                 if (row[0] != null && ai.contains(row[0], Tag.TAG_STRING)) {
                     value = ai.getString(row[0]);
@@ -797,7 +829,6 @@ public final class MaidTransferService {
                 if (value == null || value.isEmpty()) {
                     continue;
                 }
-                // 候选字段名：row[2], row[3], ...
                 boolean set = false;
                 for (int i = 2; i < row.length && !set; i++) {
                     if (row[i] == null) continue;
@@ -819,7 +850,7 @@ public final class MaidTransferService {
         }
     }
 
-    /** 在 clazz 及其父类中按名称查找 public 字段（忽略访问修饰符）。 */
+    /** 在 clazz 及其父类中按名称查找字段（忽略访问修饰符）。 */
     private static java.lang.reflect.Field findField(Class<?> clazz, String name) {
         Class<?> c = clazz;
         while (c != null && c != Object.class) {
@@ -1048,7 +1079,7 @@ public final class MaidTransferService {
 
     /**
      * 主人匹配：UUID 精确 > 在线玩家名 > 未驯服。
-     * <p>1.21+ 的 setTame 为双参签名（tamed, playSound），导入不播放驯服音效故 playSound=false。
+     * 1.20.x 的 setTame 为单参签名（仅是否驯服）。
      */
     private static boolean matchOwner(EntityMaid maid, ServerPlayer player, MaidFileData data) {
         if (!data.isTamed()) {

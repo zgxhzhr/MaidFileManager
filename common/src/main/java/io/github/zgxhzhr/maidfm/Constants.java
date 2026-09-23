@@ -15,7 +15,7 @@ public class Constants {
     /** .maid 文件扩展名 */
     public static final String MAID_FILE_EXT = ".maid";
     /** 当前 .maid 文件格式版本，跨版本兼容时可用于迁移 */
-    public static final int MAID_FILE_FORMAT_VERSION = 4;
+    public static final int MAID_FILE_FORMAT_VERSION = 5;
     /** 导入时女仆生成在玩家前方的距离（格） */
     public static final double IMPORT_SPAWN_DISTANCE = 2.5;
 }
