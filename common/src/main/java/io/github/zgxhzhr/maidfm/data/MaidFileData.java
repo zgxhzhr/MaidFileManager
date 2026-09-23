@@ -59,6 +59,12 @@ public class MaidFileData {
     private CompoundTag advancements;
     /** 药水效果 NBT（从 ActiveEffects 提取，始终序列化，不受配置影响），可空 */
     private CompoundTag effects;
+    /**
+     * 附属模组通过 {@link io.github.zgxhzhr.maidfm.spi.MaidMigrationProvider}
+     * 导出的扩展数据，key 为 provider 的 ResourceLocation 字符串，
+     * value 为该 provider 的 export 返回值。可空（旧版文件无此字段）。
+     */
+    private CompoundTag extras;
 
     public MaidFileData() {
     }
@@ -95,6 +101,9 @@ public class MaidFileData {
         }
         if (effects != null) {
             root.put("effects", effects);
+        }
+        if (extras != null) {
+            root.put("extras", extras);
         }
         return root;
     }
@@ -144,6 +153,10 @@ public class MaidFileData {
         // v4 药水效果字段（旧 v3 文件无此字段，容错处理）
         if (root.contains("effects", Tag.TAG_COMPOUND)) {
             data.effects = root.getCompound("effects");
+        }
+        // v5 新增：附属模组扩展数据（旧 v4 文件无此字段，容错为 null）
+        if (root.contains("extras", Tag.TAG_COMPOUND)) {
+            data.extras = root.getCompound("extras");
         }
         // 旧 v4 文件可能含 spell_maid 键，本次改造已删除该字段，直接忽略（向后兼容）
         return data;
@@ -269,5 +282,13 @@ public class MaidFileData {
 
     public void setEffects(CompoundTag effects) {
         this.effects = effects;
+    }
+
+    public CompoundTag getExtras() {
+        return extras;
+    }
+
+    public void setExtras(CompoundTag extras) {
+        this.extras = extras;
     }
 }

@@ -8,6 +8,8 @@ import io.github.zgxhzhr.maidfm.data.MaidInfo;
 import io.github.zgxhzhr.maidfm.data.NbtMigration;
 import io.github.zgxhzhr.maidfm.data.NbtVersion;
 import io.github.zgxhzhr.maidfm.platform.Services;
+import io.github.zgxhzhr.maidfm.spi.MaidMigrationProvider;
+import io.github.zgxhzhr.maidfm.spi.MaidMigrationRegistry;
 import com.github.tartaricacid.touhoulittlemaid.entity.favorability.FavorabilityManager;
 import com.github.tartaricacid.touhoulittlemaid.entity.info.ServerCustomPackLoader;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
@@ -298,6 +300,22 @@ public final class MaidTransferService {
             // 药水效果
             if (effectsTag != null) {
                 data.setEffects(effectsTag);
+            }
+            // 附属模组扩展数据：遍历已注册且可用的 provider
+            CompoundTag extras = new CompoundTag();
+            for (MaidMigrationProvider p : MaidMigrationRegistry.getAvailable()) {
+                try {
+                    CompoundTag tag = p.export(maid);
+                    if (tag != null && !tag.isEmpty()) {
+                        extras.put(p.getId().toString(), tag);
+                    }
+                } catch (Throwable t) {
+                    Constants.LOG.warn("[maid_file_manager] provider {} 导出失败（已跳过）: {}",
+                            p.getId(), t.toString());
+                }
+            }
+            if (!extras.isEmpty()) {
+                data.setExtras(extras);
             }
             Constants.LOG.debug("[maid_file_manager] 序列化成功 modelId={} owner={}", modelId, ownerName);
             return data;
@@ -621,6 +639,24 @@ public final class MaidTransferService {
                     AdvancementTransfer.applyToPlayer(player, data.getAdvancements());
                 } catch (Throwable t) {
                     Constants.LOG.warn("[maid_file_manager] 成就合并失败（已忽略）: {}", t.toString());
+                }
+            }
+        }
+        // 附属模组扩展数据导入：遍历 extras，按 provider id 匹配并写回
+        CompoundTag extras = data.getExtras();
+        if (extras != null) {
+            for (String key : extras.getAllKeys()) {
+                net.minecraft.resources.ResourceLocation rl =
+                        net.minecraft.resources.ResourceLocation.tryParse(key);
+                MaidMigrationProvider p = MaidMigrationRegistry.get(rl);
+                if (p == null || !p.isAvailable()) {
+                    // 软依赖：对应 provider 未注册或模组未加载，跳过该段数据
+                    continue;
+                }
+                try {
+                    p.importData(maid, extras.getCompound(key));
+                } catch (Throwable t) {
+                    Constants.LOG.warn("[maid_file_manager] provider {} 导入失败（已跳过）: {}", key, t.toString());
                 }
             }
         }
