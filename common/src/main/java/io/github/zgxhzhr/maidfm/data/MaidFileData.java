@@ -38,6 +38,11 @@ public class MaidFileData {
 
     /** 主人 UUID 字符串，可空（未驯服） */
     private String ownerUuid;
+    /**
+     * 源女仆实体 UUID 字符串，可空（极早期文件可能无此字段）。
+     * 导入生成的新实体一律使用新 UUID，本字段仅用于导入前查重，防止同一位女仆被重复导入。
+     */
+    private String sourceMaidUuid;
     /** 主人名称，可空 */
     private String ownerName;
     /** 是否已驯服 */
@@ -80,6 +85,9 @@ public class MaidFileData {
         root.putBoolean("tamed", tamed);
         if (ownerUuid != null) {
             root.putString("owner_uuid", ownerUuid);
+        }
+        if (sourceMaidUuid != null) {
+            root.putString("source_maid_uuid", sourceMaidUuid);
         }
         if (ownerName != null) {
             root.putString("owner_name", ownerName);
@@ -129,6 +137,15 @@ public class MaidFileData {
                 UUID.fromString(data.ownerUuid);
             } catch (IllegalArgumentException e) {
                 data.ownerUuid = null;
+            }
+        }
+        // 源女仆实体 UUID（v6 起写入；旧文件无此字段，导入端会从实体根 NBT 的 UUID 键兜底解析）
+        if (root.contains("source_maid_uuid", Tag.TAG_STRING)) {
+            data.sourceMaidUuid = root.getString("source_maid_uuid");
+            try {
+                UUID.fromString(data.sourceMaidUuid);
+            } catch (IllegalArgumentException e) {
+                data.sourceMaidUuid = null;
             }
         }
         if (root.contains("owner_name", Tag.TAG_STRING)) {
@@ -212,6 +229,14 @@ public class MaidFileData {
 
     public void setOwnerUuid(String ownerUuid) {
         this.ownerUuid = ownerUuid;
+    }
+
+    public String getSourceMaidUuid() {
+        return sourceMaidUuid;
+    }
+
+    public void setSourceMaidUuid(String sourceMaidUuid) {
+        this.sourceMaidUuid = sourceMaidUuid;
     }
 
     public String getOwnerName() {
