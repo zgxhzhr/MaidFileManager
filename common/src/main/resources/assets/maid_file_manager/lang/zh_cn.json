@@ -44,6 +44,7 @@
     "maid_file_manager.import.success": "女仆已成功导入到你的身边！",
     "maid_file_manager.import.fail.not_found_owner": "未找到原主人，女仆已生成为未驯服状态，你可以用蛋糕重新驯服。",
     "maid_file_manager.import.fail.add_entity": "将女仆添加到世界失败。",
+    "maid_file_manager.import.fail.duplicate": "导入失败：这位女仆已存在于世界中，不允许重复导入同一位女仆（%s）。请先解散或移除原来的女仆后再导入；若原女仆已死亡，可正常重新导入。",
     "maid_file_manager.import.fail.invalid": "无效的女仆数据",
     "maid_file_manager.import.fail.empty": "没有可导入的有效文件",
     "maid_file_manager.import.fail.unserializable": "存在无法序列化的女仆文件（详见日志）",
