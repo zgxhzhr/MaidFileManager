@@ -44,6 +44,7 @@
     "maid_file_manager.import.success": "Maid imported successfully beside you!",
     "maid_file_manager.import.fail.not_found_owner": "Original owner not found. The maid has been spawned as untamed. You can tame it again with cake.",
     "maid_file_manager.import.fail.add_entity": "Failed to add maid to world.",
+    "maid_file_manager.import.fail.duplicate": "Import failed: this maid already exists in the world. Importing the same maid twice is not allowed (%s). Dismiss or remove the original maid before importing again; if the original maid has died, importing is allowed.",
     "maid_file_manager.import.fail.invalid": "Invalid maid data",
     "maid_file_manager.import.fail.empty": "No valid files available for import",
     "maid_file_manager.import.fail.unserializable": "Some maid files could not be serialized (see logs)",
