@@ -31,16 +31,12 @@
 
 | Loader | Minecraft 版本 | JAR 文件名 |
 |--------|---------------|-----------|
-| Forge | 1.20 | maid_file_manager-forge-1.20-1.4.0.jar |
-| Forge | 1.20.1 | maid_file_manager-forge-1.20.1-1.4.0.jar |
-| NeoForge | 1.21 | maid_file_manager-neoforge-1.21-1.4.0.jar |
+| Forge | 1.20 / 1.20.1 | maid_file_manager-forge-1.20.1-1.4.0.jar |
 | NeoForge | 1.21.1 | maid_file_manager-neoforge-1.21.1-1.4.0.jar |
-| Fabric | 1.20 | maid_file_manager-fabric-1.20-1.4.0.jar |
-| Fabric | 1.20.1 | maid_file_manager-fabric-1.20.1-1.4.0.jar |
-| Fabric | 1.21 | maid_file_manager-fabric-1.21-1.4.0.jar |
-| Fabric | 1.21.1 | maid_file_manager-fabric-1.21.1-1.4.0.jar |
+| Fabric | 1.20 / 1.20.1 | maid_file_manager-fabric-1.20.1-1.4.0.jar |
+| Fabric | 1.21 / 1.21.1 | maid_file_manager-fabric-1.21.1-1.4.0.jar |
 
-> 注：Forge 1.20 与 1.20.1 的 JAR 可互换使用（API 兼容）；Fabric 1.20 与 1.20.1 同理。
+> 注：自 v1.4.0 起同一大版本内的小版本合并为单一 JAR：Forge 版基于 1.20.1 构建、兼容 1.20（Forge Loader 46+）；Fabric 1.20 系与 1.21 系同理单 JAR 通吃两个小版本。NeoForge 仅提供 1.21.1：NeoForge 21.1 与 1.21 原版的 21.0 二进制不兼容，停留在 1.21 原版的玩家请更新到 1.21.1。
 
 ## 安装
 
