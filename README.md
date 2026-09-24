@@ -22,20 +22,22 @@
 - **安全防护**：导出时不保留背包与主副手物品，防止利用导出机制刷取物品
 - **服务端统一导出**：仅 OP（权限等级 2）可用，按玩家分组导出到服务端 `maid_exports/<玩家名>/`；只写文件、永不移除女仆；需每位玩家本人同意（默认不同意）
 - **服务端配置同步**：联机宿主集中管控四项开关，客户端进服自动同步
+- **附属数据迁移 SPI**：对外提供统一迁移接口（`MaidMigrationProvider`），附属模组可自行注册，把不在女仆实体 NBT 上的数据（独立 SavedData / Capability / 玩家持久化数据 / 外部存储等）随 `.maid` 一起迁移；附属未加载时自动跳过、不报错。详见下文「附属模组接入」
+- **属性加成完整保留**：血量 / 攻击力以车万女仆白板值为地板，同时保留附属模组通过基础值或饰品 / 词条修饰符提供的加成；满血且带血量加成的女仆导入后不再掉血
 - **无残留**：卸载模组不影响已导入的女仆
 
 ## 支持版本
 
 | Loader | Minecraft 版本 | JAR 文件名 |
 |--------|---------------|-----------|
-| Forge | 1.20 | maid_file_manager-forge-1.20-1.3.0.jar |
-| Forge | 1.20.1 | maid_file_manager-forge-1.20.1-1.3.0.jar |
-| NeoForge | 1.21 | maid_file_manager-neoforge-1.21-1.3.0.jar |
-| NeoForge | 1.21.1 | maid_file_manager-neoforge-1.21.1-1.3.0.jar |
-| Fabric | 1.20 | maid_file_manager-fabric-1.20-1.3.0.jar |
-| Fabric | 1.20.1 | maid_file_manager-fabric-1.20.1-1.3.0.jar |
-| Fabric | 1.21 | maid_file_manager-fabric-1.21-1.3.0.jar |
-| Fabric | 1.21.1 | maid_file_manager-fabric-1.21.1-1.3.0.jar |
+| Forge | 1.20 | maid_file_manager-forge-1.20-1.4.0.jar |
+| Forge | 1.20.1 | maid_file_manager-forge-1.20.1-1.4.0.jar |
+| NeoForge | 1.21 | maid_file_manager-neoforge-1.21-1.4.0.jar |
+| NeoForge | 1.21.1 | maid_file_manager-neoforge-1.21.1-1.4.0.jar |
+| Fabric | 1.20 | maid_file_manager-fabric-1.20-1.4.0.jar |
+| Fabric | 1.20.1 | maid_file_manager-fabric-1.20.1-1.4.0.jar |
+| Fabric | 1.21 | maid_file_manager-fabric-1.21-1.4.0.jar |
+| Fabric | 1.21.1 | maid_file_manager-fabric-1.21.1-1.4.0.jar |
 
 > 注：Forge 1.20 与 1.20.1 的 JAR 可互换使用（API 兼容）；Fabric 1.20 与 1.20.1 同理。
 
@@ -86,14 +88,43 @@
 |---|---|
 | 主人驯服关系 | 保留（找不到原主人时生成为未驯服，用蛋糕重新驯服即可） |
 | 名字 / 模型 | 保留（目标端缺模型时显示为博丽灵梦） |
-| 血量 | 保留（至少 80；被雷劈渡劫的至少 100；超过 256 截断为 256） |
-| 攻击力 | 保留（数据异常时恢复为默认 2.0） |
+| 血量 | 保留。以车万女仆白板血量为地板（按好感等级，满好感 80、渡劫 100），在此之上保留附属模组通过基础值提供的加成；走饰品 / 词条修饰符的加成在女仆入世界后自动恢复；异常超大基础值兜底截断（上限 10000） |
+| 攻击力 | 保留。同为白板地板策略，保留附属基础值加成；基础值 ≤0 恢复为白板，异常超大值兜底截断（上限 100000） |
 | AI 对话数据 | 保留（人设、聊天历史、摘要、Token 用量） |
 | 饰品 / 药水效果 / 进度 | 默认保留，可分别关闭 |
 | 背包与主副手物品 | 不保留（导出前请先取回） |
 | 原 UUID / 着火、坠落等运行时状态 | 不保留（导入时生成新 UUID） |
 
+## 附属模组接入（SPI）
+
+本模组不针对任何具体附属做硬编码适配，而是对外提供一套统一迁移接口。附属模组如果有**挂在女仆身上、但不在女仆实体 NBT 内**的数据（独立 `SavedData`、Forge Capability、玩家持久化数据、外部数据库等，通常通过女仆 UUID 关联），可以自行接入，让这部分数据随 `.maid` 一起迁移。
+
+接入只需两步：
+
+1. 实现 `io.github.zgxhzhr.maidfm.spi.MaidMigrationProvider`，共四个方法——`getId()`（唯一标识，建议 `你的modid:数据名`）、`getDependencyModId()`（依赖的 modid，用于软依赖检测）、`export(EntityMaid)`（导出该女仆的附属数据为 `CompoundTag`，无数据返回 `null`）、`importData(EntityMaid, CompoundTag)`（导入时把数据写回你的存储系统）。
+2. 在你的模组初始化阶段调用一行 `MaidMigrationRegistry.register(new XxxProvider());`。
+
+设计约束与保障：
+
+- 接口参数只依赖女仆实体与 NBT，不引入任何具体附属的类型，编译时 `compileOnly` 依赖本模组即可
+- 数据存在哪里完全由附属自己决定，本模组只负责在导出 / 导入时调用并搬运 `CompoundTag`
+- 附属模组未加载时对应数据段自动跳过，不报错；附属 `export` / `importData` 抛异常会被隔离，不影响女仆主体和其他附属
+- 导入后女仆会获得新 UUID，附属需以 `maid.getUUID()` 为准写回，不要使用导出时的旧 UUID
+- `.maid` 文件 v5 起新增 `extras` 复合标签承载附属数据；旧版无此标签的文件正常导入（向后兼容），新版文件在旧版本模组中导入时该标签被忽略
+
+> 已经把数据写在女仆实体 NBT（含 `getPersistentData()` 与 Forge Capability 随存档序列化的字段）里的附属**无需接入**——本模组用 `EntityMaid#saveWithoutId` 导出完整女仆 NBT，这部分数据会自动随女仆迁移。
+
 ## 版本历史
+
+### v1.4.0
+- 新增：附属模组统一迁移接口 SPI（`MaidMigrationProvider` + `MaidMigrationRegistry`），附属可自行注册导出 / 导入自身数据；`.maid` 文件格式升级到 v5，新增 `extras` 字段（旧 v4 文件正常导入，向后兼容）
+- 改进：血量 / 攻击力迁移改为「白板地板 + 保留源基础值」策略——以车万女仆按好感等级（含渡劫）计算的白板值为下限，同时保留附属通过基础值提供的加成；移除原 256 / 1024 固定上限，改为仅防异常数据撑爆属性同步的兜底硬上限（血量基础值 10000、攻击力基础值 100000）
+- 修复：满血且带饰品 / 词条血量修饰符的女仆导入后掉血。原因是固定延迟一次校准无法保证晚于所有附属附加修饰符；改为在入世界后的有界窗口（约 1 秒）内逐 tick 按当前最大血量校准，可追上任意时刻附加的修饰符
+- 重构：Java 包名由 `com.example.maid_file_manager` 迁移为 `io.github.zgxhzhr.maidfm`（MOD ID 仍为 `maid_file_manager`，不影响 `.maid` 文件与存档）
+
+### v1.3.1
+- 新增：女仆自定义名（命名牌命名）进入导出文件名，格式为 `自定义名_模型名_时间戳_短UUID.maid`；游戏内导出界面列表项与悬浮提示显示为「自定义名 · 模型名」
+- 修复：1.21 / 1.21.1 NeoForge 环境下，TLM release 版将 `MaidAIChatSerializable` 更名为 `MaidAIDataSerializable` 并调整字段名，导致本模组类加载失败、连女仆列表都崩溃的问题；改为反射兼容新旧类名与字段名
 
 ### v1.3.0
 - 新增：药水效果跨版本迁移（原版 NBT + 标准化双份数据，按目标版本恢复）
@@ -131,4 +162,4 @@
 
 ## 许可证
 
-CC0-1.0 (Creative Commons Zero / 公共领域 dedication)
+本项目基于 [MIT License](https://opensource.org/license/mit) 开源，版权所有 © 2026 逐光星火_执火人，完整协议文本见 [LICENSE](LICENSE)。
