@@ -21,8 +21,10 @@ public final class NbtMigration {
 
     /**
      * 运行时污染标签：与版本无关的卫生清理，任何来源文件都执行。
-     * UUIDLeast/UUIDMost 恒删 —— 导入实体一律由构造器生成新 UUID（硬约束：避免跨世界冲突），
+     * UUID 恒删 —— 导入实体一律由构造器生成新 UUID（硬约束：避免跨世界冲突），
      * 位置/朝向由导入主流程按玩家附近安全点重建。
+     * 注意 1.9+ 实体根 UUID 键为 int 数组 "UUID"；UUIDLeast/UUIDMost 是 1.8 旧格式，两者都删。
+     * 此处仅作用于实体根标签，不影响 OwnerUUID 等独立业务键。
      */
     private static final String[] RUNTIME_STATE_TAGS_TO_REMOVE = {
             "Health", "HurtTime", "DeathTime", "HurtByTimestamp",
@@ -33,7 +35,7 @@ public final class NbtMigration {
             "SleepingX", "SleepingY", "SleepingZ", "Brain", "Saddle",
             "Bukkit.updateLevel", "Bukkit.values",  // Paper/Arclight 残留（防御）
             "Motion", "Rotation", "FallHurtDistance",
-            "Leash", "UUIDLeast", "UUIDMost",
+            "Leash", "UUID", "UUIDLeast", "UUIDMost",
             "Pos",
             "CanPickUpLoot",
             "Passengers",
