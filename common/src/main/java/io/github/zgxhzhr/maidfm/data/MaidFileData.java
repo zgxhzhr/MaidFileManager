@@ -65,17 +65,6 @@ public class MaidFileData {
      * value 为该 provider 的 export 返回值。可空（旧版文件无此字段）。
      */
     private CompoundTag extras;
-    /**
-     * 导出时女仆最大生命值属性的<b>基础值</b>（base value，不含饰品/词条的 modifier 加成）。
-     * -1 表示旧版文件无此字段。导入时以 TLM 白板值为地板、以此值为优先，
-     * 保留直接修改 base 值的附属模组加成。
-     */
-    private double sourceHealthBase = -1.0D;
-    /**
-     * 导出时女仆攻击伤害属性的<b>基础值</b>（base value，不含武器/饰品 modifier）。
-     * -1 表示旧版文件无此字段。
-     */
-    private double sourceAttackBase = -1.0D;
 
     public MaidFileData() {
     }
@@ -115,13 +104,6 @@ public class MaidFileData {
         }
         if (extras != null) {
             root.put("extras", extras);
-        }
-        // v6 新增：导出时的属性基础值（旧版读取端不认识会直接忽略，前向兼容）
-        if (sourceHealthBase >= 0) {
-            root.putDouble("source_health_base", sourceHealthBase);
-        }
-        if (sourceAttackBase >= 0) {
-            root.putDouble("source_attack_base", sourceAttackBase);
         }
         return root;
     }
@@ -176,14 +158,9 @@ public class MaidFileData {
         if (root.contains("extras", Tag.TAG_COMPOUND)) {
             data.extras = root.getCompound("extras");
         }
-        // v6 新增：导出时属性基础值（旧 v5 及更早文件无此字段，保持 -1 走白板地板）
-        if (root.contains("source_health_base", Tag.TAG_DOUBLE)) {
-            data.sourceHealthBase = root.getDouble("source_health_base");
-        }
-        if (root.contains("source_attack_base", Tag.TAG_DOUBLE)) {
-            data.sourceAttackBase = root.getDouble("source_attack_base");
-        }
-        // 旧 v4 文件可能含 spell_maid 键，本次改造已删除该字段，直接忽略（向后兼容）
+        // v6 短暂存在过的 source_health_base/source_attack_base 字段已废弃：
+        // 属性 base 导入时无条件回到 TLM 白板值，旧文件含这两个键时直接忽略。
+        // 旧 v4 文件可能含 spell_maid 键，同样忽略（向后兼容）。
         return data;
     }
 
@@ -315,21 +292,5 @@ public class MaidFileData {
 
     public void setExtras(CompoundTag extras) {
         this.extras = extras;
-    }
-
-    public double getSourceHealthBase() {
-        return sourceHealthBase;
-    }
-
-    public void setSourceHealthBase(double sourceHealthBase) {
-        this.sourceHealthBase = sourceHealthBase;
-    }
-
-    public double getSourceAttackBase() {
-        return sourceAttackBase;
-    }
-
-    public void setSourceAttackBase(double sourceAttackBase) {
-        this.sourceAttackBase = sourceAttackBase;
     }
 }
