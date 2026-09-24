@@ -67,16 +67,6 @@ public final class MaidTransferService {
     private static final int MAX_BAUBLE_SLOTS = 256;
     private static final int SPAWN_SAFE_MAX_UP = 8;
     /**
-     * 血量基础值的 OOM 兜底硬上限。
-     * <p>正常白板女仆上限 100（满好感 80 + 雷劫 20），附属的饰品/词条/羁绊加成走
-     * AttributeModifier（不体现在 base 上）；即便是直接改 base 值的附属，也远低于此值。
-     * 仅用于拦截伪造/损坏 NBT 里的天文数字（base 值过大会导致血量网络包/属性同步异常）。
-     * .maid 文件是玩家导出自用，不承担防作弊职责，只防数据损坏。
-     */
-    private static final double HARD_CAP_HEALTH_BASE = 10000.0D;
-    /** 攻击力基础值的 OOM 兜底硬上限，理由同上 */
-    private static final double HARD_CAP_ATTACK_BASE = 100000.0D;
-    /**
      * 女仆入世界后血量校准的重试窗口（tick）。
      * 饰品/词条类附属的 AttributeModifier 在实体入世界后的若干 tick 内陆续附加，时刻不固定；
      * 固定延迟一次校准无法保证晚于所有附属。改为在此窗口内每 tick 按当前最大血量补齐，
@@ -311,15 +301,6 @@ public final class MaidTransferService {
             // 药水效果
             if (effectsTag != null) {
                 data.setEffects(effectsTag);
-            }
-            // 属性基础值快照（不含 modifier）：导入时用于保留直接修改 base 值的附属加成
-            AttributeInstance exportedHealth = maid.getAttribute(Attributes.MAX_HEALTH);
-            if (exportedHealth != null) {
-                data.setSourceHealthBase(exportedHealth.getBaseValue());
-            }
-            AttributeInstance exportedAttack = maid.getAttribute(Attributes.ATTACK_DAMAGE);
-            if (exportedAttack != null) {
-                data.setSourceAttackBase(exportedAttack.getBaseValue());
             }
             // 附属模组扩展数据：遍历已注册且可用的 provider
             CompoundTag extras = new CompoundTag();
@@ -1010,29 +991,27 @@ public final class MaidTransferService {
         // 好感等级与属性曲线直接委托 TLM 公开 API，避免硬编码表随 TLM 改版漂移
         FavorabilityManager manager = maid.getFavorabilityManager();
         int level = manager.getLevel();
-        // 白板地板：无任何附属时该好感等级（含雷劫）应有的基础值
-        double healthFloor = manager.getHealthByLevel(level);
-        double attackFloor = manager.getAttackByLevel(level);
+        // 属性基础值无条件回到 TLM 白板值（该好感等级，含雷劫 +20 血量）。
+        // 不保留源存档 base：全局生物血量倍率类模组（直接改 base 或写持久 modifier）会把
+        // 女仆血量抬到离谱数值，跟着 .maid 跨存档迁移会破坏联机导入公平；持久 modifier 在
+        // NbtMigration 阶段随 Attributes 标签整体清除。附属合法的饰品/词条/羁绊加成走
+        // AttributeModifier，导入后饰品回栏、实体 tick 即自动附加，无需保留 base。
+        double healthBase = manager.getHealthByLevel(level);
+        double attackBase = manager.getAttackByLevel(level);
         if (maid.isStruckByLightning() || sourceStruckByLightning) {
-            healthFloor += 20;
+            healthBase += 20;
         }
-        double sourceHealthBase = data != null ? data.getSourceHealthBase() : -1.0D;
-        double sourceAttackBase = data != null ? data.getSourceAttackBase() : -1.0D;
 
         AttributeInstance health = maid.getAttribute(Attributes.MAX_HEALTH);
         if (health != null) {
-            double targetHealth = resolveBaseWithFloor(
-                    sourceHealthBase, healthFloor, HARD_CAP_HEALTH_BASE, "血量");
-            health.setBaseValue(targetHealth);
+            health.setBaseValue(healthBase);
             if (maid.getHealth() > maid.getMaxHealth()) {
                 maid.setHealth(maid.getMaxHealth());
             }
         }
         AttributeInstance attack = maid.getAttribute(Attributes.ATTACK_DAMAGE);
         if (attack != null) {
-            double targetAttack = resolveBaseWithFloor(
-                    sourceAttackBase, attackFloor, HARD_CAP_ATTACK_BASE, "攻击力");
-            attack.setBaseValue(targetAttack);
+            attack.setBaseValue(attackBase);
         }
         Constants.LOG.debug("[maid_file_manager] 重建属性: fav={} level={} healthBase={} attackBase={}",
                 favorability, level,
@@ -1042,34 +1021,6 @@ public final class MaidTransferService {
                 && !data.getModelId().equals(maid.getModelId())) {
             maid.setModelId(data.getModelId());
         }
-    }
-
-    /**
-     * 属性基础值的地板策略：
-     * <ul>
-     *   <li>旧版文件无快照 / NaN / 无穷大：使用白板地板</li>
-     *   <li>源 base 低于白板（源存档异常或 TLM 跨版本调整曲线）：回到白板，防止属性倒缩</li>
-     *   <li>源 base 在白板与硬上限之间：保留源值——直接修改 base 的附属加成随女仆迁移</li>
-     *   <li>源 base 超过硬上限：截断，防损坏 NBT 撑爆属性同步</li>
-     * </ul>
-     * 注意：走 AttributeModifier 的饰品/词条加成不体现在 base 上，无需此机制，
-     * 实体入世界 tick 后由游戏自动附加。
-     */
-    private static double resolveBaseWithFloor(double source, double floor, double hardCap, String label) {
-        if (source < 0 || Double.isNaN(source) || Double.isInfinite(source)) {
-            return floor;
-        }
-        if (source < floor) {
-            Constants.LOG.debug("[maid_file_manager] {}基础值 {} 低于白板地板 {}，按白板恢复",
-                    label, source, floor);
-            return floor;
-        }
-        if (source > hardCap) {
-            Constants.LOG.warn("[maid_file_manager] {}基础值 {} 超过硬上限 {}，截断（疑似损坏 NBT）",
-                    label, source, hardCap);
-            return hardCap;
-        }
-        return source;
     }
 
     /**
