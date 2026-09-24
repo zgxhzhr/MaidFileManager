@@ -66,12 +66,23 @@ public final class MaidTransferService {
      */
     private static final int MAX_BAUBLE_SLOTS = 256;
     private static final int SPAWN_SAFE_MAX_UP = 8;
-    /** 满血上限：满好感基础 80，渡劫额外 +20 */
-    private static final double MAID_MAX_HEALTH = 80.0D;
-    private static final double MAID_DEFAULT_ATTACK_DAMAGE = 2.0D;
-    private static final double MAID_MAX_ATTACK_DAMAGE = 1024.0D;
-    /** 属性安全硬上限，防止恶意外挂 NBT 把属性打穿 */
-    private static final double ABSOLUTE_MAX_HEALTH_CAP = 256.0D;
+    /**
+     * 血量基础值的 OOM 兜底硬上限。
+     * <p>正常白板女仆上限 100（满好感 80 + 雷劫 20），附属的饰品/词条/羁绊加成走
+     * AttributeModifier（不体现在 base 上）；即便是直接改 base 值的附属，也远低于此值。
+     * 仅用于拦截伪造/损坏 NBT 里的天文数字（base 值过大会导致血量网络包/属性同步异常）。
+     * .maid 文件是玩家导出自用，不承担防作弊职责，只防数据损坏。
+     */
+    private static final double HARD_CAP_HEALTH_BASE = 10000.0D;
+    /** 攻击力基础值的 OOM 兜底硬上限，理由同上 */
+    private static final double HARD_CAP_ATTACK_BASE = 100000.0D;
+    /**
+     * 女仆入世界后血量校准的重试窗口（tick）。
+     * 饰品/词条类附属的 AttributeModifier 在实体入世界后的若干 tick 内陆续附加，时刻不固定；
+     * 固定延迟一次校准无法保证晚于所有附属。改为在此窗口内每 tick 按当前最大血量补齐，
+     * 无论 modifier 何时附加都能把满血女仆的血量追上来。20 tick ≈ 1 秒。
+     */
+    private static final int POST_IMPORT_HEAL_RETRY_TICKS = 20;
     /**
      * 万法皆通特殊女仆身上的永久常驻药水效果固定为这 11 种 ResourceLocation
      * （来自万法皆通结构模板 .nbt 预置，duration=-1）。
@@ -300,6 +311,15 @@ public final class MaidTransferService {
             // 药水效果
             if (effectsTag != null) {
                 data.setEffects(effectsTag);
+            }
+            // 属性基础值快照（不含 modifier）：导入时用于保留直接修改 base 值的附属加成
+            AttributeInstance exportedHealth = maid.getAttribute(Attributes.MAX_HEALTH);
+            if (exportedHealth != null) {
+                data.setSourceHealthBase(exportedHealth.getBaseValue());
+            }
+            AttributeInstance exportedAttack = maid.getAttribute(Attributes.ATTACK_DAMAGE);
+            if (exportedAttack != null) {
+                data.setSourceAttackBase(exportedAttack.getBaseValue());
             }
             // 附属模组扩展数据：遍历已注册且可用的 provider
             CompoundTag extras = new CompoundTag();
@@ -549,9 +569,11 @@ public final class MaidTransferService {
         maid.setStruckByLightning(sourceStruckByLightning);
 
         rebuildAttributesAndModel(maid, data, sourceStruckByLightning);
-        validateMaidAttributes(maid);
-        float maxHealth = maid.getMaxHealth();
-        maid.setHealth(sourceHealth > 0 && sourceHealth <= maxHealth ? sourceHealth : maxHealth);
+        // 入世界前的临时校准：此刻饰品/词条 modifier 尚未附加，maxHealth 只是白板口径，
+        // 这里仅防止实体以越界血量加入世界；最终校准延迟到入世界后（见 schedulePostImportHealthSync）
+        float preSpawnMaxHealth = maid.getMaxHealth();
+        maid.setHealth(sourceHealth > 0 && sourceHealth <= preSpawnMaxHealth
+                ? sourceHealth : preSpawnMaxHealth);
 
         try {
             maid.removeAllEffects();
@@ -660,6 +682,9 @@ public final class MaidTransferService {
                 }
             }
         }
+        // 最终血量校准必须延迟到实体入世界且附属 tick 附加 modifier 之后，
+        // 否则满血女仆会因白板上限夹断而掉血
+        schedulePostImportHealthSync(level, maid, sourceHealth);
         Constants.LOG.info("[maid_file_manager] 导入完成 modelId={} ownerMatched={} pos={}",
                 maid.getModelId(), ownerMatched, safePos);
 
@@ -985,54 +1010,114 @@ public final class MaidTransferService {
         // 好感等级与属性曲线直接委托 TLM 公开 API，避免硬编码表随 TLM 改版漂移
         FavorabilityManager manager = maid.getFavorabilityManager();
         int level = manager.getLevel();
-        int healthByLevel = manager.getHealthByLevel(level);
-        int attackByLevel = manager.getAttackByLevel(level);
+        // 白板地板：无任何附属时该好感等级（含雷劫）应有的基础值
+        double healthFloor = manager.getHealthByLevel(level);
+        double attackFloor = manager.getAttackByLevel(level);
         if (maid.isStruckByLightning() || sourceStruckByLightning) {
-            healthByLevel += 20;
+            healthFloor += 20;
         }
+        double sourceHealthBase = data != null ? data.getSourceHealthBase() : -1.0D;
+        double sourceAttackBase = data != null ? data.getSourceAttackBase() : -1.0D;
+
         AttributeInstance health = maid.getAttribute(Attributes.MAX_HEALTH);
         if (health != null) {
-            health.setBaseValue(healthByLevel);
+            double targetHealth = resolveBaseWithFloor(
+                    sourceHealthBase, healthFloor, HARD_CAP_HEALTH_BASE, "血量");
+            health.setBaseValue(targetHealth);
             if (maid.getHealth() > maid.getMaxHealth()) {
                 maid.setHealth(maid.getMaxHealth());
             }
         }
         AttributeInstance attack = maid.getAttribute(Attributes.ATTACK_DAMAGE);
         if (attack != null) {
-            attack.setBaseValue(attackByLevel);
+            double targetAttack = resolveBaseWithFloor(
+                    sourceAttackBase, attackFloor, HARD_CAP_ATTACK_BASE, "攻击力");
+            attack.setBaseValue(targetAttack);
         }
-        Constants.LOG.debug("[maid_file_manager] 重建属性: fav={} level={} health={} attack={}",
-                favorability, level, healthByLevel, attackByLevel);
+        Constants.LOG.debug("[maid_file_manager] 重建属性: fav={} level={} healthBase={} attackBase={}",
+                favorability, level,
+                health == null ? "null" : health.getBaseValue(),
+                attack == null ? "null" : attack.getBaseValue());
         if (data != null && data.getModelId() != null && !data.getModelId().isEmpty()
                 && !data.getModelId().equals(maid.getModelId())) {
             maid.setModelId(data.getModelId());
         }
     }
 
-    private static void validateMaidAttributes(EntityMaid maid) {
-        double baseCap = MAID_MAX_HEALTH + (maid.isStruckByLightning() ? 20.0D : 0.0D);
-        double currentMax = maid.getAttributeValue(Attributes.MAX_HEALTH);
-        double effectiveCap = Math.min(Math.max(baseCap, currentMax), ABSOLUTE_MAX_HEALTH_CAP);
-        AttributeInstance healthAttr = maid.getAttribute(Attributes.MAX_HEALTH);
-        if (healthAttr != null) {
-            double maxHealth = healthAttr.getBaseValue();
-            if (maxHealth > effectiveCap) {
-                Constants.LOG.warn("[maid_file_manager] 血量上限 {} 超限，截断到 {}", maxHealth, effectiveCap);
-                healthAttr.setBaseValue(effectiveCap);
-                if (maid.getHealth() > effectiveCap) {
-                    maid.setHealth((float) effectiveCap);
+    /**
+     * 属性基础值的地板策略：
+     * <ul>
+     *   <li>旧版文件无快照 / NaN / 无穷大：使用白板地板</li>
+     *   <li>源 base 低于白板（源存档异常或 TLM 跨版本调整曲线）：回到白板，防止属性倒缩</li>
+     *   <li>源 base 在白板与硬上限之间：保留源值——直接修改 base 的附属加成随女仆迁移</li>
+     *   <li>源 base 超过硬上限：截断，防损坏 NBT 撑爆属性同步</li>
+     * </ul>
+     * 注意：走 AttributeModifier 的饰品/词条加成不体现在 base 上，无需此机制，
+     * 实体入世界 tick 后由游戏自动附加。
+     */
+    private static double resolveBaseWithFloor(double source, double floor, double hardCap, String label) {
+        if (source < 0 || Double.isNaN(source) || Double.isInfinite(source)) {
+            return floor;
+        }
+        if (source < floor) {
+            Constants.LOG.debug("[maid_file_manager] {}基础值 {} 低于白板地板 {}，按白板恢复",
+                    label, source, floor);
+            return floor;
+        }
+        if (source > hardCap) {
+            Constants.LOG.warn("[maid_file_manager] {}基础值 {} 超过硬上限 {}，截断（疑似损坏 NBT）",
+                    label, source, hardCap);
+            return hardCap;
+        }
+        return source;
+    }
+
+    /**
+     * 入世界后的最终血量校准（链式重试，见 {@link #scheduleHealthSyncTick}）。
+     *
+     * <p>饰品/词条类附属在实体 tick 时才把 AttributeModifier 附加到属性上，
+     * 而实体入世界前的 setHealth 只能按白板 maxHealth 夹断，会把满血女仆的当前血量
+     * 压到白板值；待 modifier 生效后 maxHealth 升高，当前血量却停在低位——表现为导入后掉血。
+     * 由于不同附属附加 modifier 的时刻不固定，采用有界窗口内逐 tick 重试补齐。
+     */
+    private static void schedulePostImportHealthSync(Level level, EntityMaid maid, float sourceHealth) {
+        if (!(level instanceof net.minecraft.server.level.ServerLevel serverLevel)) {
+            return;
+        }
+        UUID maidId = maid.getUUID();
+        // 链式重试校准：附属（饰品/词条）在实体入世界后的 tick 中陆续附加 AttributeModifier，
+        // 固定时刻校准无法保证晚于所有附属，曾出现满血肉盾女仆导入后被夹回白板血量的时序竞态。
+        // 在有界窗口内每 tick 按"当前"最大血量重算目标并补齐，可追上任意时刻附加的 modifier。
+        scheduleHealthSyncTick(serverLevel, maidId, sourceHealth, POST_IMPORT_HEAL_RETRY_TICKS);
+    }
+
+    /**
+     * 入世界后血量校准的单次重试。每 tick 执行一次，链式续调到下一 tick，
+     * 直到 {@code ticksLeft} 耗尽（约 {@value #POST_IMPORT_HEAL_RETRY_TICKS} tick / 1 秒）。
+     *
+     * <p>语义：只抬血不扣血；目标为 min(源血量, 当前最大血量)。旧文件无源血量时按满血处理。
+     * 修饰符在窗口内任意 tick 附加都会使当前最大血量升高，下一次重试即可把血量补齐。
+     */
+    private static void scheduleHealthSyncTick(net.minecraft.server.level.ServerLevel serverLevel,
+                                               UUID maidId, float sourceHealth, int ticksLeft) {
+        net.minecraft.server.MinecraftServer server = serverLevel.getServer();
+        if (server == null) {
+            return;
+        }
+        server.tell(new net.minecraft.server.TickTask(server.getTickCount() + 1, () -> {
+            Entity entity = serverLevel.getEntity(maidId);
+            if (entity instanceof EntityMaid fresh && fresh.isAlive()) {
+                float currentMax = fresh.getMaxHealth();
+                float target = sourceHealth > 0 ? Math.min(sourceHealth, currentMax) : currentMax;
+                if (fresh.getHealth() + 0.01F < target) {
+                    fresh.setHealth(target);
                 }
             }
-        }
-        AttributeInstance attackAttr = maid.getAttribute(Attributes.ATTACK_DAMAGE);
-        if (attackAttr != null) {
-            double attackDamage = attackAttr.getBaseValue();
-            if (attackDamage <= 0 || attackDamage > MAID_MAX_ATTACK_DAMAGE) {
-                Constants.LOG.warn("[maid_file_manager] 攻击伤害 {} 异常，回退默认值 {}",
-                        attackDamage, MAID_DEFAULT_ATTACK_DAMAGE);
-                attackAttr.setBaseValue(MAID_DEFAULT_ATTACK_DAMAGE);
+            // 实体消失（死亡/被清除）则停止；否则在窗口内继续重试以覆盖晚到的修饰符
+            if (ticksLeft > 0 && entity instanceof EntityMaid alive && alive.isAlive()) {
+                scheduleHealthSyncTick(serverLevel, maidId, sourceHealth, ticksLeft - 1);
             }
-        }
+        }));
     }
 
     private static void ensureSchedulePosNonNull(EntityMaid maid) {
