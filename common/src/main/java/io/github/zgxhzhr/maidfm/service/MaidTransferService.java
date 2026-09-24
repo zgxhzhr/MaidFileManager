@@ -21,6 +21,8 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -276,6 +278,8 @@ public final class MaidTransferService {
             data.setSourceTlmVersion(Services.PLATFORM.get().getModVersion("touhou_little_maid"));
             data.setTamed(tamed);
             data.setOwnerUuid(ownerUuid);
+            // 源女仆实体 UUID 仅用于导入前查重；导入实体仍会被强制分配新 UUID（NbtMigration 恒删 UUID 键）
+            data.setSourceMaidUuid(maid.getUUID().toString());
             data.setOwnerName(ownerName);
             data.setData(fullNbt);
             data.setModelId(modelId);
@@ -520,7 +524,42 @@ public final class MaidTransferService {
         float sourceHealth = originalNbt.contains("Health", Tag.TAG_FLOAT)
                 ? originalNbt.getFloat("Health") : -1f;
 
+        // 闸门 3：同一女仆禁止重复导入（必须在 new EntityMaid / addFreshEntity 之前判定，零副作用）。
+        // 查重分两道：
+        //   3a 源女仆本体仍存活（未移除导出 / 手动解散前再导）——按源 UUID 查全维度实体 + TLM 未加载索引；
+        //   3b 源本体已不在（典型为"导出并移除"）时，按"源 UUID + 导入者 UUID"确定性地算出本次导入
+        //      将使用的目标实体 UUID（见 mapImportUuid），检测该 UUID 是否已有存活女仆。
+        //      同一玩家对同一文件的任意次导入目标 UUID 恒定，故此检测可识别"此前已导入的副本"
+        //      （含未加载区块的驯服女仆）；不同玩家导入同一文件因玩家 UUID 参与哈希而互不冲突。
+        //      已知边界：副本被收入魂符（实体离开世界且 TLM 索引不登记）时检测不到，本次导入会成功，
+        //      但此后魂符再放出时因 UUID 相同被世界拒绝——无法借魂符刷出两个女仆。
+        UUID sourceMaidUuid = resolveSourceMaidUuid(data, originalNbt);
+        UUID mappedEntityUuid = null;
+        if (sourceMaidUuid != null) {
+            String duplicateWhere = findExistingMaidLocation(player, data, sourceMaidUuid);
+            if (duplicateWhere == null) {
+                mappedEntityUuid = mapImportUuid(sourceMaidUuid, player.getUUID());
+                if (isMaidUuidAlive(player.getServer(), mappedEntityUuid, player.getUUID())) {
+                    duplicateWhere = "确定性目标 UUID 已有存活副本 targetUuid=" + mappedEntityUuid;
+                }
+            }
+            if (duplicateWhere != null) {
+                String maidLabel = data.getCustomName() != null ? data.getCustomName()
+                        : data.getDisplayName() != null ? data.getDisplayName() : "?";
+                Constants.LOG.info("[maid_file_manager] 导入被拒绝：重复女仆 sourceUuid={} 命中={} player={}",
+                        sourceMaidUuid, duplicateWhere, player.getName().getString());
+                return ImportResult.failed(Component.translatable(
+                        "maid_file_manager.import.fail.duplicate", maidLabel));
+            }
+        }
+
         EntityMaid maid = new EntityMaid(level);
+        // 覆盖为确定性目标 UUID（闸门 3b 已确认该 UUID 在世界中无存活女仆）。
+        // 必须在 load 之前设置：后续 NBT 加载/饰品恢复等全部逻辑据此 UUID 运行；
+        // migrated NBT 已由 NbtMigration 删除 UUID 键，load 不会反向覆盖。
+        if (mappedEntityUuid != null) {
+            maid.setUUID(mappedEntityUuid);
+        }
         try {
             int sourceVersion = data.getDataVersion() > 0
                     ? data.getDataVersion()
@@ -1098,6 +1137,140 @@ public final class MaidTransferService {
         }
     }
 
+    /**
+     * 解析源女仆实体 UUID：优先读 .maid 顶层 source_maid_uuid（v6 起写入）；
+     * 旧文件无此字段时从实体根 NBT 兜底（1.9+ int 数组 "UUID"，或 1.8 的 UUIDMost/UUIDLeast）。
+     * 注意必须在 {@link NbtMigration#migrate} 之前读取——迁移会恒删实体根 UUID 键。
+     *
+     * @return 源女仆 UUID；无法解析（极早期文件且 NBT 缺键）返回 null，调用方跳过查重放行
+     */
+    private static UUID resolveSourceMaidUuid(MaidFileData data, CompoundTag originalNbt) {
+        String topLevel = data.getSourceMaidUuid();
+        if (topLevel != null) {
+            try {
+                return UUID.fromString(topLevel);
+            } catch (IllegalArgumentException ignored) {
+                // 顶层字段非法，落回实体 NBT 兜底
+            }
+        }
+        if (originalNbt != null) {
+            try {
+                if (originalNbt.hasUUID("UUID")) {
+                    return originalNbt.getUUID("UUID");
+                }
+                if (originalNbt.contains("UUIDMost", Tag.TAG_LONG)
+                        && originalNbt.contains("UUIDLeast", Tag.TAG_LONG)) {
+                    return new UUID(originalNbt.getLong("UUIDMost"), originalNbt.getLong("UUIDLeast"));
+                }
+            } catch (Throwable t) {
+                Constants.LOG.warn("[maid_file_manager] 从实体 NBT 解析源女仆 UUID 失败: {}", t.toString());
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 查重：判定源女仆是否仍存在于本世界（任意维度、区块加载或未加载）。
+     *
+     * <p>TLM 的双轨存储决定了必须查两级：
+     * <ul>
+     *   <li>实体区块已加载（任意维度）：经 {@link ServerLevel#getEntity(UUID)} 可直接找到；
+     *       未驯服女仆只可能命中这一级（MaidWorldData 不登记未驯服女仆）</li>
+     *   <li>驯服女仆区块未加载：TLM 在区块卸载（实体仍存活）时把信息写入全局 SavedData
+     *       {@link MaidWorldData}（存于主世界存储），实体重新加载时移除，故与第一级互补不重复</li>
+     *   <li>已死亡女仆的信息转入墓碑表，本方法<b>不查</b>——死亡后允许重新导入</li>
+     * </ul>
+     * 查重自身异常时保守放行（不应因索引查询故障误伤正常导入），仅记录日志。
+     *
+     * @return 命中位置的可读描述（仅写入日志）；未找到返回 null
+     */
+    private static String findExistingMaidLocation(ServerPlayer player, MaidFileData data,
+                                                   UUID sourceMaidUuid) {
+        try {
+            MinecraftServer server = player.getServer();
+            if (server == null) {
+                return null;
+            }
+            // 第一级：全维度已加载实体
+            for (ServerLevel serverLevel : server.getAllLevels()) {
+                Entity existing = serverLevel.getEntity(sourceMaidUuid);
+                if (existing instanceof EntityMaid) {
+                    return "已加载实体，维度=" + serverLevel.dimension().location();
+                }
+            }
+            // 第二级：驯服女仆区块未加载时的 MaidWorldData 全局索引（按主人 UUID 分组）
+            String ownerUuidStr = data.getOwnerUuid();
+            if (ownerUuidStr != null) {
+                UUID ownerUuid = UUID.fromString(ownerUuidStr);
+                MaidWorldData worldData = MaidWorldData.get(player.level());
+                if (worldData != null) {
+                    List<com.github.tartaricacid.touhoulittlemaid.world.data.MaidInfo> infos =
+                            worldData.getInfos(ownerUuid);
+                    if (infos != null) {
+                        for (com.github.tartaricacid.touhoulittlemaid.world.data.MaidInfo info : infos) {
+                            if (sourceMaidUuid.equals(info.getEntityId())) {
+                                return "MaidWorldData 未加载索引，维度=" + info.getDimension();
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (IllegalArgumentException badOwnerUuid) {
+            // 主人 UUID 非法：第二级不可用，忽略（第一级全维度实体检测仍生效）
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 重复女仆检测异常（保守放行）: {}", t.toString());
+        }
+        return null;
+    }
+
+    /**
+     * 确定性导入 UUID 映射：同一玩家导入同一源女仆，永远得到同一目标 UUID；
+     * 不同玩家（多人服分享文件）因玩家 UUID 参与哈希而得到不同 UUID，互不冲突。
+     *
+     * <p>使用 JDK 内置的 v3(MD5) 名字 UUID：固定命名前缀隔离用途，输出带版本/变体位，
+     * 与原版随机 v4 实体 UUID 不会发生有意义的碰撞。该函数纯函数、无存储，故不存在映射累积问题。
+     */
+    private static UUID mapImportUuid(UUID sourceMaidUuid, UUID importerPlayerUuid) {
+        String name = "maid_file_manager|import-v1|" + sourceMaidUuid + "|" + importerPlayerUuid;
+        return UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    /**
+     * 判断指定实体 UUID 处是否有存活女仆（闸门 3b 使用）。
+     *
+     * <p>双轨判定：全维度已加载实体直查；未加载驯服女仆查 TLM MaidWorldData 索引，
+     * 按导入者玩家 UUID 分组（自导入成功时副本主人即导入者）。
+     * <b>不查墓碑、查不到魂符内女仆</b>：死亡后允许重新导入；魂符内实体离开世界，
+     * 此时重复导入虽会成功，但魂符再放出时因 UUID 相同被世界拒绝，无法刷出第二个女仆。
+     * server 为 null（集成端边界）时保守返回 false 放行。
+     */
+    private static boolean isMaidUuidAlive(MinecraftServer server, UUID entityId, UUID importerUuid) {
+        if (server == null) {
+            return false;
+        }
+        for (ServerLevel serverLevel : server.getAllLevels()) {
+            Entity existing = serverLevel.getEntity(entityId);
+            if (existing instanceof EntityMaid) {
+                return true;
+            }
+        }
+        if (importerUuid != null) {
+            MaidWorldData worldData = MaidWorldData.get(server.overworld());
+            if (worldData != null) {
+                List<com.github.tartaricacid.touhoulittlemaid.world.data.MaidInfo> infos =
+                        worldData.getInfos(importerUuid);
+                if (infos != null) {
+                    for (com.github.tartaricacid.touhoulittlemaid.world.data.MaidInfo info : infos) {
+                        if (entityId.equals(info.getEntityId())) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private static BlockPos findSafeSpawnPos(Level level, BlockPos start) {
         for (int dy = -2; dy <= SPAWN_SAFE_MAX_UP; dy++) {
             BlockPos feet = start.offset(0, dy, 0);
@@ -1206,6 +1379,30 @@ public final class MaidTransferService {
         if (baublesStripped) {
             sb.append("。服务端未开启饰品导入，本次导入的女仆均未携带饰品");
         }
-        return Component.literal(sb.toString());
+        // 逐项失败详情：最多展示前 5 条（每条均保留 translatable，由客户端本地化为对应语言），
+        // 超出部分只报数量。绝不能只给"失败 N 个"的统计而吞掉具体原因
+        // （重复导入 / 文件损坏 / 实体生成被拒等）。
+        List<Component> failDetails = new ArrayList<>();
+        for (ImportResult r : results) {
+            if (r.state() == ImportResult.State.FAILED) {
+                failDetails.add(r.message());
+            }
+        }
+        net.minecraft.network.chat.MutableComponent summary = Component.literal(sb.toString());
+        if (!failDetails.isEmpty()) {
+            net.minecraft.network.chat.MutableComponent detail = Component.literal("。失败详情：");
+            int shown = Math.min(failDetails.size(), 5);
+            for (int i = 0; i < shown; i++) {
+                if (i > 0) {
+                    detail.append("；");
+                }
+                detail.append(failDetails.get(i));
+            }
+            if (failDetails.size() > shown) {
+                detail.append(String.format(java.util.Locale.ROOT, "等共 %d 个失败", failDetails.size()));
+            }
+            summary.append(detail);
+        }
+        return summary;
     }
 }
