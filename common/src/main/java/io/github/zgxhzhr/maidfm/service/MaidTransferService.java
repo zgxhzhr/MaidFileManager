@@ -524,39 +524,20 @@ public final class MaidTransferService {
         float sourceHealth = originalNbt.contains("Health", Tag.TAG_FLOAT)
                 ? originalNbt.getFloat("Health") : -1f;
 
-        // 闸门 3：同一女仆禁止重复导入（必须在 new EntityMaid / addFreshEntity 之前判定，零副作用）。
-        // 查重分两道：
-        //   3a 源女仆本体仍存活（未移除导出 / 手动解散前再导）——按源 UUID 查全维度实体 + TLM 未加载索引；
-        //   3b 源本体已不在（典型为"导出并移除"）时，按"源 UUID + 导入者 UUID"确定性地算出本次导入
-        //      将使用的目标实体 UUID（见 mapImportUuid），检测该 UUID 是否已有存活女仆。
-        //      同一玩家对同一文件的任意次导入目标 UUID 恒定，故此检测可识别"此前已导入的副本"
-        //      （含未加载区块的驯服女仆）；不同玩家导入同一文件因玩家 UUID 参与哈希而互不冲突。
-        //      已知边界：副本被收入魂符（实体离开世界且 TLM 索引不登记）时检测不到，本次导入会成功，
-        //      但此后魂符再放出时因 UUID 相同被世界拒绝——无法借魂符刷出两个女仆。
+        // 导入实体 UUID 确定性派生（不在应用层做重复拦截）：
+        //   同一玩家对同一源女仆文件的任意次导入，目标实体 UUID 恒定（见 mapImportUuid）；
+        //   不同玩家（多人服分享同一文件）因玩家 UUID 参与哈希而得到不同 UUID，互不冲突。
+        // 是否允许同一 UUID 的女仆入世界，完全交给服务端原生规则：同 UUID 实体已在已加载区块时
+        // addFreshEntity 返回 false，走通用的"添加到世界失败"提示；原女仆已死亡 / 已移除
+        // （导出时不保留）/ 区块未加载 / 收入魂符时均不拦截，导入正常进行。
+        // 无法解析源 UUID 的极早期文件退回 new EntityMaid 的随机 UUID，不影响导入。
         UUID sourceMaidUuid = resolveSourceMaidUuid(data, originalNbt);
-        UUID mappedEntityUuid = null;
-        if (sourceMaidUuid != null) {
-            String duplicateWhere = findExistingMaidLocation(player, data, sourceMaidUuid);
-            if (duplicateWhere == null) {
-                mappedEntityUuid = mapImportUuid(sourceMaidUuid, player.getUUID());
-                if (isMaidUuidAlive(player.getServer(), mappedEntityUuid, player.getUUID())) {
-                    duplicateWhere = "确定性目标 UUID 已有存活副本 targetUuid=" + mappedEntityUuid;
-                }
-            }
-            if (duplicateWhere != null) {
-                String maidLabel = data.getCustomName() != null ? data.getCustomName()
-                        : data.getDisplayName() != null ? data.getDisplayName() : "?";
-                Constants.LOG.info("[maid_file_manager] 导入被拒绝：重复女仆 sourceUuid={} 命中={} player={}",
-                        sourceMaidUuid, duplicateWhere, player.getName().getString());
-                return ImportResult.failed(Component.translatable(
-                        "maid_file_manager.import.fail.duplicate", maidLabel));
-            }
-        }
+        UUID mappedEntityUuid = sourceMaidUuid != null
+                ? mapImportUuid(sourceMaidUuid, player.getUUID()) : null;
 
         EntityMaid maid = new EntityMaid(level);
-        // 覆盖为确定性目标 UUID（闸门 3b 已确认该 UUID 在世界中无存活女仆）。
-        // 必须在 load 之前设置：后续 NBT 加载/饰品恢复等全部逻辑据此 UUID 运行；
-        // migrated NBT 已由 NbtMigration 删除 UUID 键，load 不会反向覆盖。
+        // 覆盖为确定性目标 UUID。必须在 load 之前设置：后续 NBT 加载/饰品恢复等全部逻辑据此
+        // UUID 运行；migrated NBT 已由 NbtMigration 删除 UUID 键，load 不会反向覆盖。
         if (mappedEntityUuid != null) {
             maid.setUUID(mappedEntityUuid);
         }
@@ -667,6 +648,17 @@ public final class MaidTransferService {
         boolean ownerMatched = matchOwner(maid, player, data);
         maid.setPersistenceRequired();
         if (!level.addFreshEntity(maid)) {
+            // 失败原因细分：确定性目标 UUID 在已加载世界中已有女仆实体（最常见为同一文件重复导入
+            // 且原女仆/前次副本就在身边）时，给出明确的重复提示；其他原因走通用添加失败文案。
+            // 仅查已加载实体：未加载区块、魂符中的实体不会导致 addFreshEntity 失败，那些场景本就放行。
+            if (mappedEntityUuid != null && isLoadedMaidWithUuid(player.getServer(), mappedEntityUuid)) {
+                String maidLabel = data.getCustomName() != null ? data.getCustomName()
+                        : data.getDisplayName() != null ? data.getDisplayName() : "?";
+                Constants.LOG.info("[maid_file_manager] addFreshEntity 因同 UUID 女仆已存在被拒绝 uuid={} player={}",
+                        mappedEntityUuid, player.getName().getString());
+                return ImportResult.failed(Component.translatable(
+                        "maid_file_manager.import.fail.duplicate", maidLabel));
+            }
             Constants.LOG.error("[maid_file_manager] addFreshEntity 被拒绝 pos={}", safePos);
             return ImportResult.failed(
                     Component.translatable("maid_file_manager.import.fail.add_entity"));
@@ -1142,7 +1134,7 @@ public final class MaidTransferService {
      * 旧文件无此字段时从实体根 NBT 兜底（1.9+ int 数组 "UUID"，或 1.8 的 UUIDMost/UUIDLeast）。
      * 注意必须在 {@link NbtMigration#migrate} 之前读取——迁移会恒删实体根 UUID 键。
      *
-     * @return 源女仆 UUID；无法解析（极早期文件且 NBT 缺键）返回 null，调用方跳过查重放行
+     * @return 源女仆 UUID；无法解析（极早期文件且 NBT 缺键）返回 null，调用方退回随机实体 UUID
      */
     private static UUID resolveSourceMaidUuid(MaidFileData data, CompoundTag originalNbt) {
         String topLevel = data.getSourceMaidUuid();
@@ -1170,60 +1162,6 @@ public final class MaidTransferService {
     }
 
     /**
-     * 查重：判定源女仆是否仍存在于本世界（任意维度、区块加载或未加载）。
-     *
-     * <p>TLM 的双轨存储决定了必须查两级：
-     * <ul>
-     *   <li>实体区块已加载（任意维度）：经 {@link ServerLevel#getEntity(UUID)} 可直接找到；
-     *       未驯服女仆只可能命中这一级（MaidWorldData 不登记未驯服女仆）</li>
-     *   <li>驯服女仆区块未加载：TLM 在区块卸载（实体仍存活）时把信息写入全局 SavedData
-     *       {@link MaidWorldData}（存于主世界存储），实体重新加载时移除，故与第一级互补不重复</li>
-     *   <li>已死亡女仆的信息转入墓碑表，本方法<b>不查</b>——死亡后允许重新导入</li>
-     * </ul>
-     * 查重自身异常时保守放行（不应因索引查询故障误伤正常导入），仅记录日志。
-     *
-     * @return 命中位置的可读描述（仅写入日志）；未找到返回 null
-     */
-    private static String findExistingMaidLocation(ServerPlayer player, MaidFileData data,
-                                                   UUID sourceMaidUuid) {
-        try {
-            MinecraftServer server = player.getServer();
-            if (server == null) {
-                return null;
-            }
-            // 第一级：全维度已加载实体
-            for (ServerLevel serverLevel : server.getAllLevels()) {
-                Entity existing = serverLevel.getEntity(sourceMaidUuid);
-                if (existing instanceof EntityMaid) {
-                    return "已加载实体，维度=" + serverLevel.dimension().location();
-                }
-            }
-            // 第二级：驯服女仆区块未加载时的 MaidWorldData 全局索引（按主人 UUID 分组）
-            String ownerUuidStr = data.getOwnerUuid();
-            if (ownerUuidStr != null) {
-                UUID ownerUuid = UUID.fromString(ownerUuidStr);
-                MaidWorldData worldData = MaidWorldData.get(player.level());
-                if (worldData != null) {
-                    List<com.github.tartaricacid.touhoulittlemaid.world.data.MaidInfo> infos =
-                            worldData.getInfos(ownerUuid);
-                    if (infos != null) {
-                        for (com.github.tartaricacid.touhoulittlemaid.world.data.MaidInfo info : infos) {
-                            if (sourceMaidUuid.equals(info.getEntityId())) {
-                                return "MaidWorldData 未加载索引，维度=" + info.getDimension();
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (IllegalArgumentException badOwnerUuid) {
-            // 主人 UUID 非法：第二级不可用，忽略（第一级全维度实体检测仍生效）
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] 重复女仆检测异常（保守放行）: {}", t.toString());
-        }
-        return null;
-    }
-
-    /**
      * 确定性导入 UUID 映射：同一玩家导入同一源女仆，永远得到同一目标 UUID；
      * 不同玩家（多人服分享文件）因玩家 UUID 参与哈希而得到不同 UUID，互不冲突。
      *
@@ -1236,36 +1174,18 @@ public final class MaidTransferService {
     }
 
     /**
-     * 判断指定实体 UUID 处是否有存活女仆（闸门 3b 使用）。
-     *
-     * <p>双轨判定：全维度已加载实体直查；未加载驯服女仆查 TLM MaidWorldData 索引，
-     * 按导入者玩家 UUID 分组（自导入成功时副本主人即导入者）。
-     * <b>不查墓碑、查不到魂符内女仆</b>：死亡后允许重新导入；魂符内实体离开世界，
-     * 此时重复导入虽会成功，但魂符再放出时因 UUID 相同被世界拒绝，无法刷出第二个女仆。
-     * server 为 null（集成端边界）时保守返回 false 放行。
+     * 判定指定 UUID 在已加载世界（任意维度）中是否已有女仆实体。
+     * 仅供 addFreshEntity 失败后的原因细分：同 UUID 实体只有处在已加载区块时才会导致原生拒绝，
+     * 未加载区块 / 魂符中的实体查不到也不应影响判定（那些场景导入本就成功）。
+     * server 为 null 时返回 false，使调用方落回通用失败文案。
      */
-    private static boolean isMaidUuidAlive(MinecraftServer server, UUID entityId, UUID importerUuid) {
+    private static boolean isLoadedMaidWithUuid(MinecraftServer server, UUID entityId) {
         if (server == null) {
             return false;
         }
         for (ServerLevel serverLevel : server.getAllLevels()) {
-            Entity existing = serverLevel.getEntity(entityId);
-            if (existing instanceof EntityMaid) {
+            if (serverLevel.getEntity(entityId) instanceof EntityMaid) {
                 return true;
-            }
-        }
-        if (importerUuid != null) {
-            MaidWorldData worldData = MaidWorldData.get(server.overworld());
-            if (worldData != null) {
-                List<com.github.tartaricacid.touhoulittlemaid.world.data.MaidInfo> infos =
-                        worldData.getInfos(importerUuid);
-                if (infos != null) {
-                    for (com.github.tartaricacid.touhoulittlemaid.world.data.MaidInfo info : infos) {
-                        if (entityId.equals(info.getEntityId())) {
-                            return true;
-                        }
-                    }
-                }
             }
         }
         return false;
