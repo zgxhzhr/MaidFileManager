@@ -273,13 +273,28 @@ public final class MaidFileIo {
 
     /**
      * 解析文件名中的时间戳，用于排序与展示。
-     * 新命名格式：{@code <name>_<yyyyMMdd-HHmmss>_<uuid8>.maid}
+     * 两种命名格式：
+     * <ul>
+     *   <li>本模组导出：{@code <name>_<yyyyMMdd-HHmmss>_<uuid8>.maid}</li>
+     *   <li>TLM 备份：{@code yyyy-MM-dd-HH-mm-ss.maid}（纯时间戳，TouhouLittleMaid 自动备份直接产出）</li>
+     * </ul>
      */
     public static long parseTimestampFromFileName(String fileName) {
         if (fileName == null || !fileName.endsWith(Constants.MAID_FILE_EXT)) {
             return 0L;
         }
         String name = fileName.substring(0, fileName.length() - Constants.MAID_FILE_EXT.length());
+        // TLM 备份命名：整段即 yyyy-MM-dd-HH-mm-ss
+        if (name.matches("\\d{4}-\\d{2}-\\d{2}-\\d{2}-\\d{2}-\\d{2}")) {
+            try {
+                return LocalDateTime.parse(name, DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"))
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli();
+            } catch (Exception e) {
+                return 0L;
+            }
+        }
         // 找形如 _20260820-153012 的段
         int dashIdx = name.lastIndexOf('-');
         if (dashIdx < 0) {
