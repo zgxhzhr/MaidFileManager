@@ -580,6 +580,14 @@ public final class MaidTransferService {
             maid.removeAllEffects();
             // 药水效果恢复逻辑：始终从 .maid 文件读取，按配置决定是否恢复到实体
             CompoundTag effectsData = data.getEffects();
+            if (effectsData == null && originalNbt.contains("ActiveEffects", Tag.TAG_LIST)) {
+                // TLM 备份壳不带 effects 字段：药水效果仍留在原始实体 NBT 中，迁移前提取。
+                // 仅含原始列表（同版本直读可靠，无 normalized 跨版本路径）；
+                // 跨版本恢复失败会被下方双路径逻辑跳过并告警，不会崩溃
+                CompoundTag fallback = new CompoundTag();
+                fallback.put("active_effects", originalNbt.getList("ActiveEffects", Tag.TAG_COMPOUND).copy());
+                effectsData = fallback;
+            }
             if (effectsData != null && effectsData.contains("active_effects", Tag.TAG_LIST)) {
                 if (MaidConfigManager.isEffectsAllowed()) {
                     // 配置允许：恢复药水效果到实体
