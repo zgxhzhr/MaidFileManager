@@ -178,6 +178,22 @@ public class MaidFileData {
         // v6 短暂存在过的 source_health_base/source_attack_base 字段已废弃：
         // 属性 base 导入时无条件回到 TLM 白板值，旧文件含这两个键时直接忽略。
         // 旧 v4 文件可能含 spell_maid 键，同样忽略（向后兼容）。
+        // TLM 备份壳容错（TouhouLittleMaid 自动备份直接产出 .maid 格式）：
+        // data_version 缺失时兜底读取 Minecraft 原生版本号根键 DataVersion
+        if (!root.contains("data_version", Tag.TAG_INT) && root.contains("DataVersion", Tag.TAG_INT)) {
+            data.dataVersion = root.getInt("DataVersion");
+        }
+        // model_id 缺失时从实体 NBT 回退（1.21+ 为 model_id，1.20.x 为 ModelId），
+        // 仅用于展示与命名兜底；导入实体模型仍由 data 内的模型键经 maid.load 恢复
+        if (!root.contains("model_id", Tag.TAG_STRING) && data.data != null) {
+            CompoundTag entityTag = data.data;
+            String mid = entityTag.contains("model_id", Tag.TAG_STRING)
+                    ? entityTag.getString("model_id")
+                    : entityTag.getString("ModelId");
+            if (!mid.isEmpty()) {
+                data.modelId = mid;
+            }
+        }
         return data;
     }
 
