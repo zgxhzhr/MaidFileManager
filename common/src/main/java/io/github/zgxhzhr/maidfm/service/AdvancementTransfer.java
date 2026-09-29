@@ -13,6 +13,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.Collection;
+import java.util.Set;
 
 /**
  * 成就转移工具：导出时收集源玩家 TLM 成就并按女仆属性过滤；导入时合并到原主人。
@@ -35,6 +36,32 @@ public final class AdvancementTransfer {
     private static final int FAVORABILITY_MAX = 384;
     /** 满血成就阈值 */
     private static final float MAID_100_HEALTHY_THRESHOLD = 100f;
+
+    /**
+     * 不可转移的 TLM 进度路径：开局赠送型进度。
+     *
+     * <p>这两条进度的奖励就是物品本身（女仆魂符 / 帕秋莉手册），正常途径只能由玩家登录事件
+     * 触发，且触发条件受 TLM 配置 {@code MiscConfig.GIVE_SMART_SLAB} /
+     * {@code MiscConfig.GIVE_PATCHOULI_BOOK} 守卫——玩家在配置中关闭开局赠送后，
+     * 进度永远不会完成。
+     *
+     * <p>直接对玩家 {@code Advancement#award} 会绕过 trigger 的配置 predicate 强行完成进度、
+     * 发放奖励物品，表现为「导入女仆时被强行补发手册和魂符」。因此收集与合并两端都必须排除；
+     * 合并端排除同时兼容已包含这些条目的旧 .maid 文件。
+     *
+     * <p>两个进度在不同 MC 版本中的路径（ID 末段）：
+     * <ul>
+     *   <li>女仆魂符：1.20.x 与 1.21.x 均为 {@code give_smart_slab}</li>
+     *   <li>帕秋莉手册：1.20.x 为 {@code grant_book_on_first_join}，
+     *       1.21.x 为 {@code grant_patchouli_book}</li>
+     * </ul>
+     * 因此按路径（而非完整 ID）过滤，同一 common 实现覆盖全部版本；
+     * 跨版本 .maid 中出现对方版本路径时，目标服务端本就无此进度，会被安全跳过。
+     */
+    private static final Set<String> NON_TRANSFERABLE_PATHS = Set.of(
+            "give_smart_slab",
+            "grant_book_on_first_join",
+            "grant_patchouli_book");
 
     /**
      * 属性绑定型成就：只有当女仆属性达标时才导出。
@@ -76,6 +103,10 @@ public final class AdvancementTransfer {
         for (AdvancementHolder holder : all) {
             ResourceLocation id = holder.id();
             if (!id.getNamespace().equals(TLM_NS)) {
+                continue;
+            }
+            // 开局赠送型进度不随女仆转移（其奖励受 TLM 配置开关守卫）
+            if (NON_TRANSFERABLE_PATHS.contains(id.getPath())) {
                 continue;
             }
             AdvancementProgress progress = playerAdv.getOrStartProgress(holder);
@@ -127,6 +158,10 @@ public final class AdvancementTransfer {
                 continue;
             }
             if (id == null) {
+                continue;
+            }
+            // 开局赠送型进度不补：award 会绕过 TLM 配置开关强发手册/魂符（旧 .maid 同样拦截）
+            if (NON_TRANSFERABLE_PATHS.contains(id.getPath())) {
                 continue;
             }
             // 跨版本安全跳过：目标服务端不认识的成就
