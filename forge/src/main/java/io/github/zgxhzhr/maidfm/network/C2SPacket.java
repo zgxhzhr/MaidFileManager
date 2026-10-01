@@ -158,6 +158,10 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                 for (Integer entityId : exportedIds) {
                     Entity e = player.level().getEntity(entityId);
                     if (e != null) {
+                        // 必须在 discard 前清除 MaidWorldData 存活登记：discard 时
+                        // isAlive=false，TLM 不会清理既有记录，残留登记会被双胞胎
+                        // 拦截误判为女仆仍存活，导致"导出并移除后再导入"被拒。
+                        MaidTransferService.unregisterMaidWorldData(e);
                         e.discard();
                         removedCount++;
                     }
@@ -310,6 +314,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaublesAllowed());
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isAdvancementsAllowed());
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isEffectsAllowed());
+        buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isInvulnerableAllowed());
         ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_SERVER_CONFIG_SYNC, buf);
     }
 

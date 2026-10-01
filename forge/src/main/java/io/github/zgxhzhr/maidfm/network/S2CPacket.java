@@ -43,7 +43,9 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     boolean allowBaubles = packet.data.readBoolean();
                     boolean allowAdvancements = packet.data.readBoolean();
                     boolean allowEffects = packet.data.readBoolean();
-                    io.github.zgxhzhr.maidfm.config.MaidConfigManager.handleServerConfigSync(allowImport, allowBaubles, allowAdvancements, allowEffects);
+                    boolean allowInvulnerable = packet.data.readBoolean();
+                    io.github.zgxhzhr.maidfm.config.MaidConfigManager.handleServerConfigSync(
+                            allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable);
                     return;
                 }
                 IMaidFileNetwork.ClientHandler handler = IMaidFileNetwork.ClientHandlerHolder.get();
