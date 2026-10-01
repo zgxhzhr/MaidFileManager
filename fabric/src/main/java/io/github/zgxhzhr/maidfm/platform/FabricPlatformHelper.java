@@ -5,6 +5,7 @@ import io.github.zgxhzhr.maidfm.platform.services.IPlatformHelper;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.SharedConstants;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
@@ -129,6 +130,20 @@ public class FabricPlatformHelper implements IPlatformHelper {
             mSetStack.invoke(handler, slot, stack);
         } catch (Throwable t) {
             throw new RuntimeException("baubleSetStack 失败", t);
+        }
+    }
+
+    /**
+     * 1.21 物品以数据组件形式保存，经 ItemStack.parse 用当前世界注册表解析，
+     * 保留附魔/耐久/全部组件；解析失败返回 EMPTY，由调用方回退全新化。
+     */
+    @Override
+    public ItemStack parseItemStack(RegistryAccess registries, CompoundTag tag) {
+        try {
+            return ItemStack.parse(registries, tag).orElse(ItemStack.EMPTY);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Fabric parseItemStack 失败，回退全新化: {}", t.toString());
+            return ItemStack.EMPTY;
         }
     }
 

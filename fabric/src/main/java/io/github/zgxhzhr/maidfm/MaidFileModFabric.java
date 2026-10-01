@@ -79,6 +79,10 @@ public class MaidFileModFabric implements ModInitializer {
                 for (Integer entityId : exportedIds) {
                     Entity e = player.level().getEntity(entityId);
                     if (e != null) {
+                        // 必须在 discard 前清除 MaidWorldData 存活登记：discard 时
+                        // isAlive=false，TLM 不会清理既有记录，残留登记会被双胞胎
+                        // 拦截误判为女仆仍存活，导致"导出并移除后再导入"被拒。
+                        MaidTransferService.unregisterMaidWorldData(e);
                         e.discard();
                         removedCount++;
                     }
@@ -243,6 +247,7 @@ public class MaidFileModFabric implements ModInitializer {
         out.writeBoolean(MaidConfigManager.isBaublesAllowed());
         out.writeBoolean(MaidConfigManager.isAdvancementsAllowed());
         out.writeBoolean(MaidConfigManager.isEffectsAllowed());
+        out.writeBoolean(MaidConfigManager.isInvulnerableAllowed());
         ServerPlayNetworking.send(player, MaidPayload.of(MaidFilePackets.ID_SERVER_CONFIG_SYNC, out));
     }
 

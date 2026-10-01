@@ -1,6 +1,7 @@
 package io.github.zgxhzhr.maidfm.platform.services;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
@@ -82,6 +83,17 @@ public interface IPlatformHelper {
      * 直接写入指定槽位，触发 TLM onContentsChanged 以注册饰品效果。
      */
     void baubleSetStack(EntityMaid maid, int slot, ItemStack stack);
+
+    /**
+     * 从物品的原始存档 NBT 完整解析 ItemStack（保留附魔、耐久、数据组件等全部物品状态）。
+     * 仅用于<b>同版本</b>导入：1.20.x 与 1.21.x 的物品 NBT 结构不同
+     * （1.21 起标签内联为 components 数据组件），跨版本解析结果不可信，调用方须改走全新化重建。
+     *
+     * @param registries 当前世界的注册表访问（1.21 组件解析需要；1.20.x 实现忽略此参数）
+     * @param tag        物品栏条目 NBT（含 Slot 等容器字段亦不影响解析）
+     * @return 完整物品；物品不存在/标签损坏时返回空物品栈（ItemStack.EMPTY），由调用方回退全新化
+     */
+    ItemStack parseItemStack(RegistryAccess registries, CompoundTag tag);
 
     /**
      * 从实体持久化标签读取存储的药水效果 NBT。

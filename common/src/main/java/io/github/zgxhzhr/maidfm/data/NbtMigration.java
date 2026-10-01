@@ -31,7 +31,7 @@ public final class NbtMigration {
             "Fire", "Air", "LifeTicks", "PortalCooldown", "FallDistance",
             "FallFlying", "NoGravity", "Glowing", "Invulnerable",
             "HasVisualFire", "TicksFrozen", "FrozenTicks",
-            "Attributes", "ActiveEffects", "Effects", "AbsorptionAmount",
+            "Attributes", "ActiveEffects", "active_effects", "Effects", "AbsorptionAmount",
             "SleepingX", "SleepingY", "SleepingZ", "Brain", "Saddle",
             "Bukkit.updateLevel", "Bukkit.values",  // Paper/Arclight 残留（防御）
             "Motion", "Rotation", "FallHurtDistance",
