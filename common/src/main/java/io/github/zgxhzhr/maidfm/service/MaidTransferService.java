@@ -243,16 +243,17 @@ public final class MaidTransferService {
             fullNbt.remove("ArmorDropChances");
             fullNbt.remove("MaidBackpackData");
             // 药水效果：提取到 MaidFileData.effects 字段，始终序列化（不受配置影响）
-            // 同时生成 normalized 标准化数据用于跨版本兼容
+            // 同时生成 normalized 标准化数据用于跨版本兼容。
+            // 键名双兼容：1.20.x 为 "ActiveEffects"，1.21 起 LivingEntity 改存 "active_effects"，
+            // 两个键都必须识别并从实体 NBT 移除（恢复统一由导入端按配置执行，避免 load 绕过配置）。
             CompoundTag effectsTag = null;
-            if (fullNbt.contains("ActiveEffects", Tag.TAG_LIST)) {
-                ListTag rawList = fullNbt.getList("ActiveEffects", Tag.TAG_COMPOUND);
+            ListTag rawEffectList = removeEffectList(fullNbt);
+            if (rawEffectList != null) {
                 effectsTag = new CompoundTag();
                 // 原始 NBT 副本：同版本直读（MobEffectInstance.load）
-                effectsTag.put("active_effects", rawList.copy());
+                effectsTag.put("active_effects", rawEffectList.copy());
                 // 标准化数据：跨版本重建 MobEffectInstance（按 ResourceLocation 查注册表）
-                effectsTag.put("normalized", buildNormalizedEffects(rawList));
-                fullNbt.remove("ActiveEffects");
+                effectsTag.put("normalized", buildNormalizedEffects(rawEffectList));
             }
             // 检查实体持久化标签中是否有存储的效果（禁药水服务器再导出的场景）
             CompoundTag storedEffects = Services.PLATFORM.get().getStoredEffects(maid);
@@ -335,6 +336,33 @@ public final class MaidTransferService {
             return;
         }
         root.getCompound(key).put("Items", new ListTag());
+    }
+
+    /**
+     * 效果列表在不同 MC 版本的实体 NBT 键名：
+     * 1.20.x 为 PascalCase 的 "ActiveEffects"，1.21 起改为小写驼峰 "active_effects"。
+     */
+    private static final String[] EFFECT_LIST_KEYS = {"ActiveEffects", "active_effects"};
+
+    /** 读取实体 NBT 中的效果列表（双键名兼容），不存在返回 null */
+    private static ListTag getEffectList(CompoundTag root) {
+        for (String key : EFFECT_LIST_KEYS) {
+            if (root.contains(key, Tag.TAG_LIST)) {
+                return root.getList(key, Tag.TAG_COMPOUND);
+            }
+        }
+        return null;
+    }
+
+    /** 读取并从实体 NBT 中移除效果列表（双键名均清除），不存在返回 null */
+    private static ListTag removeEffectList(CompoundTag root) {
+        ListTag list = getEffectList(root);
+        if (list != null) {
+            for (String key : EFFECT_LIST_KEYS) {
+                root.remove(key);
+            }
+        }
+        return list;
     }
 
     /**
@@ -523,6 +551,10 @@ public final class MaidTransferService {
                 && originalNbt.getBoolean("StruckByLightning");
         float sourceHealth = originalNbt.contains("Health", Tag.TAG_FLOAT)
                 ? originalNbt.getFloat("Health") : -1f;
+        // TLM 本体无敌（替身地藏赋予，TLM 自存 "Invulnerable" 键）：仅作快照，
+        // 迁移器会删除该键，是否恢复由服务端 allow_invulnerable 配置决定
+        boolean sourceInvulnerable = originalNbt.contains("Invulnerable", Tag.TAG_BYTE)
+                && originalNbt.getBoolean("Invulnerable");
 
         // 导入实体 UUID 确定性派生（不在应用层做重复拦截）：
         //   同一玩家对同一源女仆文件的任意次导入，目标实体 UUID 恒定（见 mapImportUuid）；
@@ -535,6 +567,19 @@ public final class MaidTransferService {
         UUID mappedEntityUuid = sourceMaidUuid != null
                 ? mapImportUuid(sourceMaidUuid, player.getUUID()) : null;
 
+        // 双胞胎拦截（针对"保留原女仆导出、再把同一文件导回同一世界"）：
+        // 源 UUID 女仆在本世界仍存活（已加载实体；或虽不在已加载区块/已收入魂符但 MaidWorldData
+        // 仍有存活登记）时直接拒绝。导出时勾选移除会在 discard 前显式清除存活登记，
+        // 因此"导出并移除后再导入"与跨存档导入都不会被误伤。
+        if (sourceMaidUuid != null && isSourceMaidAlive(player, sourceMaidUuid, data.getOwnerUuid())) {
+            String maidLabel = data.getCustomName() != null ? data.getCustomName()
+                    : data.getDisplayName() != null ? data.getDisplayName() : "?";
+            Constants.LOG.info("[maid_file_manager] 导入被双胞胎拦截: 源女仆 {} 仍在本世界存活 player={}",
+                    sourceMaidUuid, player.getName().getString());
+            return ImportResult.failed(Component.translatable(
+                    "maid_file_manager.import.fail.source_alive", maidLabel));
+        }
+
         EntityMaid maid = new EntityMaid(level);
         // 覆盖为确定性目标 UUID。必须在 load 之前设置：后续 NBT 加载/饰品恢复等全部逻辑据此
         // UUID 运行；migrated NBT 已由 NbtMigration 删除 UUID 键，load 不会反向覆盖。
@@ -546,10 +591,15 @@ public final class MaidTransferService {
                     ? data.getDataVersion()
                     : NbtVersion.fromMcVersion(data.getSourceMcVersion());
             int targetVersion = NbtVersion.currentRuntime();
+            // 仅当来源/目标版本都明确且相同时，才允许按原始 NBT 完整恢复饰品（附魔/组件）；
+            // 版本未知或跨版本一律全新化（1.20 tag 结构与 1.21 components 结构互不兼容）
+            boolean sameVersion = sourceVersion != NbtVersion.UNKNOWN
+                    && targetVersion != NbtVersion.UNKNOWN
+                    && sourceVersion == targetVersion;
             // migrate 返回清理后的副本，不修改原始 data
             CompoundTag migrated = NbtMigration.migrate(originalNbt, sourceVersion, targetVersion);
             CompoundTag tlmTag = extractTlmData(migrated);
-            loadMaidNbt(maid, migrated, tlmTag, keepBaubles, sourceStruckByLightning);
+            loadMaidNbt(maid, migrated, tlmTag, keepBaubles, sourceStruckByLightning, sameVersion);
         } catch (Exception e) {
             // 异常原文可能含内部类名/NBT 结构信息，只进日志；回执给通用文案，不把内部信息透传给客户端
             Constants.LOG.error("[maid_file_manager] 加载女仆 NBT 失败", e);
@@ -568,6 +618,12 @@ public final class MaidTransferService {
         }
         // 渡劫标记最终同步（必须在 rebuildAttributes 之前）
         maid.setStruckByLightning(sourceStruckByLightning);
+        // TLM 本体无敌（替身地藏）：迁移器已删除 Invulnerable 键，按服务端配置决定是否恢复
+        try {
+            maid.setEntityInvulnerable(sourceInvulnerable && MaidConfigManager.isInvulnerableAllowed());
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 无敌状态恢复失败: {}", t.toString());
+        }
 
         rebuildAttributesAndModel(maid, data, sourceStruckByLightning);
         // 入世界前的临时校准：此刻饰品/词条 modifier 尚未附加，maxHealth 只是白板口径，
@@ -580,13 +636,17 @@ public final class MaidTransferService {
             maid.removeAllEffects();
             // 药水效果恢复逻辑：始终从 .maid 文件读取，按配置决定是否恢复到实体
             CompoundTag effectsData = data.getEffects();
-            if (effectsData == null && originalNbt.contains("ActiveEffects", Tag.TAG_LIST)) {
-                // TLM 备份壳不带 effects 字段：药水效果仍留在原始实体 NBT 中，迁移前提取。
+            if (effectsData == null) {
+                // 旧版本导出的文件可能没有顶层 effects 字段（漏识别小写键 "active_effects"
+                // 导致效果未提取）：效果仍留在原始实体 NBT 中，迁移前按双键名兜底提取。
                 // 仅含原始列表（同版本直读可靠，无 normalized 跨版本路径）；
                 // 跨版本恢复失败会被下方双路径逻辑跳过并告警，不会崩溃
-                CompoundTag fallback = new CompoundTag();
-                fallback.put("active_effects", originalNbt.getList("ActiveEffects", Tag.TAG_COMPOUND).copy());
-                effectsData = fallback;
+                ListTag legacyEffects = getEffectList(originalNbt);
+                if (legacyEffects != null) {
+                    CompoundTag fallback = new CompoundTag();
+                    fallback.put("active_effects", legacyEffects.copy());
+                    effectsData = fallback;
+                }
             }
             if (effectsData != null && effectsData.contains("active_effects", Tag.TAG_LIST)) {
                 if (MaidConfigManager.isEffectsAllowed()) {
@@ -671,7 +731,11 @@ public final class MaidTransferService {
             return ImportResult.failed(
                     Component.translatable("maid_file_manager.import.fail.add_entity"));
         }
-        registerMaidWorldData(maid);
+        // 注意：此处绝不能手动 MaidWorldData.addInfo(maid)。该表的 TLM 不变量是"只登记离开已加载世界
+        // 但仍存活的女仆"：实体入世界时 onAddedToLevel 会 removeInfo，所在区块卸载时
+        // onRemovedFromLevel 才 addInfo。对活着且在已加载世界的新女仆手动 addInfo 会留下幽灵登记，
+        // 后续"导出并移除"（discard 时 isAlive=false，TLM 不触碰该表）后记录永久残留，
+        // 反而被双胞胎拦截误判为源女仆仍存活。登记由 TLM 实体生命周期自行维护。
         // 成就合并：仅当导入者本人即为女仆原主人时才应用，防止伪造 .maid 文件给他人刷成就
         if (ownerMatched && MaidConfigManager.isAdvancementsAllowed() && data.getAdvancements() != null) {
             boolean isSelfImport = data.getOwnerUuid() != null
@@ -739,7 +803,7 @@ public final class MaidTransferService {
      * 因此失败后不再做无意义的二次反射调用，只走 TLM 数据兜底恢复。
      */
     private static void loadMaidNbt(EntityMaid maid, CompoundTag migrated, CompoundTag tlmTag,
-                                   boolean keepBaubles, boolean tagStruckByLightning) {
+                                   boolean keepBaubles, boolean tagStruckByLightning, boolean sameVersion) {
         boolean loadOk = false;
         try {
             maid.load(migrated);
@@ -752,7 +816,7 @@ public final class MaidTransferService {
             Constants.LOG.error("[maid_file_manager] maid.load 失败，走 TLM 数据兜底恢复。根因: {}: {}",
                     root.getClass().getSimpleName(), root.getMessage());
         }
-        restoreTlmData(maid, tlmTag, keepBaubles);
+        restoreTlmData(maid, tlmTag, keepBaubles, sameVersion);
         maid.setStruckByLightning(tagStruckByLightning);
         if (!loadOk) {
             Constants.LOG.warn("[maid_file_manager] 该女仆为兜底加载，非物品类 TLM 数据可能不完整（详见上方抽取日志）");
@@ -792,8 +856,9 @@ public final class MaidTransferService {
      * 其余纯数据容器（任务记录/战绩/配置等）当前无安全回填入口，
      * 不做静默处理：逐条 WARN 日志明示丢失，绝不在成功提示中掩盖。
      */
-    private static void restoreTlmData(EntityMaid maid, CompoundTag tlmData, boolean keepBaubles) {
-        restoreBaubles(maid, tlmData, keepBaubles);
+    private static void restoreTlmData(EntityMaid maid, CompoundTag tlmData, boolean keepBaubles,
+                                       boolean sameVersion) {
+        restoreBaubles(maid, tlmData, keepBaubles, sameVersion);
 
         if (tlmData.contains("ModelId", Tag.TAG_STRING)) {
             String modelId = tlmData.getString("ModelId");
@@ -911,10 +976,18 @@ public final class MaidTransferService {
     /**
      * 饰品恢复。规则：
      * 双闸门（客户端勾选 + 服务端 allow_baubles）；白名单仅 touhou_little_maid /
-     * touhou_little_maid_spell；全新化重建（无附魔、满耐久）；目标世界缺物品安全跳过；
-     * 槽位按数据最大槽位经平台接口扩容。全程异常兜底，不影响女仆本体导入。
+     * touhou_little_maid_spell；目标世界缺物品安全跳过；槽位按数据最大槽位经平台接口扩容。
+     * 物品状态策略：
+     * <ul>
+     *   <li>同版本导入（来源/目标 MC 版本均明确且相同）：按原始 NBT 完整解析物品，
+     *       保留附魔、耐久、强化数值等全部物品状态；</li>
+     *   <li>跨版本导入或解析失败：全新化重建（无附魔、满耐久）——1.20 的 tag 结构与
+     *       1.21 的 components 结构互不兼容，强行解析会得到损坏物品。</li>
+     * </ul>
+     * 全程异常兜底，不影响女仆本体导入。
      */
-    private static void restoreBaubles(EntityMaid maid, CompoundTag tlmData, boolean keepBaubles) {
+    private static void restoreBaubles(EntityMaid maid, CompoundTag tlmData, boolean keepBaubles,
+                                       boolean sameVersion) {
         if (!tlmData.contains("MaidBaubleInventory", Tag.TAG_COMPOUND) || !keepBaubles
                 || !MaidConfigManager.isBaublesAllowed()) {
             return;
@@ -953,7 +1026,8 @@ public final class MaidTransferService {
                 currentSlots = needed;
                 Constants.LOG.debug("[maid_file_manager] 饰品栏扩容至 {} 槽", needed);
             }
-            int restored = 0;
+            int restoredFull = 0;
+            int restoredFresh = 0;
             int droppedForeign = 0;
             int droppedMissing = 0;
             int droppedFailed = 0;
@@ -969,14 +1043,33 @@ public final class MaidTransferService {
                         droppedFailed++;
                         continue;
                     }
+                    // 路径 A（同版本）：原始 NBT 完整解析，保留附魔/耐久/强化数值等全部物品状态。
+                    // 白名单以解析后注册表中的实际物品键为准，伪造 id 与实际物品不符也无法绕过。
+                    if (sameVersion) {
+                        ItemStack full = Services.PLATFORM.get()
+                                .parseItemStack(maid.level().registryAccess(), entry);
+                        if (full != null && !full.isEmpty()) {
+                            net.minecraft.resources.ResourceLocation fullKey =
+                                    net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(full.getItem());
+                            if (isBaubleAllowed(fullKey.getNamespace())) {
+                                Services.PLATFORM.get().baubleSetStack(maid, slot, full);
+                                restoredFull++;
+                                continue;
+                            }
+                            // 完整解析得到非白名单物品：不得退回全新化（全新化仍是同一件第三方物品），直接丢弃
+                            droppedForeign++;
+                            continue;
+                        }
+                        // 解析失败落入路径 B 全新化（目标世界缺物品时会在下方再次判定为缺失）
+                    }
+                    // 路径 B（跨版本/同版本解析失败）：仅按物品 ID 重建全新物品
                     String id = entry.contains("id", Tag.TAG_STRING) ? entry.getString("id") : "";
                     if (id.isEmpty()) {
                         droppedFailed++;
                         continue;
                     }
                     String namespace = namespaceOf(id);
-                    if (!"touhou_little_maid".equals(namespace)
-                            && !"touhou_little_maid_spell".equals(namespace)) {
+                    if (!isBaubleAllowed(namespace)) {
                         droppedForeign++;
                         continue;
                     }
@@ -995,17 +1088,23 @@ public final class MaidTransferService {
                     ItemStack fresh = new ItemStack(item, count);
                     fresh.setCount(Math.min(count, fresh.getMaxStackSize()));
                     Services.PLATFORM.get().baubleSetStack(maid, slot, fresh);
-                    restored++;
+                    restoredFresh++;
                 } catch (Throwable t) {
                     droppedFailed++;
                     Constants.LOG.warn("[maid_file_manager] 单件饰品恢复失败，跳过: {}", t.toString());
                 }
             }
-            Constants.LOG.info("[maid_file_manager] 饰品恢复完成: 成功={} 非白名单={} 目标世界缺失={} 失败={} 非法槽位={}",
-                    restored, droppedForeign, droppedMissing, droppedFailed, oversized);
+            Constants.LOG.info("[maid_file_manager] 饰品恢复完成: 完整恢复={} 全新化={} 非白名单={} 目标世界缺失={} 失败={} 非法槽位={} 同版本={}",
+                    restoredFull, restoredFresh, droppedForeign, droppedMissing, droppedFailed, oversized, sameVersion);
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] 饰品整体恢复失败（不影响女仆导入）: {}", t.toString());
         }
+    }
+
+    /** 饰品白名单：仅允许 TLM 本体与 TLM 法术附属的物品进入饰品栏（防第三方物品经伪造文件刷入） */
+    private static boolean isBaubleAllowed(String namespace) {
+        return "touhou_little_maid".equals(namespace)
+                || "touhou_little_maid_spell".equals(namespace);
     }
 
     private static String namespaceOf(String id) {
@@ -1124,16 +1223,25 @@ public final class MaidTransferService {
         }
     }
 
-    private static void registerMaidWorldData(EntityMaid maid) {
+    /**
+     * 导出并移除女仆（discard）前调用：清理该女仆在 MaidWorldData 存活登记表中的全部记录。
+     *
+     * <p>必要性：discard() 时实体 isAlive 已为 false，TLM 的 onRemovedFromLevel 不会新增登记，
+     * 但也不会清理既有记录。正常生命周期内该表不应残留已加载女仆的记录，然而旧版本本模组曾在
+     * 导入后手动 addInfo，产生过幽灵登记；实体被直接移除后这些记录会永久残留并误伤后续导入。
+     * 移除实体前按 UUID 显式清除，使"导出并移除"语义与登记表保持一致。
+     * 必须在服务端主线程、discard() 之前调用。
+     */
+    public static void unregisterMaidWorldData(Entity entity) {
         try {
-            if (maid.getOwnerUUID() != null) {
+            if (entity instanceof EntityMaid maid && maid.getOwnerUUID() != null) {
                 MaidWorldData data = MaidWorldData.get(maid.level());
                 if (data != null) {
-                    data.addInfo(maid);
+                    data.removeInfo(maid);
                 }
             }
         } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] 注册 MaidWorldData 失败: {}", t.toString());
+            Constants.LOG.warn("[maid_file_manager] 清理 MaidWorldData 登记失败: {}", t.toString());
         }
     }
 
@@ -1195,6 +1303,57 @@ public final class MaidTransferService {
             if (serverLevel.getEntity(entityId) instanceof EntityMaid) {
                 return true;
             }
+        }
+        return false;
+    }
+
+    /**
+     * 双胞胎判定：源女仆是否仍以本世界"存活实体"的身份存在。
+     * <ol>
+     *   <li>任意维度已加载区块中存在同 UUID 且存活的 EntityMaid；</li>
+     *   <li>MaidWorldData 中仍有该女仆的存活登记——TLM 仅在女仆"离开已加载世界且仍然存活"
+     *       （区块卸载保存、收入魂符等）时登记，于实体回到已加载世界（onAddedToLevel）时移除；
+     *       正常死亡与导出移除（discard 时 isAlive=false）均不会新增登记。导出移除通道在
+     *       discard 前还会显式 removeInfo，清除可能存在的历史幽灵登记。</li>
+     * </ol>
+     * 因此"导出时保留原女仆"后再导回同一世界会被拦截，而"导出并移除后再导入"、
+     * 原女仆死亡后再导入、跨存档导入均不受影响。
+     */
+    private static boolean isSourceMaidAlive(ServerPlayer player, UUID sourceMaidUuid, String ownerUuidStr) {
+        MinecraftServer server = player.getServer();
+        if (server == null) {
+            return false;
+        }
+        for (ServerLevel serverLevel : server.getAllLevels()) {
+            if (serverLevel.getEntity(sourceMaidUuid) instanceof EntityMaid maid && maid.isAlive()) {
+                return true;
+            }
+        }
+        try {
+            UUID ownerUuid = null;
+            if (ownerUuidStr != null) {
+                try {
+                    ownerUuid = UUID.fromString(ownerUuidStr);
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+            if (ownerUuid != null && player.level() instanceof ServerLevel serverLevel) {
+                MaidWorldData worldData = MaidWorldData.get(serverLevel);
+                if (worldData != null) {
+                    List<com.github.tartaricacid.touhoulittlemaid.world.data.MaidInfo> infos =
+                            worldData.getInfos(ownerUuid);
+                    if (infos != null) {
+                        for (com.github.tartaricacid.touhoulittlemaid.world.data.MaidInfo info : infos) {
+                            if (sourceMaidUuid.equals(info.getEntityId())) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            // TLM 世界数据异常不得阻断导入：放行并留痕，交由后续 addFreshEntity 原生规则兜底
+            Constants.LOG.warn("[maid_file_manager] MaidWorldData 双胞胎查询失败（本次放行）: {}", t.toString());
         }
         return false;
     }

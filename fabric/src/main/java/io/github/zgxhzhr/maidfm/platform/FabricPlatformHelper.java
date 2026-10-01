@@ -5,6 +5,7 @@ import io.github.zgxhzhr.maidfm.platform.services.IPlatformHelper;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.SharedConstants;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
@@ -129,6 +130,20 @@ public class FabricPlatformHelper implements IPlatformHelper {
             mSetStack.invoke(handler, slot, stack);
         } catch (Throwable t) {
             throw new RuntimeException("baubleSetStack 失败", t);
+        }
+    }
+
+    /**
+     * 1.20.x 物品 NBT 为 id+Count+tag 结构，ItemStack.of 直接完整还原
+     * （附魔/耐久等全部 tag 状态）；registries 参数在 1.20 不需要，仅为与 1.21 接口对齐。
+     */
+    @Override
+    public ItemStack parseItemStack(RegistryAccess registries, CompoundTag tag) {
+        try {
+            return ItemStack.of(tag);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Fabric parseItemStack 失败，回退全新化: {}", t.toString());
+            return ItemStack.EMPTY;
         }
     }
 

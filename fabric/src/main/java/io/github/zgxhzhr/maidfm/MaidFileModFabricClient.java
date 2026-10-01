@@ -96,8 +96,9 @@ public class MaidFileModFabricClient implements ClientModInitializer {
             boolean allowBaubles = buf.readBoolean();
             boolean allowAdvancements = buf.readBoolean();
             boolean allowEffects = buf.readBoolean();
+            boolean allowInvulnerable = buf.readBoolean();
             client.execute(() -> MaidConfigManager.handleServerConfigSync(
-                    allowImport, allowBaubles, allowAdvancements, allowEffects));
+                    allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable));
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
