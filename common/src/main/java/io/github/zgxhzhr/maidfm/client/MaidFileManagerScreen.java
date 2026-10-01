@@ -1,16 +1,19 @@
 package io.github.zgxhzhr.maidfm.client;
 
 import io.github.zgxhzhr.maidfm.Constants;
+import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import io.github.zgxhzhr.maidfm.data.MaidFileIo;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.ObjectSelectionList;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.network.chat.Component;
 
 import java.awt.Desktop;
@@ -108,6 +111,16 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private final Map<Integer, String> maidOwnerByEntityId = new HashMap<>();
     /** 导出后是否保留原女仆在世界：true=保留（默认开启，友好），false=不保留 */
     private boolean keepMaidsInWorldState;
+    /** 「不保留并导出」二次确认小弹窗是否正在显示 */
+    private boolean removeConfirmVisible;
+    /** 弹窗打开瞬间暂存的待导出女仆 entityId（点确认时使用，弹窗期间勾选变化不影响本次提交） */
+    private final List<Integer> pendingRemoveIds = new ArrayList<>();
+    /** 弹窗内「不再提示」本次勾选状态（仅在点「确认导出」时才写入客户端配置） */
+    private boolean removeConfirmDontAsk;
+    // ===== 二次确认弹窗几何（每次 render 重算，鼠标判定复用同一组坐标） =====
+    private int dlgX, dlgY, dlgW, dlgH;
+    private int dlgCheckX, dlgCheckY, dlgCheckH;
+    private int dlgBtnY, dlgBtnW, dlgBtnH, dlgCancelX, dlgConfirmX;
     /** 导入时是否保留饰品：true=恢复（默认开启），false=不恢复 */
     private boolean keepBaublesState;
     /** 导入成功后是否删除源文件：true=删除（默认关闭，危险操作） */
@@ -282,9 +295,102 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         refreshCurrentTab();
     }
 
+    /**
+     * 打开「不保留原女仆并导出」二次确认小弹窗：
+     * 暂存当前勾选的女仆 id，弹窗期间背景界面的一切交互被吞掉。
+     */
+    private void openRemoveConfirm(List<Integer> ids) {
+        pendingRemoveIds.clear();
+        pendingRemoveIds.addAll(ids);
+        removeConfirmDontAsk = false;
+        removeConfirmVisible = true;
+    }
+
+    /** 关闭确认弹窗（取消 / ESC / 确认后调用），不产生任何导出动作（确认除外） */
+    private void closeRemoveConfirm() {
+        removeConfirmVisible = false;
+        pendingRemoveIds.clear();
+        removeConfirmDontAsk = false;
+    }
+
+    /** 弹窗内点「确认导出」：勾选了不再提示则写入客户端配置（仅当前存档），然后按暂存 id 执行移除导出 */
+    private void confirmRemoveExport() {
+        List<Integer> ids = new ArrayList<>(pendingRemoveIds);
+        if (removeConfirmDontAsk) {
+            MaidConfigManager.setSkipRemoveConfirm(currentWorldKey(this.minecraft), true);
+        }
+        closeRemoveConfirm();
+        doExportMaids(ids, true);
+    }
+
+    /**
+     * 当前所在存档/服务器的稳定标识（仅客户端可用）：
+     * 多人游戏=服务器地址；单人（含对局域网开放）=存档文件夹名；分别加 {@code mp_}/{@code sp_} 前缀区分。
+     * 该标识只用于本地客户端配置按存档分别记录，不会上报服务端。
+     */
+    public static String currentWorldKey(Minecraft mc) {
+        ServerData server = mc.getCurrentServer();
+        if (server != null && server.ip != null && !server.ip.isEmpty()) {
+            return "mp_" + sanitizeWorldKey(server.ip);
+        }
+        if (mc.getSingleplayerServer() != null && mc.getSingleplayerServer().getWorldData() != null) {
+            return "sp_" + sanitizeWorldKey(mc.getSingleplayerServer().getWorldData().getLevelName());
+        }
+        return "unknown";
+    }
+
+    /**
+     * 把服务器地址/存档名规整为配置键，必须保证不同原名绝不撞键：
+     * 全由字母数字、下划线、连字符组成时原样保留；一旦包含其它字符（中文存档名、
+     * IP 里的点/冒号等），整体改用 UTF-8 字节的十六进制编码（前缀 h）。
+     * 注意：不能把非安全字符一律替换成下划线——两个等长中文存档名（如「世界一」「世界二」）
+     * 会压成同一个键，导致 A 存档勾选的「不再提示」泄漏到 B 存档，存档隔离失效。
+     */
+    private static String sanitizeWorldKey(String raw) {
+        boolean allSafe = true;
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                    || (c >= '0' && c <= '9') || c == '_' || c == '-')) {
+                allSafe = false;
+                break;
+            }
+        }
+        if (allSafe) {
+            return raw.isEmpty() ? "unknown" : raw;
+        }
+        byte[] bytes = raw.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        StringBuilder sb = new StringBuilder(bytes.length * 2 + 1);
+        sb.append('h');
+        for (byte b : bytes) {
+            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+            sb.append(Character.forDigit(b & 0xF, 16));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 真正发送导出请求（保留导出与确认弹窗确认后共用同一入口）。
+     *
+     * @param ids         要导出的女仆 entityId
+     * @param removeAfter true=导出后从世界移除（背包物品不返还）
+     */
+    private void doExportMaids(List<Integer> ids, boolean removeAfter) {
+        IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
+        if (net == null) {
+            Constants.LOG.warn("[maid_file_manager] doExportMaids: net is null");
+            setFeedback(Component.translatable("maid_file_manager.gui.error.network_unavailable"));
+            return;
+        }
+        Constants.LOG.info("[maid_file_manager] EXPORT START: count={}, removeAfter={}", ids.size(), removeAfter);
+        setFeedback(Component.translatable("maid_file_manager.gui.export.exporting_multi", ids.size()));
+        net.sendExportMaids(ids, removeAfter);
+    }
+
     private void switchTab(Tab tab) {
         if (currentTab == tab) return;
         currentTab = tab;
+        closeRemoveConfirm();
         updateListVisibility();
         updateActionButtonText();
         updateTabSpecificControlsVisibility();
@@ -301,6 +407,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         selectedMaidIds.clear();
         collapsedPlayers.clear();
         selectAllState = false;
+        // 统一导出强制保留女仆，确认弹窗一并关闭
+        closeRemoveConfirm();
         // 切换模式时重置"等待服务端异步"的反馈抑制（避免返回单独导出模式后 feedback 仍被静默吞掉）
         serverExportSuppressFeedbackUntil = 0L;
         refreshSelectAllLabel();
@@ -629,9 +737,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             List<Integer> ids = new ArrayList<>(selectedMaidIds);
             // keep=true → 保留原女仆（不移除）；keep=false → 导出后移除
             boolean removeAfter = !keepMaidsInWorldState;
-            Constants.LOG.info("[maid_file_manager] EXPORT START: count={}, removeAfter={}", ids.size(), removeAfter);
-            setFeedback(Component.translatable("maid_file_manager.gui.export.exporting_multi", ids.size()));
-            net.sendExportMaids(ids, removeAfter);
+            // 危险操作二次确认：取消保留且当前存档未配置「不再提示」时，先弹小窗确认，确认后由弹窗回调真正发送
+            if (removeAfter && !MaidConfigManager.isSkipRemoveConfirm(currentWorldKey(this.minecraft))) {
+                openRemoveConfirm(ids);
+                return;
+            }
+            doExportMaids(ids, removeAfter);
         } else {
             // 导入 Tab：批量导入（取 selectedImportFileNames）
             if (selectedImportFileNames.isEmpty()) {
@@ -738,6 +849,160 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
         // ⑥ Hover tooltip（最后画，不被任何层覆盖）
         drawHoverTooltip(graphics, mouseX, mouseY);
+        // ⑦ 「不保留并导出」二次确认弹窗（最顶层，盖住包括 tooltip 在内的一切）
+        if (removeConfirmVisible) {
+            renderRemoveConfirmDialog(graphics, mouseX, mouseY);
+        }
+    }
+
+    // ================== 「不保留并导出」二次确认小弹窗 ==================
+
+    private static final int DLG_DIM = 0xB0000000;
+    private static final int DLG_WARN_COLOR = 0xFFE8E8E8;
+    private static final int DLG_CANCEL_BG = 0xFF221B13;
+    private static final int DLG_CANCEL_BG_HOVER = 0xFF3D3024;
+    private static final int DLG_DANGER_BG = 0xFF3A1D18;
+    private static final int DLG_DANGER_BG_HOVER = 0xFF552820;
+    private static final int DLG_BTN_TEXT = 0xFFE8E8E8;
+    private static final int DLG_BTN_TEXT_DANGER = 0xFFFF7766;
+
+    /**
+     * 弹窗整体所在的 GUI 深度层。背景控件（按钮贴图/文字）都绘制在 z=0 平面，
+     * 而 GUI 各渲染层（gui/text）均开启 LEQUAL 深度测试：弹窗若也画在 z=0，
+     * 同深度的背景按钮文字会"浮"在遮罩与面板之上。原版悬浮提示（tooltip）
+     * 同样是抬到 z=400 才压住全部控件，这里沿用同一约定。
+     */
+    private static final int DLG_Z_LAYER = 400;
+
+    /** 绘制居中模态小弹窗：半透明遮罩 + 木框小面板 + 警告文案 + 「不再提示」+ 取消/确认两个按钮 */
+    private void renderRemoveConfirmDialog(GuiGraphics graphics, int mouseX, int mouseY) {
+        Component title = Component.translatable("maid_file_manager.gui.export.confirm_title")
+                .withStyle(ChatFormatting.BOLD);
+        Component warn = Component.translatable("maid_file_manager.gui.export.remove_warning");
+        Component dontAsk = Component.translatable("maid_file_manager.gui.export.dont_ask_again");
+        Component cancel = Component.translatable("maid_file_manager.gui.export.confirm_cancel");
+        Component ok = Component.translatable("maid_file_manager.gui.export.confirm_ok");
+
+        // —— 几何（内边距 16，宽 320，高度随行数自适应） ——
+        dlgW = Math.min(320, Math.max(260, this.width - 80));
+        int textMaxW = dlgW - 32;
+        List<net.minecraft.util.FormattedCharSequence> lines = this.font.split(warn, textMaxW);
+        int padTop = 14, titleH = 12, gapTitle = 6, lineH = 10, gapTextCheck = 10;
+        int checkH = 9, gapCheckBtn = 12, btnH = 20, padBottom = 12;
+        dlgH = padTop + titleH + gapTitle + lines.size() * lineH + gapTextCheck
+                + checkH + gapCheckBtn + btnH + padBottom;
+        dlgX = (this.width - dlgW) / 2;
+        dlgY = (this.height - dlgH) / 2;
+
+        // —— 整体抬升到高深度层：遮罩/面板/文字/控件全部在该层内按先后顺序绘制，
+        //    既稳稳压住 z=0 的背景按钮文字，弹窗内部文字又仍在面板之上 ——
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, (float) DLG_Z_LAYER);
+
+        // —— 遮罩 + 面板 ——
+        graphics.fill(0, 0, this.width, this.height, DLG_DIM);
+        graphics.fill(dlgX, dlgY, dlgX + dlgW, dlgY + dlgH, PANEL_BG);
+        graphics.renderOutline(dlgX, dlgY, dlgW, dlgH, PANEL_BORDER);
+
+        // —— 标题（居中金色加粗） + 标题下分隔细线 ——
+        int titleX = dlgX + (dlgW - this.font.width(title)) / 2;
+        int titleY = dlgY + padTop;
+        graphics.drawString(this.font, title, titleX, titleY, HEADER_COLOR, false);
+        int sepY = titleY + titleH + 2;
+        graphics.fill(dlgX + 16, sepY, dlgX + dlgW - 16, sepY + 1, 0x55D0A060);
+
+        // —— 警告正文（自动换行、左对齐） ——
+        int textY = sepY + 1 + gapTitle - 2;
+        int lineX = dlgX + 16;
+        for (net.minecraft.util.FormattedCharSequence line : lines) {
+            graphics.drawString(this.font, line, lineX, textY, DLG_WARN_COLOR, false);
+            textY += lineH;
+        }
+
+        // —— 「不再提示」复选框 + 文案 ——
+        dlgCheckX = lineX;
+        dlgCheckY = textY + gapTextCheck;
+        dlgCheckH = checkH;
+        drawCheckBox(graphics, dlgCheckX, dlgCheckY, removeConfirmDontAsk);
+        graphics.drawString(this.font, dontAsk, dlgCheckX + CHECK_SIZE + 6,
+                dlgCheckY, removeConfirmDontAsk ? ACCENT : SUBTEXT_COLOR, false);
+
+        // —— 取消 / 确认导出 两个手绘按钮 ——
+        dlgBtnY = dlgCheckY + checkH + gapCheckBtn;
+        dlgBtnH = btnH;
+        dlgBtnW = (dlgW - 32 - 8) / 2;
+        dlgCancelX = dlgX + 16;
+        dlgConfirmX = dlgX + dlgW - 16 - dlgBtnW;
+        drawDialogButton(graphics, dlgCancelX, dlgBtnY, dlgBtnW, btnH, cancel,
+                inside(dlgCancelX, dlgBtnY, dlgBtnW, btnH, mouseX, mouseY), false);
+        drawDialogButton(graphics, dlgConfirmX, dlgBtnY, dlgBtnW, btnH, ok,
+                inside(dlgConfirmX, dlgBtnY, dlgBtnW, btnH, mouseX, mouseY), true);
+
+        graphics.pose().popPose();
+    }
+
+    /** 弹窗内的手绘按钮：深棕底 + 木色描边；危险操作（确认移除）用暗红底/红字 */
+    private void drawDialogButton(GuiGraphics graphics, int x, int y, int w, int h,
+                                  Component text, boolean hovered, boolean danger) {
+        int bg;
+        int border;
+        int color;
+        if (danger) {
+            bg = hovered ? DLG_DANGER_BG_HOVER : DLG_DANGER_BG;
+            border = hovered ? 0xFFFF8877 : 0xFF8B5A2B;
+            color = hovered ? 0xFFFFB0A6 : DLG_BTN_TEXT_DANGER;
+        } else {
+            bg = hovered ? DLG_CANCEL_BG_HOVER : DLG_CANCEL_BG;
+            border = hovered ? ACCENT : PANEL_BORDER;
+            color = hovered ? HEADER_COLOR : DLG_BTN_TEXT;
+        }
+        graphics.fill(x, y, x + w, y + h, bg);
+        graphics.renderOutline(x, y, w, h, border);
+        graphics.drawString(this.font, text,
+                x + (w - this.font.width(text)) / 2, y + (h - 8) / 2, color, false);
+    }
+
+    private static boolean inside(int x, int y, int w, int h, double mouseX, double mouseY) {
+        return mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
+    }
+
+    /** 弹窗显示时吞掉所有鼠标点击：背景界面（列表/按钮）一律不响应，仅弹窗控件可点 */
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (!removeConfirmVisible) {
+            return super.mouseClicked(mouseX, mouseY, button);
+        }
+        if (button == 0) {
+            // 复选框热区包含右侧文案，整条都可点
+            if (mouseX >= dlgCheckX && mouseX < dlgX + dlgW - 16
+                    && mouseY >= dlgCheckY - 3 && mouseY < dlgCheckY + dlgCheckH + 3) {
+                removeConfirmDontAsk = !removeConfirmDontAsk;
+            } else if (inside(dlgCancelX, dlgBtnY, dlgBtnW, dlgBtnH, mouseX, mouseY)) {
+                closeRemoveConfirm();
+            } else if (inside(dlgConfirmX, dlgBtnY, dlgBtnW, dlgBtnH, mouseX, mouseY)) {
+                confirmRemoveExport();
+            }
+        }
+        return true;
+    }
+
+    /** 弹窗显示时 ESC 只关弹窗，不关闭整个管理界面 */
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (removeConfirmVisible && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+            closeRemoveConfirm();
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    /** 弹窗显示时屏蔽背景列表滚动 */
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (removeConfirmVisible) {
+            return true;
+        }
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
     /** 在工具按钮左侧绘制手绘复选框（不可见时跳过） */

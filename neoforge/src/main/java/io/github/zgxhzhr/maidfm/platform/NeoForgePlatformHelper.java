@@ -4,6 +4,7 @@ import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.platform.services.IPlatformHelper;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.SharedConstants;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
@@ -65,6 +66,21 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     @Override
     public void baubleSetStack(EntityMaid maid, int slot, ItemStack stack) {
         ((ItemStackHandler) maid.getMaidBauble()).setStackInSlot(slot, stack);
+    }
+
+    /**
+     * 1.21 物品以数据组件形式保存，必须经 ItemStack.parse(HolderLookup.Provider, CompoundTag)
+     * 用当前世界注册表解析才能保留附魔/耐久/全部组件；RegistryAccess 即 HolderLookup.Provider。
+     * 解析失败（组件损坏/物品不存在）返回 EMPTY，由调用方回退全新化。
+     */
+    @Override
+    public ItemStack parseItemStack(RegistryAccess registries, CompoundTag tag) {
+        try {
+            return ItemStack.parse(registries, tag).orElse(ItemStack.EMPTY);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] NeoForge parseItemStack 失败，回退全新化: {}", t.toString());
+            return ItemStack.EMPTY;
+        }
     }
 
     /**

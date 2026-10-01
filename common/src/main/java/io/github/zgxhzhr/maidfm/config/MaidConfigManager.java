@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>客户端配置 {@code config/maid_file_manager-client.properties}：
  *     <ul>
  *       <li>{@code allow_server_export}：是否允许服务端统一导出你的女仆（默认 false）</li>
+ *       <li>{@code skip_remove_confirm.<存档标识>}：在指定存档/服务器中导出并移除女仆时是否跳过二次确认（默认 false；按存档分别记录）</li>
  *     </ul>
  *   </li>
  * </ul>
@@ -48,16 +49,23 @@ public final class MaidConfigManager {
     public static final String KEY_ALLOW_ADVANCEMENTS = "allow_advancements";
     /** 服务端配置键：导入时允许恢复药水效果到实体（关闭则效果保留在持久化标签，不恢复到实体） */
     public static final String KEY_ALLOW_EFFECTS = "allow_effects";
+    /** 服务端配置键：导入时允许带走 TLM 本体无敌状态（替身地藏赋予的 Invulnerable） */
+    public static final String KEY_ALLOW_INVULNERABLE = "allow_invulnerable";
     /** 客户端配置键：允许服务端统一导出你的女仆 */
     public static final String KEY_ALLOW_SERVER_EXPORT = "allow_server_export";
+    /** 客户端配置键：导出并移除女仆时跳过"背包物品将丢失"二次确认的键前缀，完整键为 前缀+存档标识 */
+    public static final String SKIP_REMOVE_CONFIRM_PREFIX = "skip_remove_confirm.";
 
     /** 服务端配置内存值（volatile 保证跨线程可见：网络线程写、服务端逻辑线程读）；默认开启（方便单人玩家） */
     private static volatile boolean serverAllowClientImport = true;
     private static volatile boolean serverAllowBaubles = true;
     private static volatile boolean serverAllowAdvancements = true;
     private static volatile boolean serverAllowEffects = true;
+    private static volatile boolean serverAllowInvulnerable = true;
     /** 客户端配置内存值 */
     private static volatile boolean clientAllowServerExport = false;
+    /** 客户端配置内存值：各存档/服务器是否跳过移除二次确认（key=存档标识，见 client 包存档标识工具） */
+    private static final Map<String, Boolean> clientSkipRemoveConfirmByWorld = new ConcurrentHashMap<>();
     /** 服务端侧记录的各客户端同意状态（UUID → allowServerExport），登录默认 false */
     private static final Map<UUID, Boolean> CLIENT_CONSENT = new ConcurrentHashMap<>();
 
@@ -97,6 +105,11 @@ public final class MaidConfigManager {
         return serverAllowEffects;
     }
 
+    /** 导入时是否允许带走 TLM 本体无敌状态 */
+    public static boolean isInvulnerableAllowed() {
+        return serverAllowInvulnerable;
+    }
+
     /** 指定玩家是否同意服务端统一导出（默认 false） */
     public static boolean getClientConsent(UUID playerId) {
         return CLIENT_CONSENT.getOrDefault(playerId, false);
@@ -126,6 +139,8 @@ public final class MaidConfigManager {
             serverAllowAdvancements = value;
         } else if (KEY_ALLOW_EFFECTS.equals(key)) {
             serverAllowEffects = value;
+        } else if (KEY_ALLOW_INVULNERABLE.equals(key)) {
+            serverAllowInvulnerable = value;
         } else {
             Constants.LOG.warn("[女仆文件管理] 收到未知服务端配置键: {}", key);
             return false;
@@ -152,13 +167,29 @@ public final class MaidConfigManager {
         }
     }
 
+    /** 在指定存档/服务器中导出并移除女仆时是否跳过二次确认（纯本地偏好，按存档分别记录，不上报服务端） */
+    public static boolean isSkipRemoveConfirm(String worldKey) {
+        return Boolean.TRUE.equals(clientSkipRemoveConfirmByWorld.get(worldKey));
+    }
+
+    /** 修改指定存档/服务器的"跳过移除二次确认"客户端配置（仅写本地文件；false 时清除该存档记录） */
+    public static synchronized void setSkipRemoveConfirm(String worldKey, boolean value) {
+        if (value) {
+            clientSkipRemoveConfirmByWorld.put(worldKey, Boolean.TRUE);
+        } else {
+            clientSkipRemoveConfirmByWorld.remove(worldKey);
+        }
+        saveClient();
+    }
+
     /** 客户端收到服务端配置同步（S2C 包处理）：更新本地缓存并回发同意状态 */
     public static void handleServerConfigSync(boolean allowImport, boolean allowBaubles, boolean allowAdvancements,
-                                              boolean allowEffects) {
+                                              boolean allowEffects, boolean allowInvulnerable) {
         serverAllowClientImport = allowImport;
         serverAllowBaubles = allowBaubles;
         serverAllowAdvancements = allowAdvancements;
         serverAllowEffects = allowEffects;
+        serverAllowInvulnerable = allowInvulnerable;
         IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
         if (net != null) {
             net.sendClientConsent(clientAllowServerExport);
@@ -184,6 +215,11 @@ public final class MaidConfigManager {
         return serverAllowEffects;
     }
 
+    /** 客户端读取服务端配置缓存（设置界面显示用） */
+    public static boolean cachedInvulnerableAllowed() {
+        return serverAllowInvulnerable;
+    }
+
     // ==================== 文件 IO ====================
 
     private static void loadServer() {
@@ -197,6 +233,7 @@ public final class MaidConfigManager {
         serverAllowBaubles = parse(props, KEY_ALLOW_BAUBLES, true);
         serverAllowAdvancements = parse(props, KEY_ALLOW_ADVANCEMENTS, true);
         serverAllowEffects = parse(props, KEY_ALLOW_EFFECTS, true);
+        serverAllowInvulnerable = parse(props, KEY_ALLOW_INVULNERABLE, true);
     }
 
     private static void loadClient() {
@@ -207,6 +244,16 @@ public final class MaidConfigManager {
             // 首次运行配置文件尚不存在属正常情况：props 保持为空，下方 parse 全部走默认值（默认拒绝），无需告警
         }
         clientAllowServerExport = parse(props, KEY_ALLOW_SERVER_EXPORT, false);
+        // 按存档记录的跳过确认：遍历 skip_remove_confirm.<存档标识> 全部装入内存
+        clientSkipRemoveConfirmByWorld.clear();
+        for (String name : props.stringPropertyNames()) {
+            if (name.startsWith(SKIP_REMOVE_CONFIRM_PREFIX) && name.length() > SKIP_REMOVE_CONFIRM_PREFIX.length()
+                    && parse(props, name, false)) {
+                clientSkipRemoveConfirmByWorld.put(name.substring(SKIP_REMOVE_CONFIRM_PREFIX.length()), Boolean.TRUE);
+            }
+        }
+        // 旧版本曾写过无存档后缀的全局键 skip_remove_confirm：语义已改为按存档，此处直接忽略，
+        // 下次 saveClient 时该键自然从文件消失，无需专门迁移。
     }
 
     private static void saveServer() {
@@ -215,12 +262,17 @@ public final class MaidConfigManager {
         props.setProperty(KEY_ALLOW_BAUBLES, String.valueOf(serverAllowBaubles));
         props.setProperty(KEY_ALLOW_ADVANCEMENTS, String.valueOf(serverAllowAdvancements));
         props.setProperty(KEY_ALLOW_EFFECTS, String.valueOf(serverAllowEffects));
+        props.setProperty(KEY_ALLOW_INVULNERABLE, String.valueOf(serverAllowInvulnerable));
         store(props, serverConfigFile, "Maid File Manager server config (edited via in-game settings, OP only)");
     }
 
     private static void saveClient() {
         Properties props = new Properties();
         props.setProperty(KEY_ALLOW_SERVER_EXPORT, String.valueOf(clientAllowServerExport));
+        // 每个勾选过"不再提示"的存档各写一行（只存 true；false=默认值不落盘）
+        for (String worldKey : clientSkipRemoveConfirmByWorld.keySet()) {
+            props.setProperty(SKIP_REMOVE_CONFIRM_PREFIX + worldKey, String.valueOf(true));
+        }
         store(props, clientConfigFile, "Maid File Manager client config");
     }
 

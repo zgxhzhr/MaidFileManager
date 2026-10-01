@@ -242,6 +242,10 @@ public final class MaidFilePayloads {
                                 for (Integer entityId : exportedIds) {
                                     var e = sp.level().getEntity(entityId);
                                     if (e != null) {
+                                        // 必须在 discard 前清除 MaidWorldData 存活登记：discard 时
+                                        // isAlive=false，TLM 不会清理既有记录，残留登记会被双胞胎
+                                        // 拦截误判为女仆仍存活，导致"导出并移除后再导入"被拒。
+                                        MaidTransferService.unregisterMaidWorldData(e);
                                         e.discard();
                                         removed++;
                                     }
@@ -504,7 +508,8 @@ public final class MaidFilePayloads {
     // ================ S2C 包（服务端 -> 客户端） ================
 
     /** 服务端配置同步（登录时单播 + 修改后全服同步）；客户端收到后更新缓存并回发同意状态 */
-    public record ServerConfigSyncPayload(boolean allowImport, boolean allowBaubles, boolean allowAdvancements, boolean allowEffects) implements CustomPacketPayload {
+    public record ServerConfigSyncPayload(boolean allowImport, boolean allowBaubles, boolean allowAdvancements,
+                                          boolean allowEffects, boolean allowInvulnerable) implements CustomPacketPayload {
         public static final Type<ServerConfigSyncPayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "server_config_sync"));
         public static final StreamCodec<ByteBuf, ServerConfigSyncPayload> STREAM_CODEC =
@@ -513,6 +518,7 @@ public final class MaidFilePayloads {
                         ByteBufCodecs.BOOL, ServerConfigSyncPayload::allowBaubles,
                         ByteBufCodecs.BOOL, ServerConfigSyncPayload::allowAdvancements,
                         ByteBufCodecs.BOOL, ServerConfigSyncPayload::allowEffects,
+                        ByteBufCodecs.BOOL, ServerConfigSyncPayload::allowInvulnerable,
                         ServerConfigSyncPayload::new
                 );
 
@@ -522,7 +528,8 @@ public final class MaidFilePayloads {
         }
 
         public void handle(IPayloadContext ctx) {
-            ctx.enqueueWork(() -> MaidConfigManager.handleServerConfigSync(allowImport, allowBaubles, allowAdvancements, allowEffects));
+            ctx.enqueueWork(() -> MaidConfigManager.handleServerConfigSync(
+                    allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable));
         }
     }
 
@@ -533,7 +540,8 @@ public final class MaidFilePayloads {
                     MaidConfigManager.isClientImportAllowed(),
                     MaidConfigManager.isBaublesAllowed(),
                     MaidConfigManager.isAdvancementsAllowed(),
-                    MaidConfigManager.isEffectsAllowed()));
+                    MaidConfigManager.isEffectsAllowed(),
+                    MaidConfigManager.isInvulnerableAllowed()));
         }
     }
 
