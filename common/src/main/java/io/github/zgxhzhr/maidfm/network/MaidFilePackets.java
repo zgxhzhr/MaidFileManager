@@ -386,4 +386,25 @@ public final class MaidFilePackets {
         }
         return list;
     }
+
+    // ---------- 饰品导入设置（跨版本属性保留 / 禁用携带列表） ----------
+
+    /** 写字符串列表（数量上限 256，单串上限 256 字符，防畸形包 OOM） */
+    public static void writeStringList(FriendlyByteBuf buf, List<String> list) {
+        List<String> safe = list == null ? List.of() : list;
+        buf.writeVarInt(Math.min(safe.size(), 256));
+        for (String s : safe) {
+            buf.writeUtf(s == null ? "" : s, MAX_TEXT_LEN);
+        }
+    }
+
+    /** 读字符串列表；数量与单串超限一律拒绝（读端自律，坏包走异常断连/回执） */
+    public static List<String> readStringList(FriendlyByteBuf buf) {
+        int size = checkSize(buf.readVarInt(), 256, "stringList");
+        List<String> out = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            out.add(buf.readUtf(MAX_TEXT_LEN));
+        }
+        return out;
+    }
 }

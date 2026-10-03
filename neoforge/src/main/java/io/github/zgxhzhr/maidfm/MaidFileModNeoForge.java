@@ -73,6 +73,9 @@ public class MaidFileModNeoForge {
         registrar.playToServer(MaidFilePayloads.SetServerConfigPayload.TYPE,
                 MaidFilePayloads.SetServerConfigPayload.STREAM_CODEC,
                 MaidFilePayloads.SetServerConfigPayload::handle);
+        registrar.playToServer(MaidFilePayloads.SetServerBaubleBlockedListPayload.TYPE,
+                MaidFilePayloads.SetServerBaubleBlockedListPayload.STREAM_CODEC,
+                MaidFilePayloads.SetServerBaubleBlockedListPayload::handle);
         registrar.playToServer(MaidFilePayloads.RequestServerExportListPayload.TYPE,
                 MaidFilePayloads.RequestServerExportListPayload.STREAM_CODEC,
                 MaidFilePayloads.RequestServerExportListPayload::handle);

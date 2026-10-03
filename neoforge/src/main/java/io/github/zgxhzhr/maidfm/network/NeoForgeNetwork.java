@@ -21,7 +21,8 @@ public class NeoForgeNetwork implements IMaidFileNetwork {
 
     @Override
     public void sendImportFiles(List<MaidFileData> dataList, boolean keepBaubles, boolean deleteAfterImport) {
-        PacketDistributor.sendToServer(new MaidFilePayloads.ImportBatchPayload(dataList, keepBaubles, deleteAfterImport));
+        PacketDistributor.sendToServer(new MaidFilePayloads.ImportBatchPayload(
+                dataList, keepBaubles, deleteAfterImport));
     }
 
     @Override
@@ -32,6 +33,11 @@ public class NeoForgeNetwork implements IMaidFileNetwork {
     @Override
     public void sendSetServerConfig(String key, boolean value) {
         PacketDistributor.sendToServer(new MaidFilePayloads.SetServerConfigPayload(key, value));
+    }
+
+    @Override
+    public void sendSetServerBaubleBlockedList(List<String> ids) {
+        PacketDistributor.sendToServer(new MaidFilePayloads.SetServerBaubleBlockedListPayload(ids));
     }
 
     @Override

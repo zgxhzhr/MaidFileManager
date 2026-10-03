@@ -47,7 +47,7 @@ public final class MaidServerCommands {
     private static int executeExportAll(CommandSourceStack source) {
         MinecraftServer server = source.getServer();
         if (server == null) {
-            source.sendFailure(Component.literal("[女仆文件管理] 无法获取服务端"));
+            source.sendFailure(Component.literal("[女仆档案管理] 无法获取服务端"));
             return 0;
         }
         Path exportRoot = Services.PLATFORM.get().getGameDir().toAbsolutePath().resolve(Constants.MAID_EXPORTS_DIR);
@@ -80,19 +80,19 @@ public final class MaidServerCommands {
                             data.getModelId(), data.getOwnerUuid(), data, LocalDateTime.now());
                     count++;
                 } catch (Exception e) {
-                    Constants.LOG.error("[女仆文件管理] 统一导出女仆失败: player={}, maid={}", playerName, maid.getId(), e);
+                    Constants.LOG.error("[女仆档案管理] 统一导出女仆失败: player={}, maid={}", playerName, maid.getId(), e);
                 }
             }
             exportedPlayers++;
             exportedFiles += count;
-            Constants.LOG.info("[女仆文件管理] 统一导出: 玩家 {} 导出 {} 个女仆文件", playerName, count);
+            Constants.LOG.info("[女仆档案管理] 统一导出: 玩家 {} 导出 {} 个女仆文件", playerName, count);
         }
 
         final int fExported = exportedPlayers;
         final int fSkipped = skippedPlayers;
         final int fFiles = exportedFiles;
         final String skippedDesc = skippedNames.isEmpty() ? "无" : String.join(", ", skippedNames);
-        final String summary = String.format("[女仆文件管理] 统一导出完成：玩家 %d 人（跳过未同意 %d 人: %s），共 %d 个文件 → %s",
+        final String summary = String.format("[女仆档案管理] 统一导出完成：玩家 %d 人（跳过未同意 %d 人: %s），共 %d 个文件 → %s",
                 fExported, fSkipped, skippedDesc, fFiles, exportRoot);
         source.sendSuccess(() -> Component.literal(summary), false);
         return 1;
@@ -128,7 +128,7 @@ public final class MaidServerCommands {
     public static Component exportForPlayers(MinecraftServer server,
                                              List<IMaidFileNetwork.PlayerExportRequest> requests) {
         if (server == null) {
-            return Component.literal("[女仆文件管理] 无法获取服务端");
+            return Component.literal("[女仆档案管理] 无法获取服务端");
         }
         Path exportRoot = Services.PLATFORM.get().getGameDir().toAbsolutePath().resolve(Constants.MAID_EXPORTS_DIR);
         int totalOk = 0;
@@ -171,7 +171,7 @@ public final class MaidServerCommands {
                     ok++;
                 } catch (Exception e) {
                     fail++;
-                    Constants.LOG.error("[女仆文件管理] OP 统一导出单只女仆失败: owner={}, entityId={}, dir={}",
+                    Constants.LOG.error("[女仆档案管理] OP 统一导出单只女仆失败: owner={}, entityId={}, dir={}",
                             name, entityId, playerDir, e);
                 }
             }
@@ -183,7 +183,7 @@ public final class MaidServerCommands {
                     name, ok, fail, playerDir);
         }
 
-        StringBuilder sb = new StringBuilder("[女仆文件管理] 统一导出完成：共成功 ").append(totalOk).append(" 个");
+        StringBuilder sb = new StringBuilder("[女仆档案管理] 统一导出完成：共成功 ").append(totalOk).append(" 个");
         if (totalFail > 0) {
             sb.append("，失败 ").append(totalFail).append(" 个");
         }

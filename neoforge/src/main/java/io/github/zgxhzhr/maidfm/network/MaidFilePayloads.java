@@ -61,14 +61,14 @@ public final class MaidFilePayloads {
         if (blobs == null) {
             Constants.LOG.error("[maid_file_manager] 导出结果序列化失败，拒绝发送: player={}",
                     sp.getName().getString());
-            feedback(sp, Component.literal("[女仆文件管理] 导出数据序列化失败，请重试；如反复失败请联系服主查看日志"));
+            feedback(sp, Component.literal("[女仆档案管理] 导出数据序列化失败，请重试；如反复失败请联系服主查看日志"));
             return false;
         }
         String reject = MaidFilePackets.checkMaidDataBatchForWire(blobs, MaidFilePackets.MAX_EXPORT_IDS);
         if (reject != null) {
             Constants.LOG.warn("[maid_file_manager] 导出结果预检被拒绝: player={}, count={}, reason={}",
                     sp.getName().getString(), blobs.size(), reject);
-            feedback(sp, Component.literal("[女仆文件管理] " + reject));
+            feedback(sp, Component.literal("[女仆档案管理] " + reject));
             return false;
         }
         PacketDistributor.sendToPlayer(sp, new ExportBatchResultPayload(blobs));
@@ -135,7 +135,18 @@ public final class MaidFilePayloads {
         }
     }
 
-    public record ImportFilePayload(byte[] bytes, boolean keepBaubles, boolean deleteAfterImport) implements CustomPacketPayload {
+    /** 写字符串列表（数量上限 256，单串上限 256 字符，防畸形包 OOM；公共助手见 MaidFilePackets） */
+    private static void writeStringList(FriendlyByteBuf fbb, List<String> list) {
+        MaidFilePackets.writeStringList(fbb, list);
+    }
+
+    /** 读字符串列表；数量与单串超限一律拒绝（读端自律，坏包走异常断连/回执；公共助手见 MaidFilePackets） */
+    private static List<String> readStringList(FriendlyByteBuf fbb) {
+        return MaidFilePackets.readStringList(fbb);
+    }
+
+    public record ImportFilePayload(byte[] bytes, boolean keepBaubles, boolean deleteAfterImport)
+            implements CustomPacketPayload {
         public static final Type<ImportFilePayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "import_file"));
         public static final StreamCodec<ByteBuf, ImportFilePayload> STREAM_CODEC =
@@ -174,8 +185,12 @@ public final class MaidFilePayloads {
                                     "maid_file_manager.import.fail.invalid"));
                             return;
                         }
-                        ImportResult result = MaidTransferService.importMaidFromData(sp, data, keepBaubles);
-                        feedback(sp, result.message());
+                        // 饰品导入策略由服务端配置决定，客户端不上传，杜绝非 OP 绕过
+                        ImportResult result = MaidTransferService.importMaidFromData(sp, data, keepBaubles,
+                                MaidConfigManager.isBaubleStripAttributes(),
+                                MaidTransferService.sanitizeBaubleBlockedList(
+                                        MaidConfigManager.getBaubleBlockedList()));
+                        feedback(sp, MaidTransferService.withBaubleDetails(result));
                     } catch (Throwable t) {
                         handleError(sp, "IMPORT_FILE", t);
                     }
@@ -262,12 +277,19 @@ public final class MaidFilePayloads {
         }
     }
 
-    public record ImportBatchPayload(byte[] encoded, boolean keepBaubles, boolean deleteAfterImport) implements CustomPacketPayload {
+    public record ImportBatchPayload(byte[] encoded, boolean keepBaubles, boolean deleteAfterImport)
+            implements CustomPacketPayload {
         public static final Type<ImportBatchPayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "import_batch"));
         public static final StreamCodec<ByteBuf, ImportBatchPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
-                        (p, buf) -> { FriendlyByteBuf fbb = new FriendlyByteBuf(buf); fbb.writeVarInt(p.encoded.length); fbb.writeBytes(p.encoded); fbb.writeBoolean(p.keepBaubles); fbb.writeBoolean(p.deleteAfterImport); },
+                        (p, buf) -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            fbb.writeVarInt(p.encoded.length);
+                            fbb.writeBytes(p.encoded);
+                            fbb.writeBoolean(p.keepBaubles);
+                            fbb.writeBoolean(p.deleteAfterImport);
+                        },
                         buf -> {
                             FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
                             int len = MaidFilePackets.checkSize(fbb.readVarInt(),
@@ -301,6 +323,11 @@ public final class MaidFilePayloads {
                     try {
                         FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
                         List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(fbb);
+                        // 饰品导入策略以服务端配置为准（客户端不上传，杜绝非 OP 绕过）；
+                        // 服务端收窄校验：禁用列表只保留车万本体/法术附属两命名空间内的 ID（收窄不放开）
+                        boolean stripAttributes = MaidConfigManager.isBaubleStripAttributes();
+                        List<String> blocked = MaidTransferService.sanitizeBaubleBlockedList(
+                                MaidConfigManager.getBaubleBlockedList());
                         // 成败统计只认 ImportResult.State 枚举，严禁反解中文展示文案
                         List<ImportResult> results = new ArrayList<>(list.size());
                         for (MaidFileData d : list) {
@@ -309,7 +336,8 @@ public final class MaidFilePayloads {
                                         "maid_file_manager.import.fail.invalid")));
                                 continue;
                             }
-                            results.add(MaidTransferService.importMaidFromData(sp, d, keepBaubles));
+                            results.add(MaidTransferService.importMaidFromData(sp, d, keepBaubles,
+                                    stripAttributes, blocked));
                         }
                         Component summary = MaidTransferService.buildBatchSummary(results);
                         if (deleteAfterImport) {
@@ -374,7 +402,7 @@ public final class MaidFilePayloads {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
                         if (!sp.hasPermissions(2)) {
-                            feedback(sp, Component.literal("[女仆文件管理] 统一导出仅 OP 可用"));
+                            feedback(sp, Component.literal("[女仆档案管理] 统一导出仅 OP 可用"));
                             return;
                         }
                         var groups = io.github.zgxhzhr.maidfm.service.MaidServerCommands
@@ -451,7 +479,7 @@ public final class MaidFilePayloads {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
                         if (!sp.hasPermissions(2)) {
-                            feedback(sp, Component.literal("[女仆文件管理] 统一导出仅 OP 可用"));
+                            feedback(sp, Component.literal("[女仆档案管理] 统一导出仅 OP 可用"));
                             return;
                         }
                         FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
@@ -493,7 +521,7 @@ public final class MaidFilePayloads {
                         }
                         // 未知键直接回执失败，不得把旧配置向全服重新广播
                         if (!MaidConfigManager.setServerConfig(key, value)) {
-                            feedback(sp, Component.literal("[女仆文件管理] 未知配置项，修改已拒绝"));
+                            feedback(sp, Component.literal("[女仆档案管理] 未知配置项，修改已拒绝"));
                             return;
                         }
                         broadcastServerConfig(sp.server);
@@ -505,21 +533,74 @@ public final class MaidFilePayloads {
         }
     }
 
+    /** C2S：OP 修改「禁用携带的饰品 ID 列表」（服务端校验 OP 权限后写文件并广播同步） */
+    public record SetServerBaubleBlockedListPayload(List<String> ids) implements CustomPacketPayload {
+        public static final Type<SetServerBaubleBlockedListPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_server_bauble_blocked_list"));
+        public static final StreamCodec<ByteBuf, SetServerBaubleBlockedListPayload> STREAM_CODEC =
+                StreamCodec.ofMember(
+                        (p, buf) -> writeStringList(new FriendlyByteBuf(buf), p.ids),
+                        buf -> new SetServerBaubleBlockedListPayload(readStringList(new FriendlyByteBuf(buf)))
+                );
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                if (ctx.player() instanceof ServerPlayer sp) {
+                    try {
+                        // 服务端配置仅 OP 可改（局域网联机=宿主默认 OP）
+                        if (!sp.hasPermissions(2)) {
+                            feedback(sp, Component.translatable("maid_file_manager.config.fail.no_permission"));
+                            return;
+                        }
+                        MaidConfigManager.setServerBaubleBlockedList(
+                                MaidTransferService.sanitizeBaubleBlockedList(ids));
+                        broadcastServerConfig(sp.server);
+                    } catch (Throwable t) {
+                        handleError(sp, "SET_SERVER_BAUBLE_BLOCKED_LIST", t);
+                    }
+                }
+            });
+        }
+    }
+
     // ================ S2C 包（服务端 -> 客户端） ================
 
     /** 服务端配置同步（登录时单播 + 修改后全服同步）；客户端收到后更新缓存并回发同意状态 */
     public record ServerConfigSyncPayload(boolean allowImport, boolean allowBaubles, boolean allowAdvancements,
-                                          boolean allowEffects, boolean allowInvulnerable) implements CustomPacketPayload {
+                                          boolean allowEffects, boolean allowInvulnerable,
+                                          boolean baubleStripAttributes, List<String> baubleBlockedList)
+            implements CustomPacketPayload {
         public static final Type<ServerConfigSyncPayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "server_config_sync"));
         public static final StreamCodec<ByteBuf, ServerConfigSyncPayload> STREAM_CODEC =
-                StreamCodec.composite(
-                        ByteBufCodecs.BOOL, ServerConfigSyncPayload::allowImport,
-                        ByteBufCodecs.BOOL, ServerConfigSyncPayload::allowBaubles,
-                        ByteBufCodecs.BOOL, ServerConfigSyncPayload::allowAdvancements,
-                        ByteBufCodecs.BOOL, ServerConfigSyncPayload::allowEffects,
-                        ByteBufCodecs.BOOL, ServerConfigSyncPayload::allowInvulnerable,
-                        ServerConfigSyncPayload::new
+                StreamCodec.ofMember(
+                        (p, buf) -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            fbb.writeBoolean(p.allowImport);
+                            fbb.writeBoolean(p.allowBaubles);
+                            fbb.writeBoolean(p.allowAdvancements);
+                            fbb.writeBoolean(p.allowEffects);
+                            fbb.writeBoolean(p.allowInvulnerable);
+                            fbb.writeBoolean(p.baubleStripAttributes);
+                            writeStringList(fbb, p.baubleBlockedList);
+                        },
+                        buf -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            boolean allowImport = fbb.readBoolean();
+                            boolean allowBaubles = fbb.readBoolean();
+                            boolean allowAdvancements = fbb.readBoolean();
+                            boolean allowEffects = fbb.readBoolean();
+                            boolean allowInvulnerable = fbb.readBoolean();
+                            boolean baubleStripAttributes = fbb.readBoolean();
+                            List<String> baubleBlockedList = readStringList(fbb);
+                            return new ServerConfigSyncPayload(allowImport, allowBaubles, allowAdvancements,
+                                    allowEffects, allowInvulnerable, baubleStripAttributes, baubleBlockedList);
+                        }
                 );
 
         @Override
@@ -529,7 +610,8 @@ public final class MaidFilePayloads {
 
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> MaidConfigManager.handleServerConfigSync(
-                    allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable));
+                    allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable,
+                    baubleStripAttributes, baubleBlockedList));
         }
     }
 
@@ -541,7 +623,9 @@ public final class MaidFilePayloads {
                     MaidConfigManager.isBaublesAllowed(),
                     MaidConfigManager.isAdvancementsAllowed(),
                     MaidConfigManager.isEffectsAllowed(),
-                    MaidConfigManager.isInvulnerableAllowed()));
+                    MaidConfigManager.isInvulnerableAllowed(),
+                    MaidConfigManager.isBaubleStripAttributes(),
+                    MaidConfigManager.getBaubleBlockedList()));
         }
     }
 
@@ -752,7 +836,7 @@ public final class MaidFilePayloads {
     private static void handleError(ServerPlayer sp, String packetName, Throwable t) {
         Constants.LOG.error("[maid_file_manager] C2S handler 崩溃: packet={}, player={}, cause={}",
                 packetName, sp.getName().getString(), t.toString(), t);
-        feedback(sp, Component.literal("[女仆文件管理] 服务端处理失败，请联系服主查看日志（错误位置："
+        feedback(sp, Component.literal("[女仆档案管理] 服务端处理失败，请联系服主查看日志（错误位置："
                 + packetName + "）"));
     }
 }
