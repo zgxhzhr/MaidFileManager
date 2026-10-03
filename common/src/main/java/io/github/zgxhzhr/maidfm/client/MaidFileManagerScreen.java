@@ -34,7 +34,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * 女仆文件管理主界面。
+ * 女仆档案管理主界面。
  *
  * <p>交互流程：玩家在列表里勾选条目 → 底部【批量导出/批量导入】按钮执行动作。
  */
@@ -480,7 +480,6 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private void refreshDeleteImportFileLabel() {
         if (deleteImportFileBtn != null) deleteImportFileBtn.setMessage(deleteImportFileLabel(deleteImportFileState));
     }
-
     /** 根据当前 Tab 显示/隐藏 Tab 专属控件：
      *  导出 Tab = 全选 + 保留女仆 + 打开导出文件夹
      *  导入 Tab = 全选 + 保留饰品 + 打开导入文件夹
@@ -794,6 +793,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             }
             setFeedback(Component.literal(String.format(Locale.ROOT,
                     "正在批量导入 %d 个女仆（已跳过 %d 个无效文件）...", dataList.size(), skipped)));
+            // 饰品导入策略（丢弃属性 / 禁用清单）由服务端配置决定，客户端不再上传，杜绝非 OP 绕过
             Constants.LOG.info("[maid_file_manager] BATCH IMPORT START: count={}, skipped={}, keepBaubles={}, deleteAfter={}",
                     dataList.size(), skipped, keepBaublesState, deleteImportFileState);
             net.sendImportFiles(dataList, keepBaublesState, deleteImportFileState);
@@ -838,14 +838,21 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         drawButtonCheckBox(graphics, keepMaidsBtn, keepMaidsInWorldState);
         drawButtonCheckBox(graphics, keepBaublesBtn, keepBaublesState);
         drawButtonCheckBox(graphics, deleteImportFileBtn, deleteImportFileState);
-        // ⑤ 反馈消息（fbX=面板中心；无阴影文字保持锐利）
+        // ⑤ 反馈消息（fbX=面板中心；无阴影文字保持锐利；超长自动按面板宽度换行，
+        //    行数受"底部按钮上沿"限制，超出部分截断加省略号——完整文本仍会进聊天栏）
         if (!feedbackMsg.getString().isEmpty() && System.currentTimeMillis() < feedbackExpireAt) {
-            int fbX = panelX + panelW / 2;                           // Fix A：面板木框中心（不是窄列表中心，长文不溢出，直观居中）
-            int fbY = panelY + panelH - LIST_BOTTOM_PAD + 6;         // UI无问题版：fbY=面板底-62（黄字 overlay 列表底上方 6px，与 action 按钮 btnY=面板底-42 留 11px 间距零纵叠）
-            // 最小 fallback：GUI 极矮屏时，若 fbY 冲进列表内容顶部（< listTop+12）就落列表顶+6（正常 GUI 完全不触发）
+            int fbX = panelX + panelW / 2;
+            int startY = panelY + panelH - LIST_BOTTOM_PAD + 6;
+            // 最小 fallback：GUI 极矮屏时，若首行冲进列表内容顶部（< listTop+12）就落列表顶+6（正常 GUI 完全不触发）
             int listTopV = maidListWidget.listTop;
-            if (fbY < listTopV + 12) fbY = listTopV + 6;
-            drawCenteredStringNoShadow(graphics, this.font, feedbackMsg, fbX, fbY, 0xFFFFAA00);
+            if (startY < listTopV + 12) startY = listTopV + 6;
+            int btnTop = (actionBtn != null && actionBtn.getY() > 0) ? actionBtn.getY() : startY + 4 * 9;
+            int maxLines = Math.max(1, (btnTop - startY) / 9);
+            List<String> lines = wrapFeedback(feedbackMsg.getString(), Math.max(80, panelW - 16), maxLines);
+            for (int i = 0; i < lines.size(); i++) {
+                drawCenteredStringNoShadow(graphics, this.font, Component.literal(lines.get(i)),
+                        fbX, startY + i * 9, 0xFFFFAA00);
+            }
         }
         // ⑥ Hover tooltip（最后画，不被任何层覆盖）
         drawHoverTooltip(graphics, mouseX, mouseY);
@@ -1050,6 +1057,36 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                                                    Component text, int centerX, int y, int color) {
         int w = font.width(text);
         g.drawString(font, text, centerX - w / 2, y, color, false);
+    }
+
+    /**
+     * 按像素宽度把反馈文本折成多行（最多 maxLines 行，超出部分以省略号标注截断；
+     * 完整文本始终会经聊天栏送达，不依赖界面）。
+     */
+    private static List<String> wrapFeedback(String text, int maxWidth, int maxLines) {
+        List<String> lines = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        int curWidth = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            int w = net.minecraft.client.Minecraft.getInstance().font.width(String.valueOf(c));
+            if (cur.length() > 0 && curWidth + w > maxWidth) {
+                lines.add(cur.toString());
+                cur = new StringBuilder();
+                curWidth = 0;
+                if (lines.size() >= maxLines) {
+                    int last = lines.size() - 1;
+                    lines.set(last, lines.get(last) + "…");
+                    return lines;
+                }
+            }
+            cur.append(c);
+            curWidth += w;
+        }
+        if (cur.length() > 0 && lines.size() < maxLines) {
+            lines.add(cur.toString());
+        }
+        return lines;
     }
 
     private void drawPanel(GuiGraphics g, int x, int y, int w, int h) {

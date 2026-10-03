@@ -525,7 +525,8 @@ public final class MaidTransferService {
 
     // ============================ 导入 ============================
 
-    public static ImportResult importMaidFromData(ServerPlayer player, MaidFileData data, boolean keepBaubles) {
+    public static ImportResult importMaidFromData(ServerPlayer player, MaidFileData data, boolean keepBaubles,
+                                                  boolean stripAttributes, List<String> blockedList) {
         if (data == null || data.getData() == null) {
             return ImportResult.failed(
                     Component.translatable("maid_file_manager.import.fail.invalid"));
@@ -586,6 +587,9 @@ public final class MaidTransferService {
         if (mappedEntityUuid != null) {
             maid.setUUID(mappedEntityUuid);
         }
+        // 饰品逐件处理说明（禁止携带/还原全新/无法解析等），透传到 ImportResult 反馈给客户端。
+        // 声明在 try 之外，导入成功后仍可在返回前附加上备注。
+        List<Component> baubleNotes = new ArrayList<>();
         try {
             int sourceVersion = data.getDataVersion() > 0
                     ? data.getDataVersion()
@@ -596,10 +600,12 @@ public final class MaidTransferService {
             boolean sameVersion = sourceVersion != NbtVersion.UNKNOWN
                     && targetVersion != NbtVersion.UNKNOWN
                     && sourceVersion == targetVersion;
+            int sourceMojangDataVersion = NbtVersion.mojangDataVersion(sourceVersion);
             // migrate 返回清理后的副本，不修改原始 data
             CompoundTag migrated = NbtMigration.migrate(originalNbt, sourceVersion, targetVersion);
             CompoundTag tlmTag = extractTlmData(migrated);
-            loadMaidNbt(maid, migrated, tlmTag, keepBaubles, sourceStruckByLightning, sameVersion);
+            loadMaidNbt(maid, migrated, tlmTag, keepBaubles, sourceStruckByLightning, sameVersion,
+                    stripAttributes, blockedList, sourceMojangDataVersion, baubleNotes);
         } catch (Exception e) {
             // 异常原文可能含内部类名/NBT 结构信息，只进日志；回执给通用文案，不把内部信息透传给客户端
             Constants.LOG.error("[maid_file_manager] 加载女仆 NBT 失败", e);
@@ -782,6 +788,10 @@ public final class MaidTransferService {
         if (baublesRequested && !keepBaubles) {
             result = result.withBaublesStripped();
         }
+        // 饰品逐件处理说明：非空才附加（全部正常保留时为 List.of()，不加噪声）
+        if (!baubleNotes.isEmpty()) {
+            result = result.withBaubleNotes(baubleNotes);
+        }
         return result;
     }
 
@@ -803,7 +813,9 @@ public final class MaidTransferService {
      * 因此失败后不再做无意义的二次反射调用，只走 TLM 数据兜底恢复。
      */
     private static void loadMaidNbt(EntityMaid maid, CompoundTag migrated, CompoundTag tlmTag,
-                                   boolean keepBaubles, boolean tagStruckByLightning, boolean sameVersion) {
+                                   boolean keepBaubles, boolean tagStruckByLightning, boolean sameVersion,
+                                   boolean stripAttributes, List<String> blockedList,
+                                   int sourceMojangDataVersion, List<Component> baubleNotes) {
         boolean loadOk = false;
         try {
             maid.load(migrated);
@@ -816,7 +828,8 @@ public final class MaidTransferService {
             Constants.LOG.error("[maid_file_manager] maid.load 失败，走 TLM 数据兜底恢复。根因: {}: {}",
                     root.getClass().getSimpleName(), root.getMessage());
         }
-        restoreTlmData(maid, tlmTag, keepBaubles, sameVersion);
+        restoreTlmData(maid, tlmTag, keepBaubles, sameVersion, stripAttributes, blockedList,
+                sourceMojangDataVersion, baubleNotes);
         maid.setStruckByLightning(tagStruckByLightning);
         if (!loadOk) {
             Constants.LOG.warn("[maid_file_manager] 该女仆为兜底加载，非物品类 TLM 数据可能不完整（详见上方抽取日志）");
@@ -857,8 +870,10 @@ public final class MaidTransferService {
      * 不做静默处理：逐条 WARN 日志明示丢失，绝不在成功提示中掩盖。
      */
     private static void restoreTlmData(EntityMaid maid, CompoundTag tlmData, boolean keepBaubles,
-                                       boolean sameVersion) {
-        restoreBaubles(maid, tlmData, keepBaubles, sameVersion);
+                                       boolean sameVersion, boolean stripAttributes, List<String> blockedList,
+                                       int sourceMojangDataVersion, List<Component> baubleNotes) {
+        restoreBaubles(maid, tlmData, keepBaubles, sameVersion, stripAttributes, blockedList,
+                sourceMojangDataVersion, baubleNotes);
 
         if (tlmData.contains("ModelId", Tag.TAG_STRING)) {
             String modelId = tlmData.getString("ModelId");
@@ -977,17 +992,21 @@ public final class MaidTransferService {
      * 饰品恢复。规则：
      * 双闸门（客户端勾选 + 服务端 allow_baubles）；白名单仅 touhou_little_maid /
      * touhou_little_maid_spell；目标世界缺物品安全跳过；槽位按数据最大槽位经平台接口扩容。
-     * 物品状态策略：
-     * <ul>
-     *   <li>同版本导入（来源/目标 MC 版本均明确且相同）：按原始 NBT 完整解析物品，
-     *       保留附魔、耐久、强化数值等全部物品状态；</li>
-     *   <li>跨版本导入或解析失败：全新化重建（无附魔、满耐久）——1.20 的 tag 结构与
-     *       1.21 的 components 结构互不兼容，强行解析会得到损坏物品。</li>
-     * </ul>
+     * 判定顺序（对每件饰品）：
+     * <ol>
+     *   <li>命中禁用携带列表（按完整物品 ID）→ 直接丢弃；</li>
+     *   <li>命名空间白名单前置（第三方物品直接丢弃，不进入后续恢复）；</li>
+     *   <li>开启"丢弃饰品属性"（stripAttributes）→ 跳过完整状态恢复，直接全新化；</li>
+     *   <li>同版本导入：按原始 NBT 完整解析，保留附魔、耐久、无法破坏、属性修饰符等全部状态；</li>
+     *   <li>跨版本导入且源 Mojang DataVersion 明确：先经 DataFixerUpper 升级为当前版本格式再解析
+     *       （同样保留属性），升级失败/不适用回退全新化；</li>
+     *   <li>其余（版本未知/同版本解析失败/无法升级）：全新化重建（无附魔、满耐久）。</li>
+     * </ol>
      * 全程异常兜底，不影响女仆本体导入。
      */
     private static void restoreBaubles(EntityMaid maid, CompoundTag tlmData, boolean keepBaubles,
-                                       boolean sameVersion) {
+                                       boolean sameVersion, boolean stripAttributes, List<String> blockedList,
+                                       int sourceMojangDataVersion, List<Component> baubleNotes) {
         if (!tlmData.contains("MaidBaubleInventory", Tag.TAG_COMPOUND) || !keepBaubles
                 || !MaidConfigManager.isBaublesAllowed()) {
             return;
@@ -1028,6 +1047,7 @@ public final class MaidTransferService {
             }
             int restoredFull = 0;
             int restoredFresh = 0;
+            int droppedBlocked = 0;
             int droppedForeign = 0;
             int droppedMissing = 0;
             int droppedFailed = 0;
@@ -1043,39 +1063,48 @@ public final class MaidTransferService {
                         droppedFailed++;
                         continue;
                     }
-                    // 路径 A（同版本）：原始 NBT 完整解析，保留附魔/耐久/强化数值等全部物品状态。
-                    // 白名单以解析后注册表中的实际物品键为准，伪造 id 与实际物品不符也无法绕过。
-                    if (sameVersion) {
-                        ItemStack full = Services.PLATFORM.get()
-                                .parseItemStack(maid.level().registryAccess(), entry);
-                        if (full != null && !full.isEmpty()) {
-                            net.minecraft.resources.ResourceLocation fullKey =
-                                    net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(full.getItem());
-                            if (isBaubleAllowed(fullKey.getNamespace())) {
-                                Services.PLATFORM.get().baubleSetStack(maid, slot, full);
-                                restoredFull++;
-                                continue;
-                            }
-                            // 完整解析得到非白名单物品：不得退回全新化（全新化仍是同一件第三方物品），直接丢弃
-                            droppedForeign++;
-                            continue;
-                        }
-                        // 解析失败落入路径 B 全新化（目标世界缺物品时会在下方再次判定为缺失）
-                    }
-                    // 路径 B（跨版本/同版本解析失败）：仅按物品 ID 重建全新物品
                     String id = entry.contains("id", Tag.TAG_STRING) ? entry.getString("id") : "";
-                    if (id.isEmpty()) {
-                        droppedFailed++;
+                    // 步骤 1：禁用携带列表命中（按完整物品 ID）→ 直接丢弃
+                    if (!id.isEmpty() && blockedList.contains(id)) {
+                        droppedBlocked++;
+                        addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.blocked", id);
                         continue;
                     }
+                    // 步骤 2：命名空间白名单前置。路径 A/DFU 解析后还会以实际物品键复核，
+                    // 此处先按 entry 的 id 快速拦截第三方物品，避免无谓解析。
                     String namespace = namespaceOf(id);
                     if (!isBaubleAllowed(namespace)) {
                         droppedForeign++;
+                        addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.foreign", id);
+                        continue;
+                    }
+                    // 步骤 3~5：未开启"丢弃饰品属性"时尝试完整状态恢复（同版本直接解析；
+                    // 跨版本先经平台层升级/降级到当前版本再解析，保留附魔/耐久/无法破坏/属性修饰符）。
+                    ItemStack full = stripAttributes ? ItemStack.EMPTY
+                            : tryParseFullBauble(maid, entry, sameVersion, sourceMojangDataVersion);
+                    if (full != null && !full.isEmpty()) {
+                        // 以解析后注册表中的实际物品键复核白名单，伪造 id 与实际物品不符也无法绕过
+                        net.minecraft.resources.ResourceLocation fullKey =
+                                net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(full.getItem());
+                        if (isBaubleAllowed(fullKey.getNamespace())) {
+                            Services.PLATFORM.get().baubleSetStack(maid, slot, full);
+                            restoredFull++;
+                            continue;
+                        }
+                        // 完整解析得到非白名单物品：不得退回全新化（全新化仍是同一件第三方物品），直接丢弃
+                        droppedForeign++;
+                        addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.foreign", id);
+                        continue;
+                    }
+                    // 步骤 6：全新化重建（开启丢弃属性 / 跨版本无法转换 / 同版本解析失败）
+                    if (id.isEmpty()) {
+                        droppedFailed++;
                         continue;
                     }
                     Item item = resolveItem(id);
                     if (item == null || Items.AIR.equals(item)) {
                         droppedMissing++;
+                        addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.missing_item", id);
                         continue;
                     }
                     int count = 1;
@@ -1089,22 +1118,92 @@ public final class MaidTransferService {
                     fresh.setCount(Math.min(count, fresh.getMaxStackSize()));
                     Services.PLATFORM.get().baubleSetStack(maid, slot, fresh);
                     restoredFresh++;
+                    // 全新化原因区分：开启丢弃属性 → 设置原因；否则 → 格式无法解析（跨版本转换失败/版本未知/同版本解析失败）
+                    if (stripAttributes) {
+                        addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.stripped", id);
+                    } else {
+                        addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.unparseable", id);
+                    }
                 } catch (Throwable t) {
                     droppedFailed++;
                     Constants.LOG.warn("[maid_file_manager] 单件饰品恢复失败，跳过: {}", t.toString());
                 }
             }
-            Constants.LOG.info("[maid_file_manager] 饰品恢复完成: 完整恢复={} 全新化={} 非白名单={} 目标世界缺失={} 失败={} 非法槽位={} 同版本={}",
-                    restoredFull, restoredFresh, droppedForeign, droppedMissing, droppedFailed, oversized, sameVersion);
+            Constants.LOG.info("[maid_file_manager] 饰品恢复完成: 完整恢复={} 全新化={} 禁用列表={} 非白名单={} 目标世界缺失={} 失败={} 非法槽位={} 同版本={}",
+                    restoredFull, restoredFresh, droppedBlocked, droppedForeign, droppedMissing, droppedFailed, oversized, sameVersion);
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] 饰品整体恢复失败（不影响女仆导入）: {}", t.toString());
         }
+    }
+
+    /**
+     * 尝试完整状态恢复单件饰品（保留属性），返回空物品栈表示应回退全新化。
+     * 同版本直接按原始 NBT 解析；跨版本且源 Mojang DataVersion 明确时经平台层
+     * 升级（1.21 平台 DFU）/降级（1.20 平台手动组件→tag 转换）后再解析。
+     * 任何失败返回空物品栈（日志留痕，非静默失败）。
+     */
+    private static ItemStack tryParseFullBauble(EntityMaid maid, CompoundTag entry,
+                                                boolean sameVersion, int sourceMojangDataVersion) {
+        try {
+            if (sameVersion) {
+                return Services.PLATFORM.get().parseItemStack(maid.level().registryAccess(), entry);
+            }
+            if (sourceMojangDataVersion > 0) {
+                return Services.PLATFORM.get().convertItemStackNbt(
+                        maid.level().registryAccess(), entry, sourceMojangDataVersion);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 饰品完整状态恢复失败，回退全新化: {}", t.toString());
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /** 饰品条目在提示语中的名称：物品可解析时用游戏内名称，否则回退原始 ID */
+    private static Component baubleItemLabel(String id) {
+        if (id != null && !id.isEmpty()) {
+            Item item = resolveItem(id);
+            if (item != null && !Items.AIR.equals(item)) {
+                return item.getName(new ItemStack(item));
+            }
+            return Component.literal(id);
+        }
+        return Component.literal("?");
+    }
+
+    /** 追加一条饰品处理说明（translatable，由客户端按自身语言本地化） */
+    private static void addBaubleNote(List<Component> notes, String langKey, String id) {
+        if (notes == null) {
+            return;
+        }
+        notes.add(Component.translatable(langKey, baubleItemLabel(id)));
     }
 
     /** 饰品白名单：仅允许 TLM 本体与 TLM 法术附属的物品进入饰品栏（防第三方物品经伪造文件刷入） */
     private static boolean isBaubleAllowed(String namespace) {
         return "touhou_little_maid".equals(namespace)
                 || "touhou_little_maid_spell".equals(namespace);
+    }
+
+    /**
+     * 服务端收窄校验：仅保留车万本体/法术附属两命名空间内的物品 ID。
+     * 客户端禁用携带列表经网络传输，ID 可能被篡改；黑名单只能缩小可携带范围、
+     * 绝不能扩大，因此命名空间不符的 ID 一律剔除，并容忍空白项/重复项。
+     */
+    public static List<String> sanitizeBaubleBlockedList(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>(ids.size());
+        for (String id : ids) {
+            if (id == null || id.isBlank()) {
+                continue;
+            }
+            String trimmed = id.trim();
+            if (isBaubleAllowed(namespaceOf(trimmed)) && !out.contains(trimmed)) {
+                out.add(trimmed);
+            }
+        }
+        return List.copyOf(out);
     }
 
     private static String namespaceOf(String id) {
@@ -1490,6 +1589,55 @@ public final class MaidTransferService {
             }
             summary.append(detail);
         }
+        // 饰品逐件处理说明：所有文件汇总（禁止携带/还原全新/无法解析等），最多展示前 5 条
+        List<Component> baubleDetails = new ArrayList<>();
+        for (ImportResult r : results) {
+            if (r.baubleNotes() != null) {
+                baubleDetails.addAll(r.baubleNotes());
+            }
+        }
+        if (!baubleDetails.isEmpty()) {
+            net.minecraft.network.chat.MutableComponent detail = Component.literal("。饰品说明：");
+            int shown = Math.min(baubleDetails.size(), 5);
+            for (int i = 0; i < shown; i++) {
+                if (i > 0) {
+                    detail.append("；");
+                }
+                detail.append(baubleDetails.get(i));
+            }
+            if (baubleDetails.size() > shown) {
+                detail.append(Component.translatable(
+                        "maid_file_manager.import.bauble.more", baubleDetails.size() - shown));
+            }
+            summary.append(detail);
+        }
         return summary;
+    }
+
+    /**
+     * 单文件导入通道的展示文案：在结果消息后追加饰品逐件处理说明（最多 5 条，超出只报数量）。
+     * 备注为空时原样返回结果消息，不加噪声。
+     */
+    public static Component withBaubleDetails(ImportResult result) {
+        List<Component> notes = result.baubleNotes();
+        if (notes == null || notes.isEmpty()) {
+            return result.message();
+        }
+        net.minecraft.network.chat.MutableComponent out =
+                result.message().copy();
+        net.minecraft.network.chat.MutableComponent detail = Component.literal("。饰品说明：");
+        int shown = Math.min(notes.size(), 5);
+        for (int i = 0; i < shown; i++) {
+            if (i > 0) {
+                detail.append("；");
+            }
+            detail.append(notes.get(i));
+        }
+        if (notes.size() > shown) {
+            detail.append(Component.translatable(
+                    "maid_file_manager.import.bauble.more", notes.size() - shown));
+        }
+        out.append(detail);
+        return out;
     }
 }

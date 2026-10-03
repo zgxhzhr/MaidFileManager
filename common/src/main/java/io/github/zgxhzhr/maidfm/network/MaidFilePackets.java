@@ -41,19 +41,20 @@ public final class MaidFilePackets {
     public static final ResourceLocation ID_EXPORT_MAID = id("export_maid");
     public static final ResourceLocation ID_EXPORT_BATCH = id("export_batch");
     public static final ResourceLocation ID_IMPORT_BATCH = id("import_batch");
+    /** S2C：批量导入逐项结果回传（仅在客户端请求了 deleteAfterImport 时发送）。
+     * body: Component 汇总文案 + VarInt 条目数 + 每项 boolean spawned（与请求 dataList 严格同序，
+     * 客户端据此只删除确实生成成功的源文件，失败/禁止的文件保留）
+     */
+    public static final ResourceLocation ID_IMPORT_BATCH_RESULT = id("import_batch_result");
     public static final ResourceLocation ID_MAID_LIST = id("maid_list");
     public static final ResourceLocation ID_FEEDBACK = id("feedback");
     public static final ResourceLocation ID_EXPORT_RESULT = id("export_result");
     public static final ResourceLocation ID_EXPORT_BATCH_RESULT = id("export_batch_result");
     public static final ResourceLocation ID_IMPORT_FILE = id("import_file");
-    /**
-     * S2C：批量导入逐项结果（仅当客户端请求「导入后删除文件」时发送，替代普通 FEEDBACK）。
-     * body: Component 汇总文案 + VarInt 条目数 + 每项 boolean spawned（与请求 dataList 严格同序，
-     * 客户端据此只删除确实生成成功的源文件，失败/禁止的文件保留）
-     */
-    public static final ResourceLocation ID_IMPORT_BATCH_RESULT = id("import_batch_result");
     /** C2S：客户端请求修改服务端配置（body: utf key + boolean value，服务端校验 OP） */
     public static final ResourceLocation ID_SET_SERVER_CONFIG = id("set_server_config");
+    /** C2S：OP 修改「禁用携带的饰品 ID 列表」（body: 字符串列表，服务端校验 OP 后写文件并广播同步） */
+    public static final ResourceLocation ID_SET_SERVER_BAUBLE_BLOCKED_LIST = id("set_server_bauble_blocked_list");
     /** C2S：客户端上报「允许服务端统一导出」同意状态（body: boolean） */
     public static final ResourceLocation ID_CLIENT_CONSENT = id("client_consent");
 
@@ -386,5 +387,26 @@ public final class MaidFilePackets {
             list.add(buf.readBoolean());
         }
         return list;
+    }
+
+    // ---------- 饰品导入设置（跨版本属性保留 / 禁用携带列表） ----------
+
+    /** 写字符串列表（数量上限 256，单串上限 256 字符，防畸形包 OOM） */
+    public static void writeStringList(FriendlyByteBuf buf, List<String> list) {
+        List<String> safe = list == null ? List.of() : list;
+        buf.writeVarInt(Math.min(safe.size(), 256));
+        for (String s : safe) {
+            buf.writeUtf(s == null ? "" : s, MAX_TEXT_LEN);
+        }
+    }
+
+    /** 读字符串列表；数量与单串超限一律拒绝（读端自律，坏包走异常断连/回执） */
+    public static List<String> readStringList(FriendlyByteBuf buf) {
+        int size = checkSize(buf.readVarInt(), 256, "stringList");
+        List<String> out = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            out.add(buf.readUtf(MAX_TEXT_LEN));
+        }
+        return out;
     }
 }
