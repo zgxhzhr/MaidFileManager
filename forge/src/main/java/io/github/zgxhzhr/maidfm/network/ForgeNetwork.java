@@ -32,6 +32,7 @@ public final class ForgeNetwork implements IMaidFileNetwork {
 
     @Override
     public void sendImportFiles(List<MaidFileData> dataList, boolean keepBaubles, boolean deleteAfterImport) {
+        // 饰品导入策略由服务端配置决定，客户端不上传（杜绝非 OP 绕过）
         FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
         MaidFilePackets.writeMaidFileDataList(buf, dataList);
         buf.writeBoolean(keepBaubles);
@@ -52,6 +53,13 @@ public final class ForgeNetwork implements IMaidFileNetwork {
         buf.writeUtf(key, MaidFilePackets.MAX_TEXT_LEN);
         buf.writeBoolean(value);
         sendC2S(MaidFilePackets.ID_SET_SERVER_CONFIG, buf);
+    }
+
+    @Override
+    public void sendSetServerBaubleBlockedList(List<String> ids) {
+        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        MaidFilePackets.writeStringList(buf, ids);
+        sendC2S(MaidFilePackets.ID_SET_SERVER_BAUBLE_BLOCKED_LIST, buf);
     }
 
     @Override

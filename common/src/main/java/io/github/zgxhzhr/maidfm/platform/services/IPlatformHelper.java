@@ -97,6 +97,27 @@ public interface IPlatformHelper {
     ItemStack parseItemStack(RegistryAccess registries, CompoundTag tag);
 
     /**
+     * 将<b>跨版本</b>（源版本与当前版本不同）的旧版物品 NBT 转换为当前版本的
+     * ItemStack（保留无法破坏、耐久、附魔、属性修饰符等全部属性）。
+     *
+     * <p>方向约定：
+     * <ul>
+     *   <li>1.21.x 平台：DataFixerUpper 只能升不能降。源 DataVersion 低于当前版本时走 DFU 升级
+     *       （1.20 传统 tag 格式 → 1.21 数据组件格式）；源版本未知（≤0）返回空物品栈回退全新化；</li>
+     *   <li>1.20.x 平台：无 {@code References.ITEM_STACK}（1.20.2 才引入），DFU 不可用。
+     *       源 DataVersion 高于 1.20.1（1.20.5+ / 1.21.x 数据组件格式）时走 {@link io.github.zgxhzhr.maidfm.data.NbtDowngrade}
+     *       手动降级（组件格式 → 1.20 传统 tag 格式）；其余返回空物品栈回退全新化；</li>
+     *   <li>转换/解析任何异常一律捕获并返回空物品栈（非静默失败，日志留痕），调用方回退全新化，绝不阻断导入。</li>
+     * </ul>
+     *
+     * @param registries        当前世界的注册表访问（解析新版本物品组件需要）
+     * @param legacyTag         旧版物品栏条目 NBT（含 Slot 等容器字段亦不影响）
+     * @param sourceDataVersion 源版本的 Mojang 官方 DataVersion（见 NbtVersion.mojangDataVersion）
+     * @return 转换解析后的完整物品；任何不可转换/失败情形返回空物品栈
+     */
+    ItemStack convertItemStackNbt(RegistryAccess registries, CompoundTag legacyTag, int sourceDataVersion);
+
+    /**
      * 从实体持久化标签读取存储的药水效果 NBT。
      * 用于"禁药水服务器导入后再导出"的场景——效果不恢复到实体但保留在持久化标签中。
      *

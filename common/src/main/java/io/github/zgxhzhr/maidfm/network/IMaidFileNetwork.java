@@ -20,6 +20,9 @@ public interface IMaidFileNetwork {
     /**
      * 批量发送要导入的女仆文件数据给服务端。
      *
+     * <p>饰品导入策略（是否丢弃属性、禁用携带清单）由服务端配置决定，客户端不再上传，
+     * 避免非 OP 绕过（服务端在导入处理时读取自身配置）。
+     *
      * @param keepBaubles       true=客户端希望保留饰品导入
      * @param deleteAfterImport true=导入成功后删除对应的本地源文件（默认关闭）；
      *                          服务端会额外回传逐项 spawned 结果，客户端只删除确实成功的文件
@@ -31,6 +34,9 @@ public interface IMaidFileNetwork {
 
     /** 请求服务端修改服务端配置（服务端校验 OP 权限后写文件并广播同步） */
     void sendSetServerConfig(String key, boolean value);
+
+    /** OP 请求服务端修改「禁用携带的饰品 ID 列表」（服务端校验 OP 权限后写文件并广播同步） */
+    void sendSetServerBaubleBlockedList(List<String> ids);
 
     /** OP 请求服务端返回所有在线玩家的女仆列表（以各玩家为中心搜索，供统一导出浏览） */
     void sendRequestServerExportList();

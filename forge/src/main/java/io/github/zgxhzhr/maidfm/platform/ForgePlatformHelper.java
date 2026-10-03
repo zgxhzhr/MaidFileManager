@@ -131,6 +131,21 @@ public class ForgePlatformHelper implements IPlatformHelper {
     }
 
     /**
+     * 1.20.1 平台没有 References.ITEM_STACK（Mojang 在 1.20.2 才引入该引用），
+     * DataFixerUpper 只能升不能降，无法直接驱动物品 NBT 格式升级。
+     * 反向跨版本（源 DataVersion 高于 1.20.1 的 1.20.5+ / 1.21.x 组件格式）时，
+     * 走 {@link io.github.zgxhzhr.maidfm.data.NbtDowngrade} 手动降级（组件 → 1.20 tag），
+     * 保留附魔/耐久/无法破坏/属性修饰符；其余情形返回空物品栈，调用方回退全新化。
+     */
+    @Override
+    public ItemStack convertItemStackNbt(RegistryAccess registries, CompoundTag legacyTag, int sourceDataVersion) {
+        if (sourceDataVersion > io.github.zgxhzhr.maidfm.data.NbtVersion.DATA_VERSION_1_20_1) {
+            return io.github.zgxhzhr.maidfm.data.NbtDowngrade.downgradeItemStackNbt(legacyTag);
+        }
+        return ItemStack.EMPTY;
+    }
+
+    /**
      * Forge 持久化数据键名：用 modId 命名空间前缀避免与其他模组冲突。
      * ForgeData（entity.getPersistentData() 返回的 CompoundTag）会被写入实体 NBT 的 "ForgeData" 键下，
      * 随实体一起保存到存档，服务器重启后数据仍在。

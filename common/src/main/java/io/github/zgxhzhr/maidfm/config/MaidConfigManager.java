@@ -9,6 +9,8 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
@@ -19,10 +21,15 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>配置文件（properties 格式，UTF-8）：
  * <ul>
- *   <li>服务端配置 {@code config/maid_file_manager-server.properties}（专用服务器=服务器根目录；局域网联机=宿主 gameDir）：
+ *   <li>服务端配置 {@code config/maid_file_manager-server.properties}（专用服务器=服务器根目录；局域网联机=宿主 gameDir；仅 OP 可改）：
  *     <ul>
  *       <li>{@code allow_client_import}：是否允许客户端导入女仆（默认开启）</li>
  *       <li>{@code allow_baubles}：导入时是否允许携带饰品（默认开启）</li>
+ *       <li>{@code allow_advancements}：导入时是否一并转移女仆相关成就（默认开启）</li>
+ *       <li>{@code allow_effects}：导入时是否恢复药水效果到实体（默认开启）</li>
+ *       <li>{@code allow_invulnerable}：导入时是否允许带走女仆无敌状态（默认开启）</li>
+ *       <li>{@code bauble_strip_attributes}：导入时丢弃饰品属性，恢复为全新物品（默认 false=保留）</li>
+ *       <li>{@code bauble_blocked_list}：禁用携带的饰品 ID 列表，逗号分隔（默认空=不限制）</li>
  *     </ul>
  *   </li>
  *   <li>客户端配置 {@code config/maid_file_manager-client.properties}：
@@ -49,8 +56,12 @@ public final class MaidConfigManager {
     public static final String KEY_ALLOW_ADVANCEMENTS = "allow_advancements";
     /** 服务端配置键：导入时允许恢复药水效果到实体（关闭则效果保留在持久化标签，不恢复到实体） */
     public static final String KEY_ALLOW_EFFECTS = "allow_effects";
-    /** 服务端配置键：导入时允许带走 TLM 本体无敌状态（替身地藏赋予的 Invulnerable） */
+    /** 服务端配置键：导入时带走 TLM 本体无敌状态（替身地藏赋予的 Invulnerable） */
     public static final String KEY_ALLOW_INVULNERABLE = "allow_invulnerable";
+    /** 服务端配置键：导入时丢弃饰品属性（附魔/耐久/无法破坏/属性修饰符等），恢复为全新物品（默认关=保留） */
+    public static final String KEY_BAUBLE_STRIP_ATTRIBUTES = "bauble_strip_attributes";
+    /** 服务端配置键：禁用携带的饰品 ID 列表（逗号分隔，仅限车万本体/万法皆通两命名空间，导入时直接丢弃） */
+    public static final String KEY_BAUBLE_BLOCKED_LIST = "bauble_blocked_list";
     /** 客户端配置键：允许服务端统一导出你的女仆 */
     public static final String KEY_ALLOW_SERVER_EXPORT = "allow_server_export";
     /** 客户端配置键：导出并移除女仆时跳过"背包物品将丢失"二次确认的键前缀，完整键为 前缀+存档标识 */
@@ -62,6 +73,10 @@ public final class MaidConfigManager {
     private static volatile boolean serverAllowAdvancements = true;
     private static volatile boolean serverAllowEffects = true;
     private static volatile boolean serverAllowInvulnerable = true;
+    /** 服务端配置内存值：导入时丢弃饰品属性（默认关=保留） */
+    private static volatile boolean serverBaubleStripAttributes = false;
+    /** 服务端配置内存值：禁用携带的饰品 ID 列表（不可变，默认空） */
+    private static volatile List<String> serverBaubleBlockedList = List.of();
     /** 客户端配置内存值 */
     private static volatile boolean clientAllowServerExport = false;
     /** 客户端配置内存值：各存档/服务器是否跳过移除二次确认（key=存档标识，见 client 包存档标识工具） */
@@ -141,12 +156,23 @@ public final class MaidConfigManager {
             serverAllowEffects = value;
         } else if (KEY_ALLOW_INVULNERABLE.equals(key)) {
             serverAllowInvulnerable = value;
+        } else if (KEY_BAUBLE_STRIP_ATTRIBUTES.equals(key)) {
+            serverBaubleStripAttributes = value;
         } else {
-            Constants.LOG.warn("[女仆文件管理] 收到未知服务端配置键: {}", key);
+            Constants.LOG.warn("[女仆档案管理] 收到未知服务端配置键: {}", key);
             return false;
         }
         saveServer();
         return true;
+    }
+
+    /**
+     * 服务端修改「禁用携带的饰品 ID 列表」（C2S 包处理，调用方已做 OP 权限校验）。
+     * <p>仅做去除首尾空白与去重；命名空间收窄由调用方在写入前完成（收窄不放开）。
+     */
+    public static synchronized void setServerBaubleBlockedList(List<String> ids) {
+        serverBaubleBlockedList = List.copyOf(ids == null ? List.of() : ids);
+        saveServer();
     }
 
     // ==================== 客户端配置 ====================
@@ -182,14 +208,27 @@ public final class MaidConfigManager {
         saveClient();
     }
 
+    /** 导入时是否丢弃饰品属性（恢复为全新物品）；服务端读配置、客户端读登录同步缓存 */
+    public static boolean isBaubleStripAttributes() {
+        return serverBaubleStripAttributes;
+    }
+
+    /** 禁用携带的饰品 ID 列表（不可变，仅限车万本体/万法皆通两命名空间）；服务端读配置、客户端读登录同步缓存 */
+    public static List<String> getBaubleBlockedList() {
+        return serverBaubleBlockedList;
+    }
+
     /** 客户端收到服务端配置同步（S2C 包处理）：更新本地缓存并回发同意状态 */
     public static void handleServerConfigSync(boolean allowImport, boolean allowBaubles, boolean allowAdvancements,
-                                              boolean allowEffects, boolean allowInvulnerable) {
+                                              boolean allowEffects, boolean allowInvulnerable,
+                                              boolean baubleStripAttributes, List<String> baubleBlockedList) {
         serverAllowClientImport = allowImport;
         serverAllowBaubles = allowBaubles;
         serverAllowAdvancements = allowAdvancements;
         serverAllowEffects = allowEffects;
         serverAllowInvulnerable = allowInvulnerable;
+        serverBaubleStripAttributes = baubleStripAttributes;
+        serverBaubleBlockedList = List.copyOf(baubleBlockedList == null ? List.of() : baubleBlockedList);
         IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
         if (net != null) {
             net.sendClientConsent(clientAllowServerExport);
@@ -220,6 +259,16 @@ public final class MaidConfigManager {
         return serverAllowInvulnerable;
     }
 
+    /** 客户端读取服务端同步缓存：导入时是否丢弃饰品属性（饰品导入设置界面显示用） */
+    public static boolean cachedBaubleStripAttributes() {
+        return serverBaubleStripAttributes;
+    }
+
+    /** 客户端读取服务端同步缓存：禁用携带的饰品 ID 列表（饰品导入设置界面显示用） */
+    public static List<String> cachedBaubleBlockedList() {
+        return serverBaubleBlockedList;
+    }
+
     // ==================== 文件 IO ====================
 
     private static void loadServer() {
@@ -234,6 +283,8 @@ public final class MaidConfigManager {
         serverAllowAdvancements = parse(props, KEY_ALLOW_ADVANCEMENTS, true);
         serverAllowEffects = parse(props, KEY_ALLOW_EFFECTS, true);
         serverAllowInvulnerable = parse(props, KEY_ALLOW_INVULNERABLE, true);
+        serverBaubleStripAttributes = parse(props, KEY_BAUBLE_STRIP_ATTRIBUTES, false);
+        serverBaubleBlockedList = parseIdList(props, KEY_BAUBLE_BLOCKED_LIST);
     }
 
     private static void loadClient() {
@@ -263,6 +314,10 @@ public final class MaidConfigManager {
         props.setProperty(KEY_ALLOW_ADVANCEMENTS, String.valueOf(serverAllowAdvancements));
         props.setProperty(KEY_ALLOW_EFFECTS, String.valueOf(serverAllowEffects));
         props.setProperty(KEY_ALLOW_INVULNERABLE, String.valueOf(serverAllowInvulnerable));
+        props.setProperty(KEY_BAUBLE_STRIP_ATTRIBUTES, String.valueOf(serverBaubleStripAttributes));
+        if (!serverBaubleBlockedList.isEmpty()) {
+            props.setProperty(KEY_BAUBLE_BLOCKED_LIST, String.join(",", serverBaubleBlockedList));
+        }
         store(props, serverConfigFile, "Maid File Manager server config (edited via in-game settings, OP only)");
     }
 
@@ -292,7 +347,7 @@ public final class MaidConfigManager {
                 Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
-            Constants.LOG.error("[女仆文件管理] 保存配置文件失败: {}", file, e);
+            Constants.LOG.error("[女仆档案管理] 保存配置文件失败: {}", file, e);
         }
     }
 
@@ -302,5 +357,21 @@ public final class MaidConfigManager {
             return defaultValue;
         }
         return value.equalsIgnoreCase("true");
+    }
+
+    /** 解析逗号分隔的 ID 列表；容忍空白与重复，返回不可变列表 */
+    private static List<String> parseIdList(Properties props, String key) {
+        String value = props.getProperty(key);
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String part : value.split(",")) {
+            String id = part.trim();
+            if (!id.isEmpty() && !out.contains(id)) {
+                out.add(id);
+            }
+        }
+        return List.copyOf(out);
     }
 }

@@ -74,6 +74,8 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     String key = data.readUtf(MaidFilePackets.MAX_TEXT_LEN);
                     boolean value = data.readBoolean();
                     handleSetServerConfig(player, key, value);
+                } else if (MaidFilePackets.ID_SET_SERVER_BAUBLE_BLOCKED_LIST.equals(id)) {
+                    handleSetServerBaubleBlockedList(player, MaidFilePackets.readStringList(data));
                 } else if (MaidFilePackets.ID_REQUEST_SERVER_EXPORT_LIST.equals(id)) {
                     handleRequestServerExportList(player);
                 } else if (MaidFilePackets.ID_SERVER_EXPORT_BATCH.equals(id)) {
@@ -88,7 +90,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                 // 连接断开瞬间回执自身也可能抛异常，不能让它覆盖原始异常，二次保护
                 if (player != null) {
                     try {
-                        sendFeedback(player, Component.literal("[女仆文件管理] 服务端处理失败，请联系服主查看日志（错误位置："
+                        sendFeedback(player, Component.literal("[女仆档案管理] 服务端处理失败，请联系服主查看日志（错误位置："
                                 + id + "）"));
                     } catch (Throwable suppressed) {
                         Constants.LOG.warn("[maid_file_manager] 失败回执也发送失败（连接可能已断开）: {}", id);
@@ -126,15 +128,20 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     private static void handleImportFile(ServerPlayer player, FriendlyByteBuf data) {
         MaidFileData maidData = MaidFilePackets.readMaidFileData(data);
         boolean keepBaubles = data.readBoolean();
-        // 单文件通道与批量通道线格式保持一致（尾部追加 deleteAfterImport）；
+        // 单文件通道与批量通道线格式保持一致（尾部为 deleteAfterImport）；
         // 单文件通道无对应 UI 删除流程，读掉但不触发回传
         data.readBoolean();
         if (maidData == null) {
             sendFeedback(player, Component.translatable("maid_file_manager.import.fail.invalid"));
             return;
         }
-        ImportResult result = MaidTransferService.importMaidFromData(player, maidData, keepBaubles);
-        sendFeedback(player, result.message());
+        // 饰品导入策略由服务端配置决定，客户端不上传（杜绝非 OP 绕过）
+        ImportResult result = MaidTransferService.importMaidFromData(
+                player, maidData, keepBaubles,
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleStripAttributes(),
+                MaidTransferService.sanitizeBaubleBlockedList(
+                        io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlockedList()));
+        sendFeedback(player, MaidTransferService.withBaubleDetails(result));
     }
 
     private static void handleExportBatch(ServerPlayer player, List<Integer> ids, boolean removeAfter) {
@@ -176,6 +183,11 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(data);
         boolean keepBaubles = data.readBoolean();
         boolean deleteAfterImport = data.readBoolean();
+        // 饰品导入策略以服务端配置为准（客户端不上传，杜绝非 OP 绕过）；
+        // 服务端收窄校验：禁用列表只保留车万本体/法术附属两命名空间内的 ID（收窄不放开）
+        boolean stripAttributes = io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleStripAttributes();
+        List<String> blockedList = MaidTransferService.sanitizeBaubleBlockedList(
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlockedList());
         // 成败统计只认 ImportResult.State 枚举，严禁反解中文展示文案
         List<ImportResult> results = new ArrayList<>(list.size());
         for (MaidFileData d : list) {
@@ -184,7 +196,8 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                         "maid_file_manager.import.fail.invalid")));
                 continue;
             }
-            results.add(MaidTransferService.importMaidFromData(player, d, keepBaubles));
+            results.add(MaidTransferService.importMaidFromData(
+                    player, d, keepBaubles, stripAttributes, blockedList));
         }
         Component summary = MaidTransferService.buildBatchSummary(results);
         if (deleteAfterImport) {
@@ -226,14 +239,14 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         if (blobs == null) {
             Constants.LOG.error("[maid_file_manager] 导出结果序列化失败，拒绝发送: player={}",
                     player.getName().getString());
-            sendFeedback(player, Component.literal("[女仆文件管理] 导出数据序列化失败，请重试；如反复失败请联系服主查看日志"));
+            sendFeedback(player, Component.literal("[女仆档案管理] 导出数据序列化失败，请重试；如反复失败请联系服主查看日志"));
             return false;
         }
         String reject = MaidFilePackets.checkMaidDataBatchForWire(blobs, MaidFilePackets.MAX_EXPORT_IDS);
         if (reject != null) {
             Constants.LOG.warn("[maid_file_manager] 导出结果预检被拒绝: player={}, count={}, reason={}",
                     player.getName().getString(), blobs.size(), reject);
-            sendFeedback(player, Component.literal("[女仆文件管理] " + reject));
+            sendFeedback(player, Component.literal("[女仆档案管理] " + reject));
             return false;
         }
         FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
@@ -252,16 +265,29 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         }
         // 未知键直接回执失败，不得把旧配置向全服重新广播
         if (!io.github.zgxhzhr.maidfm.config.MaidConfigManager.setServerConfig(key, value)) {
-            sendFeedback(player, Component.literal("[女仆文件管理] 未知配置项，修改已拒绝"));
+            sendFeedback(player, Component.literal("[女仆档案管理] 未知配置项，修改已拒绝"));
             return;
         }
+        broadcastServerConfig(player.server);
+    }
+
+    /** OP 修改「禁用携带的饰品 ID 列表」：权限校验 → 收窄写入 → 广播同步 */
+    private static void handleSetServerBaubleBlockedList(ServerPlayer player, List<String> ids) {
+        if (!player.hasPermissions(2)) {
+            Constants.LOG.warn("[maid_file_manager] SET_SERVER_BAUBLE_BLOCKED_LIST rejected (no OP): player={}",
+                    player.getName().getString());
+            sendFeedback(player, Component.translatable("maid_file_manager.config.fail.no_permission"));
+            return;
+        }
+        io.github.zgxhzhr.maidfm.config.MaidConfigManager.setServerBaubleBlockedList(
+                MaidTransferService.sanitizeBaubleBlockedList(ids));
         broadcastServerConfig(player.server);
     }
 
     /** OP 统一导出：返回所有在线玩家（以各玩家为中心）的女仆分组列表 */
     private static void handleRequestServerExportList(ServerPlayer player) {
         if (!player.hasPermissions(2)) {
-            sendFeedback(player, Component.literal("[女仆文件管理] 统一导出仅 OP 可用"));
+            sendFeedback(player, Component.literal("[女仆档案管理] 统一导出仅 OP 可用"));
             return;
         }
         List<IMaidFileNetwork.PlayerMaidGroup> groups =
@@ -295,7 +321,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     /** OP 统一导出提交：代各玩家导出女仆到服务端磁盘 maid_exports/<玩家名>/ */
     private static void handleServerExportBatch(ServerPlayer player, FriendlyByteBuf data) {
         if (!player.hasPermissions(2)) {
-            sendFeedback(player, Component.literal("[女仆文件管理] 统一导出仅 OP 可用"));
+            sendFeedback(player, Component.literal("[女仆档案管理] 统一导出仅 OP 可用"));
             return;
         }
         List<IMaidFileNetwork.PlayerExportRequest> requests = MaidFilePackets.readPlayerExportRequests(data);
@@ -315,6 +341,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isAdvancementsAllowed());
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isEffectsAllowed());
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isInvulnerableAllowed());
+        buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleStripAttributes());
+        MaidFilePackets.writeStringList(buf,
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlockedList());
         ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_SERVER_CONFIG_SYNC, buf);
     }
 
