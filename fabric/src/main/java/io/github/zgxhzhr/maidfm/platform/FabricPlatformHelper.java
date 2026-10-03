@@ -3,10 +3,14 @@ package io.github.zgxhzhr.maidfm.platform;
 import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.platform.services.IPlatformHelper;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
+import com.mojang.serialization.Dynamic;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.util.datafix.DataFixers;
+import net.minecraft.util.datafix.fixes.References;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.ItemStack;
 
@@ -143,6 +147,31 @@ public class FabricPlatformHelper implements IPlatformHelper {
             return ItemStack.parse(registries, tag).orElse(ItemStack.EMPTY);
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] Fabric parseItemStack 失败，回退全新化: {}", t.toString());
+            return ItemStack.EMPTY;
+        }
+    }
+
+    /**
+     * 跨版本物品 NBT 转换（1.21 平台方向：升级）。
+     * 旧 1.20 物品 NBT → 当前版本用 Mojang DataFixerUpper 做格式升级，
+     * 尽可能保留附魔/耐久/无法破坏/属性修饰符等组件。
+     * DFU 只能升不能降：来源版本缺失/不低于当前版本时返回 EMPTY，由调用方回退全新化。
+     */
+    @Override
+    public ItemStack convertItemStackNbt(RegistryAccess registries, CompoundTag legacyTag, int sourceDataVersion) {
+        try {
+            int current = SharedConstants.getCurrentVersion().getDataVersion().getVersion();
+            if (sourceDataVersion <= 0 || sourceDataVersion >= current) {
+                return ItemStack.EMPTY;
+            }
+            Dynamic<?> upgraded = DataFixers.getDataFixer().update(References.ITEM_STACK,
+                    new Dynamic<>(NbtOps.INSTANCE, legacyTag), sourceDataVersion, current);
+            if (upgraded.getValue() instanceof CompoundTag tag) {
+                return ItemStack.parse(registries, tag).orElse(ItemStack.EMPTY);
+            }
+            return ItemStack.EMPTY;
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Fabric 物品 NBT 跨版本升级失败，回退全新化: {}", t.toString());
             return ItemStack.EMPTY;
         }
     }

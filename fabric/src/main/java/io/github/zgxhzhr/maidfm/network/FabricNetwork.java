@@ -28,6 +28,7 @@ public final class FabricNetwork implements IMaidFileNetwork {
 
     @Override
     public void sendImportFiles(List<MaidFileData> dataList, boolean keepBaubles, boolean deleteAfterImport) {
+        // 饰品导入策略由服务端配置决定，客户端不上传（杜绝非 OP 绕过）
         FriendlyByteBuf buf = MaidPayload.buffer();
         MaidFilePackets.writeMaidFileDataList(buf, dataList);
         buf.writeBoolean(keepBaubles);
@@ -48,6 +49,13 @@ public final class FabricNetwork implements IMaidFileNetwork {
         buf.writeUtf(key, 128);
         buf.writeBoolean(value);
         sendC2S(MaidFilePackets.ID_SET_SERVER_CONFIG, buf);
+    }
+
+    @Override
+    public void sendSetServerBaubleBlockedList(List<String> ids) {
+        FriendlyByteBuf buf = MaidPayload.buffer();
+        MaidFilePackets.writeStringList(buf, ids);
+        sendC2S(MaidFilePackets.ID_SET_SERVER_BAUBLE_BLOCKED_LIST, buf);
     }
 
     @Override

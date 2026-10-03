@@ -95,15 +95,20 @@ public class MaidFileModFabric implements ModInitializer {
         registerC2SReceiver(MaidFilePackets.ID_IMPORT_FILE, (server, player, buf) -> {
             MaidFileData maidData = MaidFilePackets.readMaidFileData(buf);
             boolean keepBaubles = buf.readBoolean();
-            // 单文件通道与批量通道线格式保持一致（尾部追加 deleteAfterImport）；
+            // 单文件通道与批量通道线格式保持一致（尾部为 deleteAfterImport）；
             // 单文件通道无对应 UI 删除流程，读掉但不触发回传
             buf.readBoolean();
             if (maidData == null) {
                 sendFeedback(player, Component.translatable("maid_file_manager.import.fail.invalid"));
                 return;
             }
-            ImportResult result = MaidTransferService.importMaidFromData(player, maidData, keepBaubles);
-            sendFeedback(player, result.message());
+            // 饰品导入策略由服务端配置决定，客户端不上传（杜绝非 OP 绕过）
+            ImportResult result = MaidTransferService.importMaidFromData(
+                    player, maidData, keepBaubles,
+                    MaidConfigManager.isBaubleStripAttributes(),
+                    MaidTransferService.sanitizeBaubleBlockedList(
+                            MaidConfigManager.getBaubleBlockedList()));
+            sendFeedback(player, MaidTransferService.withBaubleDetails(result));
         });
 
         // 批量导入：成败统计只认 ImportResult.State 枚举，严禁反解中文展示文案
@@ -111,6 +116,11 @@ public class MaidFileModFabric implements ModInitializer {
             List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(buf);
             boolean keepBaubles = buf.readBoolean();
             boolean deleteAfterImport = buf.readBoolean();
+            // 饰品导入策略以服务端配置为准（客户端不上传，杜绝非 OP 绕过）；
+            // 服务端收窄校验：禁用列表只保留车万本体/法术附属两命名空间内的 ID（收窄不放开）
+            boolean stripAttributes = MaidConfigManager.isBaubleStripAttributes();
+            List<String> blockedList = MaidTransferService.sanitizeBaubleBlockedList(
+                    MaidConfigManager.getBaubleBlockedList());
             List<ImportResult> results = new ArrayList<>(list.size());
             for (MaidFileData d : list) {
                 if (d == null) {
@@ -118,7 +128,8 @@ public class MaidFileModFabric implements ModInitializer {
                             "maid_file_manager.import.fail.invalid")));
                     continue;
                 }
-                results.add(MaidTransferService.importMaidFromData(player, d, keepBaubles));
+                results.add(MaidTransferService.importMaidFromData(
+                        player, d, keepBaubles, stripAttributes, blockedList));
             }
             Component summary = MaidTransferService.buildBatchSummary(results);
             if (deleteAfterImport) {
@@ -147,16 +158,28 @@ public class MaidFileModFabric implements ModInitializer {
             }
             // 未知键直接回执失败，不得把旧配置向全服重新广播
             if (!MaidConfigManager.setServerConfig(key, value)) {
-                sendFeedback(player, Component.literal("[女仆文件管理] 未知配置项，修改已拒绝"));
+                sendFeedback(player, Component.literal("[女仆档案管理] 未知配置项，修改已拒绝"));
                 return;
             }
+            broadcastServerConfig(server);
+        });
+
+        // OP 修改「禁用携带的饰品 ID 列表」：权限校验 → 收窄写入 → 广播同步
+        registerC2SReceiver(MaidFilePackets.ID_SET_SERVER_BAUBLE_BLOCKED_LIST, (server, player, buf) -> {
+            List<String> ids = MaidFilePackets.readStringList(buf);
+            if (!player.hasPermissions(2)) {
+                sendFeedback(player, Component.translatable("maid_file_manager.config.fail.no_permission"));
+                return;
+            }
+            MaidConfigManager.setServerBaubleBlockedList(
+                    MaidTransferService.sanitizeBaubleBlockedList(ids));
             broadcastServerConfig(server);
         });
 
         // OP 统一导出：返回所有在线玩家（以各玩家为中心）的女仆分组列表
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_SERVER_EXPORT_LIST, (server, player, buf) -> {
             if (!player.hasPermissions(2)) {
-                sendFeedback(player, Component.literal("[女仆文件管理] 统一导出仅 OP 可用"));
+                sendFeedback(player, Component.literal("[女仆档案管理] 统一导出仅 OP 可用"));
                 return;
             }
             List<IMaidFileNetwork.PlayerMaidGroup> groups = MaidServerCommands.collectOnlinePlayerMaids(server);
@@ -188,7 +211,7 @@ public class MaidFileModFabric implements ModInitializer {
         // OP 统一导出提交：代各玩家导出女仆到服务端磁盘 maid_exports/<玩家名>/
         registerC2SReceiver(MaidFilePackets.ID_SERVER_EXPORT_BATCH, (server, player, buf) -> {
             if (!player.hasPermissions(2)) {
-                sendFeedback(player, Component.literal("[女仆文件管理] 统一导出仅 OP 可用"));
+                sendFeedback(player, Component.literal("[女仆档案管理] 统一导出仅 OP 可用"));
                 return;
             }
             List<IMaidFileNetwork.PlayerExportRequest> requests = MaidFilePackets.readPlayerExportRequests(buf);
@@ -221,14 +244,14 @@ public class MaidFileModFabric implements ModInitializer {
         if (blobs == null) {
             Constants.LOG.error("[maid_file_manager] 导出结果序列化失败，拒绝发送: player={}",
                     player.getName().getString());
-            sendFeedback(player, Component.literal("[女仆文件管理] 导出数据序列化失败，请重试；如反复失败请联系服主查看日志"));
+            sendFeedback(player, Component.literal("[女仆档案管理] 导出数据序列化失败，请重试；如反复失败请联系服主查看日志"));
             return false;
         }
         String reject = MaidFilePackets.checkMaidDataBatchForWire(blobs, MaidFilePackets.MAX_EXPORT_IDS);
         if (reject != null) {
             Constants.LOG.warn("[maid_file_manager] 导出结果预检被拒绝: player={}, count={}, reason={}",
                     player.getName().getString(), blobs.size(), reject);
-            sendFeedback(player, Component.literal("[女仆文件管理] " + reject));
+            sendFeedback(player, Component.literal("[女仆档案管理] " + reject));
             return false;
         }
         FriendlyByteBuf out = MaidPayload.buffer();
@@ -248,6 +271,8 @@ public class MaidFileModFabric implements ModInitializer {
         out.writeBoolean(MaidConfigManager.isAdvancementsAllowed());
         out.writeBoolean(MaidConfigManager.isEffectsAllowed());
         out.writeBoolean(MaidConfigManager.isInvulnerableAllowed());
+        out.writeBoolean(MaidConfigManager.isBaubleStripAttributes());
+        MaidFilePackets.writeStringList(out, MaidConfigManager.getBaubleBlockedList());
         ServerPlayNetworking.send(player, MaidPayload.of(MaidFilePackets.ID_SERVER_CONFIG_SYNC, out));
     }
 
@@ -301,7 +326,7 @@ public class MaidFileModFabric implements ModInitializer {
                                 id, p.getName().getString(), t.toString(), t);
                         // 异常原文可能含服务端路径/类名，仅保留在日志，回执只给通用提示
                         try {
-                            sendFeedback(p, Component.literal("[女仆文件管理] 服务端处理失败，请联系服主查看日志（错误位置："
+                            sendFeedback(p, Component.literal("[女仆档案管理] 服务端处理失败，请联系服主查看日志（错误位置："
                                     + id + "）"));
                         } catch (Throwable feedbackError) {
                             Constants.LOG.debug("[maid_file_manager] 失败回执发送异常", feedbackError);

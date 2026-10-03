@@ -24,7 +24,8 @@ import java.util.List;
  * <ul>
  *   <li><b>服务端设置</b>（仅 OP/联机宿主可修改，修改后发包到服务端并广播同步）：
  *     允许客户端导入女仆（默认开启）/ 导入时允许携带饰品（默认开启）/ 导入时一并转移女仆相关成就（默认开启）/
- *     导入时允许恢复药水效果（默认开启；关闭则效果保留在持久化标签但不恢复到实体，防止禁药水服务器丢效果）</li>
+ *     导入时允许恢复药水效果（默认开启；关闭则效果保留在持久化标签但不恢复到实体，防止禁药水服务器丢效果）/
+ *     导入时允许带走女仆无敌状态（默认开启）/ 饰品导入设置（丢弃属性开关 + 禁用携带列表，见 {@link MaidBaubleImportScreen}）</li>
  *   <li><b>客户端设置</b>（本人随时可改，写本地配置）：
  *     允许服务端统一导出你的女仆（默认关）/ 当前存档导出并移除女仆时跳过二次确认（默认关，按存档分别记录）</li>
  * </ul>
@@ -72,9 +73,9 @@ public class MaidConfigScreen extends Screen {
 
         // 先按内容结构算出面板高度，再垂直居中
         panelH = 8 + 16 + 4   // 标题
-                + 14 + ROW_H + ROW_H + ROW_H + ROW_H + ROW_H   // 服务端区块标题 + 5 行（导入/饰品/成就/药水/无敌）
+                + 14 + ROW_H * 6   // 服务端区块标题 + 5 开关行 + 饰品导入设置入口行
                 + (hasServerPerm ? 0 : 14)   // 无权限提示行（仅无权限时）
-              + 16 + ROW_H + ROW_H   // 客户端区块标题 + 2 行（统一导出同意 / 移除二次确认）
+                + 16 + ROW_H * 2   // 客户端区块标题 + 2 行（统一导出同意 / 移除二次确认）
                 + 12 + 20 + 10;   // 完成按钮 + 底部边距
         panelX = (this.width - PANEL_W) / 2;
         panelY = Math.max(10, (this.height - panelH) / 2);
@@ -102,6 +103,18 @@ public class MaidConfigScreen extends Screen {
         y = addRow(labelX, switchX, y, Component.translatable("gui.maid_file_manager.config.allow_invulnerable"),
                 MaidConfigManager.cachedInvulnerableAllowed(), true,
                 MaidConfigManager.KEY_ALLOW_INVULNERABLE, hasServerPerm);
+        // 饰品导入设置入口：跳转次级界面（丢弃属性开关 + 禁用携带列表，均为服务端配置，仅 OP 可改）
+        addRenderableWidget(Button.builder(
+                        Component.translatable("gui.maid_file_manager.config.bauble_import_settings"),
+                        b -> {
+                            if (MaidConfigScreen.this.minecraft != null) {
+                                MaidConfigScreen.this.minecraft.setScreen(
+                                        new MaidBaubleImportScreen(MaidConfigScreen.this));
+                            }
+                        })
+                .bounds(labelX, y, switchX - labelX + SWITCH_W, 18)
+                .build());
+        y += ROW_H;
         if (!hasServerPerm) {
             rowLabels.add(new RowLabel(Component.translatable("gui.maid_file_manager.config.no_permission"),
                     labelX, y + 2, SUBTEXT_COLOR));

@@ -98,7 +98,7 @@ public class MaidFileModFabricClient implements ClientModInitializer {
         });
 
         // 服务端配置同步：不依赖 Screen，收到即更新客户端缓存并回发同意状态。
-        // 注意：body() 每次调用都新建一个包装缓冲，四个布尔必须从同一个 body() 读取，
+        // 注意：body() 每次调用都新建一个包装缓冲，全部字段必须从同一个 body() 读取，
         // 否则后续 readBoolean 会从新缓冲的第 0 字节读起，导致值错位。
         ClientPlayNetworking.registerGlobalReceiver(MaidPayload.typeOf(MaidFilePackets.ID_SERVER_CONFIG_SYNC), (payload, context) -> {
             FriendlyByteBuf body = payload.body();
@@ -107,8 +107,11 @@ public class MaidFileModFabricClient implements ClientModInitializer {
             boolean allowAdvancements = body.readBoolean();
             boolean allowEffects = body.readBoolean();
             boolean allowInvulnerable = body.readBoolean();
+            boolean baubleStripAttributes = body.readBoolean();
+            List<String> baubleBlockedList = MaidFilePackets.readStringList(body);
             context.client().execute(() -> MaidConfigManager.handleServerConfigSync(
-                    allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable));
+                    allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable,
+                    baubleStripAttributes, baubleBlockedList));
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
