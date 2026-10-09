@@ -17,7 +17,6 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLPaths;
-import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -37,7 +36,6 @@ public class MaidFileModNeoForge {
         Constants.LOG.info("[maid_file_manager] Platform & Network services registered");
 
         modBus.addListener(this::registerPayloads);
-        modBus.addListener(this::onRegisterClient);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(this::onPlayerLogin);
         NeoForge.EVENT_BUS.addListener(this::onPlayerLogout);
@@ -103,12 +101,6 @@ public class MaidFileModNeoForge {
                 MaidFilePayloads.ServerExportListPayload::handle);
 
         Constants.LOG.info("[maid_file_manager] CustomPayload handlers registered: 9 C2S + 6 S2C");
-    }
-
-    private void onRegisterClient(RegisterKeyMappingsEvent event) {
-        if (FMLEnvironment.dist != Dist.CLIENT) return;
-        ClientRegistration.registerKeyMappings(event);
-        Constants.LOG.info("[maid_file_manager] KeyMapping registered");
     }
 
     private void onRegisterCommands(RegisterCommandsEvent event) {
