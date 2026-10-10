@@ -221,7 +221,22 @@ public final class MaidBackupService {
             modelId = tag.getString("ModelId");
         }
         data.setModelId(modelId);
-        data.setDisplayName(MaidTransferService.getDisplayName(modelId));
+        // YSM 换模：展示名取实体 NBT 中的 YSM 模型名（键 YsmModelName / YsmModelId），
+        // modelId 字段仍保持底层 TLM 模型 ID，供导入回退与跨版本迁移使用
+        String displayName = null;
+        if (tag.getBoolean("IsYsmModel")) {
+            displayName = extractText(tag.getString("YsmModelName"));
+            if (displayName == null || displayName.isEmpty()) {
+                String ysmId = tag.getString("YsmModelId");
+                if (!ysmId.isEmpty()) {
+                    displayName = ysmId;
+                }
+            }
+        }
+        if (displayName == null || displayName.isEmpty()) {
+            displayName = MaidTransferService.getDisplayName(modelId);
+        }
+        data.setDisplayName(displayName);
         String customName = extractText(tag.getString("CustomName"));
         if (customName != null && !customName.isEmpty()) {
             data.setCustomName(customName);
