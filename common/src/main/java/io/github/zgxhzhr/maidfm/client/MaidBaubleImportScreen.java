@@ -18,9 +18,11 @@ import net.minecraft.world.item.ItemStack;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -32,7 +34,8 @@ import java.util.Set;
  *   <li><b>丢弃饰品属性</b>：导入时是否丢弃附魔/耐久/无法破坏/属性修饰符等，恢复为全新物品（默认保留）；</li>
  *   <li><b>禁用携带列表</b>：枚举车万本体（touhou_little_maid）与万法皆通（touhou_little_maid_spell）
  *       两命名空间内真正可佩戴的饰品（以 TLM 饰品注册表判定，与游戏内槽位校验一致），
- *       支持按名称/ID 搜索并滚动多选；勾选的饰品在导入时白名单校验之前直接丢弃。</li>
+ *       支持按名称/ID 搜索并滚动多选；OP 勾选的饰品在导入时直接丢弃。
+ *       整合包配置强制禁用的条目（黑名单命中 / 不在允许清单内）以只读勾选显示，OP 亦不可取消。</li>
  * </ul>
  *
  * <p>视觉与设置界面一致：全屏不透明深色背景 + 深棕主面板；物品名 + 图标列表自绘
@@ -98,10 +101,10 @@ public class MaidBaubleImportScreen extends Screen {
     private final Set<String> blockedIds = new LinkedHashSet<>();
     /** 当前玩家是否为 OP：服务端配置仅 OP 可改，非 OP 只读（开关/勾选禁用） */
     private boolean canEdit;
-    /** 黑/白名单是否由整合包配置（bauble_import.json）托管：托管时即使 OP 也只读展示 */
+    /** 是否存在整合包配置（bauble_import.json）：用于显示托管提示；整张列表并非只读 */
     private boolean managed;
-    /** 是否允许勾选禁用列表：需 OP 且未被整合包托管 */
-    private boolean canEditList;
+    /** 物品 ID → 中文显示名（保存时判定整合包强制项需要，避免重复解析物品栈） */
+    private final Map<String, String> nameById = new HashMap<>();
     /** 两命名空间全部饰品（id → 物品栈，供图标/名称显示） */
     private final List<ItemEntry> entries = new ArrayList<>();
     /** 当前搜索结果（entries 按搜索关键字过滤后的子集，列表只渲染它） */
@@ -129,13 +132,12 @@ public class MaidBaubleImportScreen extends Screen {
         // 服务端配置仅 OP 可改：局域网联机=宿主默认 OP
         this.canEdit = this.minecraft != null && this.minecraft.player != null
                 && this.minecraft.player.hasPermissions(2);
-        // 黑/白名单托管（整合包 bauble_import.json 存在）时，列表只读：OP 也不能在游戏内增删
-        this.canEditList = this.canEdit && !this.managed;
         // 枚举两命名空间里真正可佩戴的饰品：判定以 TLM 的饰品注册表 BaubleManager 为准。
         // 饰品物品本体（如 ItemDamageableBauble）并未实现 IMaidBauble——饰品行为对象
         // 是由 BaubleManager 以「物品 → 饰品行为」映射登记的（与游戏内饰品槽位校验同源），
         // 故不能对 Item 做 instanceof 判定，否则列表恒为空；工具/材料/书籍等非饰品物品不进禁用列表。
         entries.clear();
+        nameById.clear();
         for (Item item : BuiltInRegistries.ITEM) {
             ResourceLocation key = BuiltInRegistries.ITEM.getKey(item);
             if (key == null) {
@@ -150,6 +152,7 @@ public class MaidBaubleImportScreen extends Screen {
                 continue;
             }
             entries.add(new ItemEntry(key.toString(), stack));
+            nameById.put(key.toString(), stack.getHoverName().getString());
         }
         entries.sort(Comparator.comparing(e -> e.id));
         rebuildFiltered();
@@ -239,16 +242,20 @@ public class MaidBaubleImportScreen extends Screen {
                 Component.translatable("gui.maid_file_manager.config.done"), this::onSaveAndClose));
     }
 
-    /** 完成：把丢弃属性开关与禁用列表提交服务端（服务端校验 OP 后写文件并广播同步），再返回设置界面 */
+    /** 完成：把丢弃属性开关与 OP 禁用清单提交服务端（服务端校验 OP 后写文件并广播同步），再返回设置界面 */
     private void onSaveAndClose() {
         if (canEdit) {
             IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
             if (net != null) {
                 net.sendSetServerConfig(MaidConfigManager.KEY_BAUBLE_STRIP_ATTRIBUTES, stripAttributes);
-                // 黑/白名单被整合包托管时游戏内不可改：不提交列表，避免服务端拒绝并弹失败提示
-                if (!managed) {
-                    net.sendSetServerBaubleBlockedList(new ArrayList<>(blockedIds));
+                // 只提交 OP 可自行增删的禁用项；整合包强制项由配置文件决定，不写入 properties
+                List<String> opBlocked = new ArrayList<>();
+                for (String id : blockedIds) {
+                    if (!MaidConfigManager.isBaubleForcedBlocked(id, nameById.get(id))) {
+                        opBlocked.add(id);
+                    }
                 }
+                net.sendSetServerBaubleBlockedList(opBlocked);
             } else {
                 Constants.LOG.warn("[maid_file_manager] 网络实现缺失，饰品导入设置未提交服务端");
             }
@@ -350,13 +357,13 @@ public class MaidBaubleImportScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // 非 OP 只读：列表只展示，不允许勾选
-        if (button == 0 && canEditList && isInsideList(mouseX, mouseY)) {
+        // 非 OP 时列表只读；整合包强制的条目（黑名单命中 / 白名单外）亦只读，点击无效
+        if (button == 0 && canEdit && isInsideList(mouseX, mouseY)) {
             int index = scrollOffset + (int) ((mouseY - listY) / ROW_H);
-            if (index >= 0 && index < filtered.size()) {
+            if (index >= 0 && index < filtered.size() && !isForced(filtered.get(index))) {
                 toggleBlocked(index);
-                return true;
             }
+            return true;
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }
@@ -390,6 +397,11 @@ public class MaidBaubleImportScreen extends Screen {
     private boolean isInsideList(double mouseX, double mouseY) {
         return mouseX >= listX && mouseX <= listX + listW
                 && mouseY >= listY && mouseY <= listY + listH;
+    }
+
+    /** 是否为整合包强制禁用项（黑名单命中，或白名单非空且不在白名单内）：界面显示为只读勾选、不可取消 */
+    private boolean isForced(ItemEntry e) {
+        return MaidConfigManager.isBaubleForcedBlocked(e.id, e.stack.getHoverName().getString());
     }
 
     private void toggleBlocked(int index) {
@@ -445,14 +457,17 @@ public class MaidBaubleImportScreen extends Screen {
             }
             ItemEntry e = filtered.get(index);
             int top = listY + i * ROW_H;
-            boolean selected = blockedIds.contains(e.id);
+            boolean forced = isForced(e);
+            // 勾选态 = 整合包强制禁用项 或 OP 自行勾选的禁用项
+            boolean selected = forced || blockedIds.contains(e.id);
             if (selected) {
                 graphics.fill(listX, top, listX + listW, top + ROW_H, ROW_SELECTED);
             }
             drawCheckBox(graphics, listX + 4, top + (ROW_H - CHECK_SIZE) / 2, selected);
             graphics.renderItem(e.stack, listX + 4 + CHECK_SIZE + 4, top + 2);
+            // 整合包强制项置灰，提示该项只读、不可取消勾选
             graphics.drawString(this.font, e.stack.getHoverName(),
-                    listX + 4 + CHECK_SIZE + 4 + 18, top + 6, TEXT_COLOR, false);
+                    listX + 4 + CHECK_SIZE + 4 + 18, top + 6, forced ? SUBTEXT_COLOR : TEXT_COLOR, false);
         }
         graphics.disableScissor();
         // 滚动条（仅在内容超出可视区时绘制）
