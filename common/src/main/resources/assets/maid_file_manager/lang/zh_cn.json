@@ -84,7 +84,7 @@
     "gui.maid_file_manager.profile.title": "女仆档案",
     "gui.maid_file_manager.profile.id": "档案编号",
     "gui.maid_file_manager.profile.faction": "所属势力",
-    "gui.maid_file_manager.profile.model": "模型",
+    "gui.maid_file_manager.profile.name": "姓名",
     "gui.maid_file_manager.profile.health": "血量",
     "gui.maid_file_manager.profile.attack": "攻击",
     "gui.maid_file_manager.profile.favor": "好感度",
