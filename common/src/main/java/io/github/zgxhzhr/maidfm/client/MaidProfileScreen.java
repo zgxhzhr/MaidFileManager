@@ -567,6 +567,14 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
             pickerScroll = Math.max(0, Math.min(maxScroll, pickerScroll + (delta > 0 ? -2 : 2)));
             return true;
         }
+        // 把滚轮转发给鼠标所悬停的文本域：只读预览（导入界面的档案）下多行文本域不可编辑，
+        // 键盘与光标导航被整体禁用，被截断的长文本（尤其背景故事）只能靠滚轮查看
+        MultiLineEditBox[] fields = { storyField, noteField, prefField, occupationField, birthdayField, uuidField };
+        for (MultiLineEditBox field : fields) {
+            if (field != null && field.handleScroll(mouseX, mouseY, delta)) {
+                return true;
+            }
+        }
         return false;
     }
 
