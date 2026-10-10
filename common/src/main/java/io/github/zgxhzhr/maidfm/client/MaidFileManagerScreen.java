@@ -92,8 +92,6 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private Button selectAllImportBtn;
     /** 导出 Tab：醒目"是否保留原来的女仆在世界中"开关（Button 模拟复选框，默认开启=保留） */
     private Button keepMaidsBtn;
-    /** 导入 Tab：保留饰品开关（仅车万本体/万法皆通，全新无附魔） */
-    private Button keepBaublesBtn;
     /** 导入 Tab：导入成功后删除源文件开关（默认关闭，危险操作） */
     private Button deleteImportFileBtn;
     /** 标题栏设置入口（进入 MaidConfigScreen） */
@@ -130,8 +128,6 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private int dlgX, dlgY, dlgW, dlgH;
     private int dlgCheckX, dlgCheckY, dlgCheckH;
     private int dlgBtnY, dlgBtnW, dlgBtnH, dlgCancelX, dlgConfirmX;
-    /** 导入时是否保留饰品：true=恢复（默认开启），false=不恢复 */
-    private boolean keepBaublesState;
     /** 导入成功后是否删除源文件：true=删除（默认关闭，危险操作） */
     private boolean deleteImportFileState;
     /**
@@ -223,9 +219,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         int toolBtnH = 20;                                  // UI无问题版：工具按钮高 20
         int rowGap = 8;                                     // UI无问题版：行距 8
         int sideY1 = panelY + HEADER_TOTAL_H + 2;          // UI无问题版：第 1 行（全选）起始
-        int sideY2 = sideY1 + toolBtnH + rowGap;           // 第 2 行：保留女仆 / 保留饰品
-        int sideY3 = sideY2 + toolBtnH + rowGap;           // 第 3 行：打开导出/导入文件夹
-        int sideY4 = sideY3 + toolBtnH + rowGap;           // 第 4 行（仅导入 Tab）：导入后删除源文件
+        int sideY2 = sideY1 + toolBtnH + rowGap;           // 第 2 行：保留女仆 / 打开导入文件夹
+        int sideY3 = sideY2 + toolBtnH + rowGap;           // 第 3 行：打开导出文件夹 / 导入后删除源文件
 
         // 行 1：全选（导出/导入 各一，共用 X/Y，Tab 切换 visible）
         selectAllState = false;
@@ -246,30 +241,22 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                         b -> { keepMaidsInWorldState = !keepMaidsInWorldState; refreshKeepMaidsLabel(); })
                 .bounds(sideX, sideY2, keepBtnW, toolBtnH).build();
 
-        // 行 2（导入 Tab）：保留饰品开关（联机新增）
-        keepBaublesState = true;
-        keepBaublesBtn = Button.builder(keepBaublesLabel(keepBaublesState),
-                        b -> { keepBaublesState = !keepBaublesState; refreshKeepBaublesLabel(); })
-                .bounds(sideX, sideY2, keepBtnW, toolBtnH).build();
-        keepBaublesBtn.visible = false;
-        keepBaublesBtn.active = false;
-
-        // 行 4（仅导入 Tab）：导入成功后删除源文件（默认关闭，危险操作；仅删除服务端确认生成成功的文件）
+        // 行 3（仅导入 Tab）：导入成功后删除源文件（默认关闭，危险操作；仅删除服务端确认生成成功的文件）
         deleteImportFileState = false;
         deleteImportFileBtn = Button.builder(deleteImportFileLabel(deleteImportFileState),
                         b -> { deleteImportFileState = !deleteImportFileState; refreshDeleteImportFileLabel(); })
-                .bounds(sideX, sideY4, keepBtnW, toolBtnH).build();
+                .bounds(sideX, sideY3, keepBtnW, toolBtnH).build();
         deleteImportFileBtn.visible = false;
         deleteImportFileBtn.active = false;
 
-        // 行 3：打开导出/导入文件夹（共用左侧第 3 行位置，Tab 切换 visible）
+        // 行 2/3：打开导出文件夹 → 行 3；打开导入文件夹 → 行 2（与导出 Tab 的保留女仆同槽，Tab 切换 visible）
         openExportDirBtn = Button.builder(Component.literal("打开导出文件夹"),
                         b -> onOpenExportDir())
                 .bounds(sideX, sideY3, sideBtnW, toolBtnH).build();
         openImportDirBtn = Button.builder(
                         Component.translatable("maid_file_manager.gui.button.open_import_dir"),
                         b -> onOpenImportDir())
-                .bounds(sideX, sideY3, sideBtnW, toolBtnH).build();
+                .bounds(sideX, sideY2, sideBtnW, toolBtnH).build();
 
         // 【v4-3Fix 截图3：Tab行左侧大按钮 → 模式动态切换：单独导出→开独立确认界面；统一导出→直接返回单独导出】
         //   与导出/导入 Tab 同高(tabH=20)同Y(tabY)，视觉一体对齐；宽 SERVER_EXPORT_BTN_W=122，左边界 panelX+10
@@ -291,11 +278,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         fileListWidget = new FileListWidget(listAreaX, listAreaW, listTop, listBottom);
         updateListVisibility();
 
-        // ===== 工具列 7 个按钮注册（联机新增 3 个：selectAllImportBtn / keepBaublesBtn / serverExportTriggerBtn） =====
+        // ===== 工具列 6 个按钮注册（导出/导入两 Tab 靠 visible 切换共用槽位） =====
         addRenderableWidget(selectAllBtn);
         addRenderableWidget(keepMaidsBtn);
         addRenderableWidget(selectAllImportBtn);
-        addRenderableWidget(keepBaublesBtn);
         addRenderableWidget(deleteImportFileBtn);
         addRenderableWidget(openExportDirBtn);
         addRenderableWidget(openImportDirBtn);
@@ -486,14 +472,6 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private void refreshKeepMaidsLabel() {
         if (keepMaidsBtn != null) keepMaidsBtn.setMessage(keepMaidsLabel(keepMaidsInWorldState));
     }
-    /** 保留饰品按钮：默认开启=导入时恢复饰品（仅车万本体/万法皆通，全新无附魔）。 */
-    private static Component keepBaublesLabel(boolean keep) {
-        String txt = keep ? "保留饰品（默认开启）" : "保留饰品";
-        return Component.literal(txt).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
-    }
-    private void refreshKeepBaublesLabel() {
-        if (keepBaublesBtn != null) keepBaublesBtn.setMessage(keepBaublesLabel(keepBaublesState));
-    }
     /** 导入后删除源文件按钮：默认关闭；开启时红色提示危险 */
     private static Component deleteImportFileLabel(boolean delete) {
         String txt = delete ? "导入后删除文件（已开启）" : "导入后删除文件（默认关闭）";
@@ -506,7 +484,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
     /** 根据当前 Tab 显示/隐藏 Tab 专属控件：
      *  导出 Tab = 全选 + 保留女仆 + 打开导出文件夹
-     *  导入 Tab = 全选 + 保留饰品 + 打开导入文件夹
+     *  导入 Tab = 全选 + 打开导入文件夹 + 导入后删除文件
      */
     private void updateTabSpecificControlsVisibility() {
         boolean showExport = (currentTab == Tab.EXPORT);
@@ -519,8 +497,6 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         keepMaidsBtn.active = showExport && !serverExportMode;
         selectAllImportBtn.visible = showImport;
         selectAllImportBtn.active = showImport;
-        keepBaublesBtn.visible = showImport;
-        keepBaublesBtn.active = showImport;
         deleteImportFileBtn.visible = showImport;
         deleteImportFileBtn.active = showImport;
         // 工具栏②（打开文件夹按钮）
@@ -817,10 +793,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             }
             setFeedback(Component.literal(String.format(Locale.ROOT,
                     "正在批量导入 %d 个女仆（已跳过 %d 个无效文件）...", dataList.size(), skipped)));
-            // 饰品导入策略（丢弃属性 / 禁用清单）由服务端配置决定，客户端不再上传，杜绝非 OP 绕过
-            Constants.LOG.info("[maid_file_manager] BATCH IMPORT START: count={}, skipped={}, keepBaubles={}, deleteAfter={}",
-                    dataList.size(), skipped, keepBaublesState, deleteImportFileState);
-            net.sendImportFiles(dataList, keepBaublesState, deleteImportFileState);
+            // 饰品是否随行统一由「设置 → 服务端设置 → 导入时允许携带饰品」控制：
+            // 此处恒上传 true，实际是否恢复由服务端双闸门（配置 + 导入端命名空间白名单）决定，杜绝非 OP 绕过
+            Constants.LOG.info("[maid_file_manager] BATCH IMPORT START: count={}, skipped={}, deleteAfter={}",
+                    dataList.size(), skipped, deleteImportFileState);
+            net.sendImportFiles(dataList, true, deleteImportFileState);
         }
     }
 
@@ -860,7 +837,6 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         drawButtonCheckBox(graphics, selectAllBtn, selectAllState);
         drawButtonCheckBox(graphics, selectAllImportBtn, selectAllImportState);
         drawButtonCheckBox(graphics, keepMaidsBtn, keepMaidsInWorldState);
-        drawButtonCheckBox(graphics, keepBaublesBtn, keepBaublesState);
         drawButtonCheckBox(graphics, deleteImportFileBtn, deleteImportFileState);
         // ⑤ 反馈消息（fbX=面板中心；无阴影文字保持锐利；超长自动按面板宽度换行，
         //    行数受"底部按钮上沿"限制，超出部分截断加省略号——完整文本仍会进聊天栏）

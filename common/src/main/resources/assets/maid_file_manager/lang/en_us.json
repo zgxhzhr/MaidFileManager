@@ -21,7 +21,7 @@
     "gui.maid_file_manager.config.allow_baubles": "Allow carrying baubles on import",
     "gui.maid_file_manager.config.allow_advancements": "Import maid-related advancements",
     "gui.maid_file_manager.config.allow_effects": "Restore potion effects on import",
-    "gui.maid_file_manager.config.allow_invulnerable": "Carry over the maid's invulnerability (Substitute Jizo) on import",
+    "gui.maid_file_manager.config.allow_invulnerable": "Allow carrying the maid's invulnerability (Substitute Jizo) on import",
     "gui.maid_file_manager.config.client_section": "Client Settings (always yours to change)",
     "gui.maid_file_manager.config.allow_server_export": "Allow server to batch-export your maids (default off)",
     "gui.maid_file_manager.config.skip_remove_confirm": "This world: skip confirmation when exporting and removing maids (default off)",
