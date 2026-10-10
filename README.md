@@ -55,7 +55,8 @@
 |---|---|
 | `maid_file/maid_exports/` | 导出结果，按玩家名分子文件夹 `maid_file/maid_exports/<玩家名>/` |
 | `maid_file/maid_imports/` | 导入来源，把要导入的 `.maid` 文件放这里（没有可手动新建） |
-| `maid_file/photos/` | 女仆档案头像图片，放入后在档案界面挑选（自动 1:1 裁切，原图不超过 10MB） |
+| `maid_file/photos/` | 女仆档案头像的候选图片，放入后在档案界面挑选（等比缩放、最长边不超过 512 像素，原图不超过 10MB） |
+| `maid_file/maid_photos/` | 档案头像图片库，模组按女仆 UUID 自动维护，请勿手动改动 |
 
 > 旧版本散落在游戏根目录的 `maid_exports/`、`maid_imports/` 与 `config/maid_file_manager/photos/`，会在首次启动时**自动搬运并入** `maid_file/` 下，无需手动处理。
 
