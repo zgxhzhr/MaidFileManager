@@ -34,7 +34,8 @@ import java.util.stream.Stream;
  * </ul>
  *
  * <p>目录：导出 → {@code maid_file/maid_exports/}，导入源 → {@code maid_file/maid_imports/}
- * （玩家把自己的 .maid 放到此处）；档案照片 → {@code maid_file/photos/}。
+ * （玩家把自己的 .maid 放到此处）；档案照片候选图 → {@code maid_file/photos/}；
+ * 档案照片入库目录 → {@code maid_file/maid_photos/}（由模组按女仆 UUID 自动维护）。
  * 三者统一收纳在游戏根目录下的 {@code maid_file/} 内，方便一次性打包带走。
  * 旧版散落在根目录的 {@code maid_exports/}、{@code maid_imports/} 与
  * {@code config/maid_file_manager/photos/} 会在启动时由 {@link #migrateLegacyDirs(Path)} 自动搬运并入。
@@ -85,7 +86,7 @@ public final class MaidFileIo {
         }
         migrateInto(gameDir.resolve(Constants.LEGACY_EXPORTS_DIR), gameDir.resolve(Constants.MAID_EXPORTS_DIR));
         migrateInto(gameDir.resolve(Constants.LEGACY_IMPORTS_DIR), gameDir.resolve(Constants.MAID_IMPORTS_DIR));
-        migrateInto(gameDir.resolve(Constants.LEGACY_PHOTOS_DIR), gameDir.resolve(Constants.MAID_PHOTOS_DIR));
+        migrateInto(gameDir.resolve(Constants.LEGACY_PHOTOS_DIR), gameDir.resolve(Constants.MAID_PHOTO_CANDIDATES_DIR));
     }
 
     /** 迁移单个目录；旧目录不存在或新旧同路径时跳过 */

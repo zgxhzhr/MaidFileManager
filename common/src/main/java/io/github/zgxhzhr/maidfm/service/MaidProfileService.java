@@ -2,17 +2,21 @@ package io.github.zgxhzhr.maidfm.service;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import io.github.zgxhzhr.maidfm.Constants;
+import io.github.zgxhzhr.maidfm.data.MaidPhotoStore;
 import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import io.github.zgxhzhr.maidfm.platform.Services;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * 女仆档案业务逻辑（仅服务端调用）。
@@ -43,11 +47,56 @@ public final class MaidProfileService {
         if (profile == null) {
             profile = new MaidProfile();
         }
+        resolvePhoto(maid, profile, tag);
         String story = readStory(maid);
         if (story != null) {
             profile.setStorySnapshot(story);
         }
         return profile;
+    }
+
+    /**
+     * 解析档案照片：以照片库文件为准；实体 NBT 内联的旧版照片会懒迁移落盘，
+     * 并从实体中清除该字段，避免实体存档继续携带图片数据。
+     */
+    private static void resolvePhoto(EntityMaid maid, MaidProfile profile, CompoundTag tag) {
+        UUID uuid;
+        try {
+            uuid = maid.getUUID();
+        } catch (Throwable t) {
+            return;
+        }
+        byte[] stored = MaidPhotoStore.read(gameDir(), uuid);
+        if (stored == null) {
+            byte[] inline = profile.getPhoto();
+            if (inline != null && inline.length > 0 && MaidPhotoStore.isValidProfilePhoto(inline)
+                    && MaidPhotoStore.write(gameDir(), uuid, inline)) {
+                stored = inline;
+                Constants.LOG.info("[maid_file_manager] 档案照片已从实体 NBT 迁移到照片库: maid={}", uuid);
+            }
+        }
+        if (stored == null) {
+            return;
+        }
+        profile.setPhoto(stored);
+        if (tag != null && tag.contains("photo", Tag.TAG_BYTE_ARRAY)) {
+            // 内联照片已入库，回写一次实体 NBT（不含照片）完成迁移
+            try {
+                Services.PLATFORM.get().writeMaidProfile(maid, profile.writeToNbt(false));
+            } catch (Throwable t) {
+                Constants.LOG.warn("[maid_file_manager] 清除实体内联档案照片失败: {}", t.toString());
+            }
+        }
+    }
+
+    /** 服务端游戏根目录；平台实现异常时返回 null（照片读写随之跳过，不影响文本字段） */
+    private static Path gameDir() {
+        try {
+            return Services.PLATFORM.get().getGameDir();
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 获取游戏根目录失败: {}", t.toString());
+            return null;
+        }
     }
 
     /** 读取 TLM AI 人设（背景故事）；读取失败返回 null（保持原值不覆盖） */
@@ -77,10 +126,33 @@ public final class MaidProfileService {
             writeStory(maid, profile.getStorySnapshot());
         }
         try {
-            Services.PLATFORM.get().writeMaidProfile(maid, profile.writeToNbt());
+            // 实体 NBT 只写文本类字段：照片改由 MaidPhotoStore 独立存盘，避免实体存档膨胀
+            Services.PLATFORM.get().writeMaidProfile(maid, profile.writeToNbt(false));
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] 写入女仆档案失败: {}", t.toString());
         }
+        persistPhoto(maid, profile);
+    }
+
+    /** 把档案中的照片持久化到照片库；照片为空表示玩家主动清空，删除已入库文件 */
+    private static void persistPhoto(EntityMaid maid, MaidProfile profile) {
+        UUID uuid;
+        try {
+            uuid = maid.getUUID();
+        } catch (Throwable t) {
+            return;
+        }
+        byte[] photo = profile.getPhoto();
+        if (photo == null || photo.length == 0) {
+            MaidPhotoStore.delete(gameDir(), uuid);
+            return;
+        }
+        if (!MaidPhotoStore.isValidProfilePhoto(photo)) {
+            Constants.LOG.warn("[maid_file_manager] 拒绝写入非法档案照片（体积或尺寸超限）: maid={} bytes={}",
+                    uuid, photo.length);
+            return;
+        }
+        MaidPhotoStore.write(gameDir(), uuid, photo);
     }
 
     /** 写入 TLM AI 人设（背景故事）；直接改 public 字段，与 TLM 官方保存路径等价、内存态同步 */

@@ -30,9 +30,9 @@ public final class MaidPhotoUtil {
     private MaidPhotoUtil() {
     }
 
-    /** 照片投放目录（相对游戏根目录） */
+    /** 照片候选目录（相对游戏根目录）：玩家把图片放进来供档案界面挑选 */
     public static Path photosDir(Path gameDir) {
-        return gameDir.resolve(Constants.MAID_PHOTOS_DIR);
+        return gameDir.resolve(Constants.MAID_PHOTO_CANDIDATES_DIR);
     }
 
     /** 确保照片目录存在（不存在则创建），返回该目录；创建失败时抛出 IOException */
@@ -80,15 +80,25 @@ public final class MaidPhotoUtil {
         return false;
     }
 
+    /** 图片等比缩放时依次尝试的最长边（自大而小，取第一个不超字节上限的结果） */
+    private static final int[] SIDE_CANDIDATES = {512, 384, 320, 256, 192, 128};
+    /** 缩放后的最小边长：再小就失去展示意义，交由调用方按上限拒绝 */
+    private static final int MIN_SIDE = 64;
+
     /**
-     * 读取图片文件，居中裁切为 1:1 后缩放至 {@code size×size}，编码为 PNG 字节。
+     * 读取图片文件，<b>等比缩放且不裁剪</b>，最长边不超过 {@code maxSide}，编码为 PNG 字节。
      *
-     * <p>裁切规则：取短边为边长，从中心裁出正方形，保证 1:1 比例且不拉伸变形。
+     * <p>不裁剪是为了保证任何比例的图片都能完整显示（此前按短边居中裁成 1:1，
+     * 会把长方图片的两侧切掉，造成「显示不全」）。显示端按等比 contain 绘制，
+     * 非正方图片四周留空即可。
      *
-     * @return PNG 编码后的字节数组
+     * <p>编码后若超过 {@link Constants#PROFILE_PHOTO_MAX_BYTES}，自动降低边长重编码，
+     * 保证照片能随档案视图下发、并入 {@code .maid} 打包而不撑爆网络包。
+     *
+     * @return PNG 编码后的字节数组（已尽量压到上限以内；仍超限时由调用方拒绝）
      * @throws IOException 文件无法解析或编码失败（由调用方转为界面反馈，不静默）
      */
-    public static byte[] loadAndEncode(Path file, int size) throws IOException {
+    public static byte[] loadAndEncode(Path file, int maxSide) throws IOException {
         if (isSourceTooLarge(file)) {
             throw new IOException("图片原图超过上限（10MB）: " + file.getFileName());
         }
@@ -101,18 +111,39 @@ public final class MaidPhotoUtil {
         if (w <= 0 || h <= 0) {
             throw new IOException("图片尺寸无效");
         }
-        int side = Math.min(w, h);
-        int sx = (w - side) / 2;
-        int sy = (h - side) / 2;
-        BufferedImage square = src.getSubimage(sx, sy, side, side);
-        BufferedImage scaled = new BufferedImage(size, size, BufferedImage.TYPE_INT_ARGB);
+        byte[] last = null;
+        for (int side : SIDE_CANDIDATES) {
+            if (side > maxSide) {
+                continue;
+            }
+            if (side < MIN_SIDE) {
+                break;
+            }
+            double scale = Math.min(1.0d, (double) side / Math.max(w, h));
+            int tw = Math.max(1, (int) Math.round(w * scale));
+            int th = Math.max(1, (int) Math.round(h * scale));
+            last = encodePng(src, tw, th);
+            if (last.length <= Constants.PROFILE_PHOTO_MAX_BYTES) {
+                return last;
+            }
+        }
+        if (last == null) {
+            // 原图本身已在 maxSide 之内：按原尺寸编码一次
+            last = encodePng(src, w, h);
+        }
+        return last;
+    }
+
+    /** 把源图缩放到 {@code tw×th} 并编码为 PNG */
+    private static byte[] encodePng(BufferedImage src, int tw, int th) throws IOException {
+        BufferedImage scaled = new BufferedImage(tw, th, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = scaled.createGraphics();
         try {
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
                     RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             g.setRenderingHint(RenderingHints.KEY_RENDERING,
                     RenderingHints.VALUE_RENDER_QUALITY);
-            g.drawImage(square, 0, 0, size, size, null);
+            g.drawImage(src, 0, 0, tw, th, null);
         } finally {
             g.dispose();
         }

@@ -13,7 +13,12 @@ import net.minecraft.nbt.Tag;
  * <p>字段说明：
  * <ul>
  *   <li>{@code profile_version}：档案结构版本，便于未来迁移</li>
- *   <li>{@code photo}：1:1 裁切并缩放至 128×128 的 PNG 字节，可空</li>
+ *   <li>{@code photo}：等比缩放后的 PNG 字节（最长边不超过
+ *       {@link Constants#PROFILE_PHOTO_MAX_SIDE}），可空。
+ *       <b>照片不写入女仆实体 NBT</b>：实体侧改存
+ *       {@code maid_file/maid_photos/<女仆UUID>.png}，本字段仅在
+ *       {@code .maid} 打包与档案视图下发的数据传输链路上出现，
+ *       详见 {@link MaidPhotoStore}</li>
  *   <li>{@code occupation}：职业，空表示默认「女仆」</li>
  *   <li>{@code birthday}：生日（个人资料的一部分）</li>
  *   <li>{@code personal_note}：其他个人资料</li>
@@ -41,10 +46,21 @@ public final class MaidProfile {
 
     // ---------- 序列化 ----------
 
+    /** 完整序列化（含照片）：用于 {@code .maid} 打包与档案视图下发 */
     public CompoundTag writeToNbt() {
+        return writeToNbt(true);
+    }
+
+    /**
+     * 序列化档案。
+     *
+     * @param includePhoto 是否包含 {@code photo} 字节。写回女仆实体时传 {@code false}：
+     *                     照片由 {@link MaidPhotoStore} 独立存盘，实体 NBT 不再携带图片数据
+     */
+    public CompoundTag writeToNbt(boolean includePhoto) {
         CompoundTag tag = new CompoundTag();
         tag.putInt("profile_version", profileVersion);
-        if (photo != null && photo.length > 0) {
+        if (includePhoto && photo != null && photo.length > 0) {
             tag.putByteArray("photo", photo);
         }
         putIfNotBlank(tag, "occupation", occupation);
