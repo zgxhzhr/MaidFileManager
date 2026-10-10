@@ -135,6 +135,9 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
 
     private ResourceLocation photoRl;
     private DynamicTexture photoTexture;
+    /** 当前照片纹理的真实像素尺寸（照片按原比例存盘，绘制时据此等比 contain） */
+    private int photoTexW;
+    private int photoTexH;
 
     /** 照片选择覆盖层 */
     private boolean pickerOpen;
@@ -416,7 +419,7 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
                 setFeedback(Component.translatable("gui.maid_file_manager.profile.photo_source_too_large"), ERROR_COLOR);
                 return;
             }
-            byte[] bytes = MaidPhotoUtil.loadAndEncode(file, Constants.PROFILE_PHOTO_SIZE);
+            byte[] bytes = MaidPhotoUtil.loadAndEncode(file, Constants.PROFILE_PHOTO_MAX_SIDE);
             if (bytes.length > Constants.PROFILE_PHOTO_MAX_BYTES) {
                 setFeedback(Component.translatable("gui.maid_file_manager.profile.photo_too_large"), ERROR_COLOR);
                 return;
@@ -459,12 +462,18 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         try {
             NativeImage image = NativeImage.read(new ByteArrayInputStream(bytes));
             photoTexture = new DynamicTexture(image);
+            photoTexW = image.getWidth();
+            photoTexH = image.getHeight();
+            // 照片存盘分辨率通常高于显示框，缩小绘制时必须用线性过滤，否则会出现严重锯齿
+            photoTexture.setFilter(true, false);
             photoRl = ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "profile_photo/preview");
             Minecraft.getInstance().getTextureManager().register(photoRl, photoTexture);
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] 加载档案照片纹理失败: {}", t.toString());
             photoRl = null;
             photoTexture = null;
+            photoTexW = 0;
+            photoTexH = 0;
         }
     }
 
@@ -478,6 +487,8 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
             photoRl = null;
         }
         photoTexture = null;
+        photoTexW = 0;
+        photoTexH = 0;
     }
 
     // ===== 饰品 =====
@@ -615,10 +626,20 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         int frameW = PHOTO_DISPLAY + PHOTO_FRAME_PAD * 2;
         int frameH = PHOTO_DISPLAY + PHOTO_FRAME_PAD * 2;
         graphics.fill(frameX, frameY, frameX + frameW, frameY + frameH, 0xFF1C1812);
-        if (photoRl != null) {
-            // 动态纹理为 128×128，显式传入纹理实际尺寸并按 96px 显示，避免默认 256 假设导致只显示左上角
-            graphics.blit(photoRl, photoX, photoY, 0f, 0f, PHOTO_DISPLAY, PHOTO_DISPLAY,
-                    Constants.PROFILE_PHOTO_SIZE, Constants.PROFILE_PHOTO_SIZE);
+        if (photoRl != null && photoTexW > 0 && photoTexH > 0) {
+            // 等比 contain 绘制：照片按原比例存盘，这里按短边贴合显示框并居中，避免拉伸变形或裁切。
+            // UV 必须覆盖整张纹理 0..1，因此取样宽高传纹理自身尺寸；显示尺寸则靠 PoseStack 缩放映射到
+            // 目标矩形（旧代码把「取样宽高」当「绘制宽高」传入，UV 只到 0.75，故只显示左上 3/4）。
+            float scale = Math.min((float) PHOTO_DISPLAY / photoTexW, (float) PHOTO_DISPLAY / photoTexH);
+            int dstW = Math.max(1, Math.round(photoTexW * scale));
+            int dstH = Math.max(1, Math.round(photoTexH * scale));
+            int dstX = photoX + (PHOTO_DISPLAY - dstW) / 2;
+            int dstY = photoY + (PHOTO_DISPLAY - dstH) / 2;
+            graphics.pose().pushPose();
+            graphics.pose().translate(dstX, dstY, 0f);
+            graphics.pose().scale(dstW / (float) photoTexW, dstH / (float) photoTexH, 1f);
+            graphics.blit(photoRl, 0, 0, 0f, 0f, photoTexW, photoTexH, photoTexW, photoTexH);
+            graphics.pose().popPose();
         } else {
             graphics.fill(photoX, photoY, photoX + PHOTO_DISPLAY, photoY + PHOTO_DISPLAY, 0xFF141210);
             Component none = Component.translatable("gui.maid_file_manager.profile.no_photo");
