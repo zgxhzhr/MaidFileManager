@@ -535,7 +535,7 @@ public final class MaidFilePayloads {
         }
     }
 
-    /** C2S：OP 修改「禁用携带的饰品 ID 列表」（服务端校验 OP 权限后写文件并广播同步） */
+    /** C2S：OP 修改自己维护的「禁用携带的饰品」清单：权限校验 → 收窄写入 → 广播同步 */
     public record SetServerBaubleBlockedListPayload(List<String> ids) implements CustomPacketPayload {
         public static final Type<SetServerBaubleBlockedListPayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_server_bauble_blocked_list"));
@@ -559,12 +559,9 @@ public final class MaidFilePayloads {
                             feedback(sp, Component.translatable("maid_file_manager.config.fail.no_permission"));
                             return;
                         }
-                        // 整合包配置（bauble_import.json）存在时黑/白名单被托管，游戏内（含 OP）不可改
-                        if (!MaidConfigManager.setServerBaubleBlockedList(
-                                MaidTransferService.sanitizeBaubleBlockedList(ids))) {
-                            feedback(sp, Component.translatable("maid_file_manager.config.fail.bauble_managed"));
-                            return;
-                        }
+                        // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读，不在此写入
+                        MaidConfigManager.setServerBaubleBlockedList(
+                                MaidTransferService.sanitizeBaubleBlockedList(ids));
                         broadcastServerConfig(sp.server);
                     } catch (Throwable t) {
                         handleError(sp, "SET_SERVER_BAUBLE_BLOCKED_LIST", t);
@@ -772,7 +769,8 @@ public final class MaidFilePayloads {
     public record ServerConfigSyncPayload(boolean allowImport, boolean allowBaubles, boolean allowAdvancements,
                                           boolean allowEffects, boolean allowInvulnerable,
                                           boolean baubleStripAttributes, List<String> baubleBlockedList,
-                                          List<String> baubleWhitelist, boolean baubleManaged)
+                                          List<String> baubleBlacklist, List<String> baubleWhitelist,
+                                          boolean baubleManaged)
             implements CustomPacketPayload {
         public static final Type<ServerConfigSyncPayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "server_config_sync"));
@@ -787,7 +785,8 @@ public final class MaidFilePayloads {
                             fbb.writeBoolean(p.allowInvulnerable);
                             fbb.writeBoolean(p.baubleStripAttributes);
                             writeStringList(fbb, p.baubleBlockedList);
-                            // 整合包饰品配置：白名单 + 是否托管（客户端据此只读展示黑/白名单）
+                            // 整合包饰品配置：黑名单 + 白名单 + 是否托管（客户端据此把整合包强制的条目显示为只读勾选）
+                            writeStringList(fbb, p.baubleBlacklist);
                             writeStringList(fbb, p.baubleWhitelist);
                             fbb.writeBoolean(p.baubleManaged);
                         },
@@ -800,11 +799,12 @@ public final class MaidFilePayloads {
                             boolean allowInvulnerable = fbb.readBoolean();
                             boolean baubleStripAttributes = fbb.readBoolean();
                             List<String> baubleBlockedList = readStringList(fbb);
+                            List<String> baubleBlacklist = readStringList(fbb);
                             List<String> baubleWhitelist = readStringList(fbb);
                             boolean baubleManaged = fbb.readBoolean();
                             return new ServerConfigSyncPayload(allowImport, allowBaubles, allowAdvancements,
                                     allowEffects, allowInvulnerable, baubleStripAttributes, baubleBlockedList,
-                                    baubleWhitelist, baubleManaged);
+                                    baubleBlacklist, baubleWhitelist, baubleManaged);
                         }
                 );
 
@@ -816,7 +816,7 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> MaidConfigManager.handleServerConfigSync(
                     allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable,
-                    baubleStripAttributes, baubleBlockedList, baubleWhitelist, baubleManaged));
+                    baubleStripAttributes, baubleBlockedList, baubleBlacklist, baubleWhitelist, baubleManaged));
         }
     }
 
@@ -830,7 +830,8 @@ public final class MaidFilePayloads {
                     MaidConfigManager.isEffectsAllowed(),
                     MaidConfigManager.isInvulnerableAllowed(),
                     MaidConfigManager.isBaubleStripAttributes(),
-                    MaidConfigManager.getBaubleBlockedList(),
+                    MaidConfigManager.getOpBaubleBlockedList(),
+                    MaidConfigManager.getBaubleBlacklist(),
                     MaidConfigManager.getBaubleWhitelist(),
                     MaidConfigManager.isBaubleConfigManaged()));
         }

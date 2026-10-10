@@ -90,11 +90,13 @@ public final class MaidConfigManager {
     private static volatile boolean serverAllowInvulnerable = true;
     /** 服务端配置内存值：导入时丢弃饰品属性（默认关=保留） */
     private static volatile boolean serverBaubleStripAttributes = false;
-    /** 服务端配置内存值：禁用携带的饰品 ID 列表（不可变，默认空） */
+    /** 服务端配置内存值：OP 在游戏内维护的「禁用携带饰品」清单（不可变，默认空；与整合包黑名单相互独立） */
     private static volatile List<String> serverBaubleBlockedList = List.of();
+    /** 整合包黑名单（来自 bauble_import.json；不可变，默认空；游戏内只读，OP 亦不可改） */
+    private static volatile List<String> baubleImportBlacklist = List.of();
     /** 整合包白名单（来自 bauble_import.json；不可变，默认空） */
     private static volatile List<String> serverBaubleWhitelist = List.of();
-    /** 整合包配置是否已接管黑/白名单（bauble_import.json 存在即 true；此时游戏内不可修改这两张清单） */
+    /** 是否存在整合包配置（bauble_import.json 存在即 true；用于界面提示与判定来源，不代表整张列表只读） */
     private static volatile boolean baubleConfigManaged = false;
     /**
      * 是否强制白名单：白名单非空时为 true；配置文件解析失败时亦置 true 并按"拒绝全部饰品"处理
@@ -197,19 +199,14 @@ public final class MaidConfigManager {
     }
 
     /**
-     * 服务端修改「禁用携带的饰品 ID 列表」（C2S 包处理，调用方已做 OP 权限校验）。
+     * 服务端修改 OP 维护的「禁用携带的饰品」清单（C2S 包处理，调用方已做 OP 权限校验）。
      * <p>仅做去除首尾空白与去重；命名空间收窄由调用方在写入前完成（收窄不放开）。
-     *
-     * @return true=已写入；false=整合包配置已接管（bauble_import.json 存在），游戏内不可修改，调用方须回执拒绝
+     * <p>该清单与整合包黑名单相互独立：整合包黑名单由 bauble_import.json 托管、游戏内只读，
+     * OP 仍可在此清单上追加/取消自己的禁用项，两者在导入判定时取并集。
      */
-    public static synchronized boolean setServerBaubleBlockedList(List<String> ids) {
-        if (baubleConfigManaged) {
-            Constants.LOG.warn("[女仆档案管理] 拒绝写入禁用饰品列表：黑/白名单已由整合包配置 bauble_import.json 托管");
-            return false;
-        }
+    public static synchronized void setServerBaubleBlockedList(List<String> ids) {
         serverBaubleBlockedList = List.copyOf(ids == null ? List.of() : ids);
         saveServer();
-        return true;
     }
 
     // ==================== 客户端配置 ====================
@@ -250,9 +247,24 @@ public final class MaidConfigManager {
         return serverBaubleStripAttributes;
     }
 
-    /** 禁用携带的饰品 ID/中文名列表（不可变）；服务端读配置、客户端读登录同步缓存 */
+    /** 导入判定用的禁用清单（OP 清单 ∪ 整合包黑名单，不可变）；服务端读配置、客户端读登录同步缓存 */
     public static List<String> getBaubleBlockedList() {
+        if (baubleImportBlacklist.isEmpty()) {
+            return serverBaubleBlockedList;
+        }
+        List<String> merged = new ArrayList<>(serverBaubleBlockedList);
+        merged.addAll(baubleImportBlacklist);
+        return List.copyOf(merged);
+    }
+
+    /** OP 在游戏内维护的禁用清单（不含整合包黑名单；客户端界面读写用） */
+    public static List<String> getOpBaubleBlockedList() {
         return serverBaubleBlockedList;
+    }
+
+    /** 整合包黑名单（不可变，只读；物品 ID 或中文显示名） */
+    public static List<String> getBaubleBlacklist() {
+        return baubleImportBlacklist;
     }
 
     /** 整合包白名单（不可变；物品 ID 或中文显示名） */
@@ -260,7 +272,7 @@ public final class MaidConfigManager {
         return serverBaubleWhitelist;
     }
 
-    /** 黑/白名单是否已被整合包配置（bauble_import.json）托管：托管时游戏内不可修改这两张清单 */
+    /** 是否存在整合包配置（bauble_import.json）：用于界面提示，不代表整张列表只读 */
     public static boolean isBaubleConfigManaged() {
         return baubleConfigManaged;
     }
@@ -282,11 +294,29 @@ public final class MaidConfigManager {
         return displayName != null && !displayName.isEmpty() && serverBaubleWhitelist.contains(displayName);
     }
 
+    /**
+     * 判定某饰品是否被整合包「强制禁用且只读」：命中整合包黑名单，或白名单非空且未命中白名单
+     * （白名单外一律不放行）。
+     *
+     * <p>仅供界面把这类条目显示为「已勾选且不可取消」；OP 在游戏内维护的禁用清单不在此列
+     * （那是 OP 可自行增删的，界面正常可勾选/取消）。
+     */
+    public static boolean isBaubleForcedBlocked(String id, String displayName) {
+        if (id != null && !id.isEmpty() && baubleImportBlacklist.contains(id)) {
+            return true;
+        }
+        if (displayName != null && !displayName.isEmpty() && baubleImportBlacklist.contains(displayName)) {
+            return true;
+        }
+        return baubleWhitelistEnforced && !isBaubleWhitelistPass(id, displayName);
+    }
+
     /** 客户端收到服务端配置同步（S2C 包处理）：更新本地缓存并回发同意状态 */
     public static void handleServerConfigSync(boolean allowImport, boolean allowBaubles, boolean allowAdvancements,
                                               boolean allowEffects, boolean allowInvulnerable,
                                               boolean baubleStripAttributes, List<String> baubleBlockedList,
-                                              List<String> baubleWhitelist, boolean baubleManaged) {
+                                              List<String> baubleBlacklist, List<String> baubleWhitelist,
+                                              boolean baubleManaged) {
         serverAllowClientImport = allowImport;
         serverAllowBaubles = allowBaubles;
         serverAllowAdvancements = allowAdvancements;
@@ -294,6 +324,7 @@ public final class MaidConfigManager {
         serverAllowInvulnerable = allowInvulnerable;
         serverBaubleStripAttributes = baubleStripAttributes;
         serverBaubleBlockedList = List.copyOf(baubleBlockedList == null ? List.of() : baubleBlockedList);
+        baubleImportBlacklist = List.copyOf(baubleBlacklist == null ? List.of() : baubleBlacklist);
         serverBaubleWhitelist = List.copyOf(baubleWhitelist == null ? List.of() : baubleWhitelist);
         baubleConfigManaged = baubleManaged;
         baubleWhitelistEnforced = baubleManaged && !serverBaubleWhitelist.isEmpty();
@@ -332,9 +363,14 @@ public final class MaidConfigManager {
         return serverBaubleStripAttributes;
     }
 
-    /** 客户端读取服务端同步缓存：禁用携带的饰品 ID/中文名列表（饰品导入设置界面显示用） */
+    /** 客户端读取服务端同步缓存：OP 维护的禁用清单（饰品导入设置界面读写用） */
     public static List<String> cachedBaubleBlockedList() {
         return serverBaubleBlockedList;
+    }
+
+    /** 客户端读取服务端同步缓存：整合包黑名单（只读展示用） */
+    public static List<String> cachedBaubleBlacklist() {
+        return baubleImportBlacklist;
     }
 
     /** 客户端读取服务端同步缓存：整合包白名单（饰品导入设置界面显示用） */
@@ -342,7 +378,7 @@ public final class MaidConfigManager {
         return serverBaubleWhitelist;
     }
 
-    /** 客户端读取服务端同步缓存：黑/白名单是否由整合包配置托管（托管时界面只读） */
+    /** 客户端读取服务端同步缓存：是否存在整合包配置（界面提示用，不代表整张列表只读） */
     public static boolean cachedBaubleConfigManaged() {
         return baubleConfigManaged;
     }
@@ -393,8 +429,8 @@ public final class MaidConfigManager {
         props.setProperty(KEY_ALLOW_EFFECTS, String.valueOf(serverAllowEffects));
         props.setProperty(KEY_ALLOW_INVULNERABLE, String.valueOf(serverAllowInvulnerable));
         props.setProperty(KEY_BAUBLE_STRIP_ATTRIBUTES, String.valueOf(serverBaubleStripAttributes));
-        // 托管时黑名单来自 bauble_import.json，不写入 properties（避免误导与覆盖整合包配置）
-        if (!baubleConfigManaged && !serverBaubleBlockedList.isEmpty()) {
+        // OP 维护的禁用清单始终写入 properties；整合包黑名单来自 bauble_import.json，不在此持久化
+        if (!serverBaubleBlockedList.isEmpty()) {
             props.setProperty(KEY_BAUBLE_BLOCKED_LIST, String.join(",", serverBaubleBlockedList));
         }
         store(props, serverConfigFile, "Maid File Manager server config (edited via in-game settings, OP only)");
@@ -403,8 +439,9 @@ public final class MaidConfigManager {
     /**
      * 加载整合包饰品导入配置 {@code config/maid_file_manager/bauble_import.json}。
      *
-     * <p>文件存在即接管（{@code managed=true}）：以文件内容覆盖 properties 的黑名单，并启用白名单，
-     * 游戏内不再允许修改这两张清单。文件不存在则维持 properties 行为（不托管）。
+     * <p>文件存在即生效：读取白名单与黑名单，其中黑名单为只读（游戏内不可改），
+     * OP 在游戏内维护的禁用清单与之相互独立，导入判定时取并集。
+     * 文件不存在则维持 properties 行为（无整合包管控）。
      *
      * <p>解析失败时<b>失败关闭</b>：置为托管且强制白名单（此时白名单为空 → 拒绝导入全部饰品），
      * 并打 ERROR 日志，绝不放任整合包作者的管控被静默绕过。
@@ -414,6 +451,7 @@ public final class MaidConfigManager {
             baubleConfigManaged = false;
             baubleWhitelistEnforced = false;
             serverBaubleWhitelist = List.of();
+            baubleImportBlacklist = List.of();
             return;
         }
         try (Reader reader = Files.newBufferedReader(baubleImportConfigFile, StandardCharsets.UTF_8)) {
@@ -421,14 +459,14 @@ public final class MaidConfigManager {
             List<String> whitelist = readStringArray(root, "whitelist");
             List<String> blacklist = readStringArray(root, "blacklist");
             serverBaubleWhitelist = whitelist;
-            serverBaubleBlockedList = blacklist;
+            baubleImportBlacklist = blacklist;
             baubleConfigManaged = true;
             baubleWhitelistEnforced = !whitelist.isEmpty();
-            Constants.LOG.info("[女仆档案管理] 已加载整合包饰品导入配置（已托管）：白名单 {} 项，黑名单 {} 项",
+            Constants.LOG.info("[女仆档案管理] 已加载整合包饰品导入配置：白名单 {} 项，黑名单 {} 项",
                     whitelist.size(), blacklist.size());
         } catch (Throwable t) {
             serverBaubleWhitelist = List.of();
-            serverBaubleBlockedList = List.of();
+            baubleImportBlacklist = List.of();
             baubleConfigManaged = true;
             baubleWhitelistEnforced = true;
             Constants.LOG.error("[女仆档案管理] 整合包饰品导入配置解析失败，已按「拒绝导入全部饰品」的失败关闭策略处理，"
