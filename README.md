@@ -98,6 +98,26 @@
 
 完整字段说明、判定顺序、示例与常见问题见根目录 [`饰品导入配置说明（整合包作者）.md`](饰品导入配置说明（整合包作者）.md)。
 
+### 整合包作者专用：识别导入的女仆（maidfm_imported）
+
+模组在**导入女仆时**，会往女仆实体的持久化标签写入一个标记 `maidfm_imported`（真值），供整合包作者在实体生成事件中识别「这只女仆刚由本模组导入产生」，从而对结构特殊女仆等场景发放补偿。
+
+- **写入时机**：在女仆加入世界**之前**写入，早于实体生成事件；因此 KubeJS 的 `EntityEvents.spawned('touhou_little_maid:maid', ...)` 内可直接读到，不需要延迟到下一刻；
+- **读取方式**：Forge / NeoForge 下落在实体 NBT 的 `ForgeData` / `NeoForgeData` 子标签，也就是 KubeJS 的 `entity.persistentData`，直接 `maid.persistentData.getBoolean('maidfm_imported')` 即可；Fabric 下落在实体根 NBT 的同名键；
+- **随存档与文件迁移**：标记随女仆存档保存，导出 `.maid` 时一并带走，服务器重启、跨存档搬迁都不丢；
+- **不会累积**：反复导入只会覆盖同一个键；且同一玩家对同一份文件的导入本身是幂等的（目标女仆 UUID 由源 UUID 与玩家 UUID 确定性派生），重复导入会被服务端原生规则直接拒绝；
+- **分不出来源**：`.maid` 文件不记录来源整合包，因此「从外部整合包导入」与「在本整合包内导出后又导入」无法区分，两者都会带上标记（后者的道具同样已在导出时剥离）。
+
+最小接入示例（KubeJS）：
+
+```js
+EntityEvents.spawned('touhou_little_maid:maid', event => {
+  const maid = event.entity
+  if (!maid.persistentData.getBoolean('maidfm_imported')) return   // 只处理导入产生的女仆
+  // 再按你自己的条件筛（例如结构女仆的固有 NBT 标记），随后发放补偿
+})
+```
+
 ## 服务端统一导出（仅 OP）
 
 - **GUI**：导出 Tab 点「统一导出」进入统一导出模式（按钮变为「返回单独导出」），列表按玩家分组显示「▼ 玩家名（N 只女仆）」，未同意的玩家标注 [未同意导出]；提交后文件保存到服务端 `maid_file/maid_exports/<玩家名>/`
@@ -251,6 +271,8 @@
 ## 致谢
 
 - [TartaricAcid](https://github.com/TartaricAcid) - Touhou Little Maid 模组作者
+- Irsi - 提出复用游戏目录的 `usernamecache.json` 解析玩家名，避免了重复维护对照表，并解决了备份管理中玩家名显示与手输匹配的痛点
+- 以及所有为档案管理器提出改进建议的朋友
 
 ## 许可证
 
