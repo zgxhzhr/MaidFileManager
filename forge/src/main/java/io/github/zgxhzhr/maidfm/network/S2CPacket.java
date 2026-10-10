@@ -47,11 +47,12 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     boolean allowInvulnerable = packet.data.readBoolean();
                     boolean baubleStripAttributes = packet.data.readBoolean();
                     java.util.List<String> baubleBlockedList = MaidFilePackets.readStringList(packet.data);
+                    java.util.List<String> baubleBlacklist = MaidFilePackets.readStringList(packet.data);
                     java.util.List<String> baubleWhitelist = MaidFilePackets.readStringList(packet.data);
                     boolean baubleManaged = packet.data.readBoolean();
                     io.github.zgxhzhr.maidfm.config.MaidConfigManager.handleServerConfigSync(
                             allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable,
-                            baubleStripAttributes, baubleBlockedList, baubleWhitelist, baubleManaged);
+                            baubleStripAttributes, baubleBlockedList, baubleBlacklist, baubleWhitelist, baubleManaged);
                     return;
                 }
                 IMaidFileNetwork.ClientHandler handler = IMaidFileNetwork.ClientHandlerHolder.get();

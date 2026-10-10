@@ -283,7 +283,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         broadcastServerConfig(player.server);
     }
 
-    /** OP 修改「禁用携带的饰品 ID 列表」：权限校验 → 收窄写入 → 广播同步；整合包托管时拒绝 */
+    /** OP 修改自己维护的「禁用携带的饰品」清单：权限校验 → 收窄写入 → 广播同步 */
     private static void handleSetServerBaubleBlockedList(ServerPlayer player, List<String> ids) {
         if (!player.hasPermissions(2)) {
             Constants.LOG.warn("[maid_file_manager] SET_SERVER_BAUBLE_BLOCKED_LIST rejected (no OP): player={}",
@@ -291,12 +291,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
             sendFeedback(player, Component.translatable("maid_file_manager.config.fail.no_permission"));
             return;
         }
-        // 整合包配置（bauble_import.json）存在时黑/白名单被托管，游戏内（含 OP）不可改
-        if (!io.github.zgxhzhr.maidfm.config.MaidConfigManager.setServerBaubleBlockedList(
-                MaidTransferService.sanitizeBaubleBlockedList(ids))) {
-            sendFeedback(player, Component.translatable("maid_file_manager.config.fail.bauble_managed"));
-            return;
-        }
+        // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读，不在此写入
+        io.github.zgxhzhr.maidfm.config.MaidConfigManager.setServerBaubleBlockedList(
+                MaidTransferService.sanitizeBaubleBlockedList(ids));
         broadcastServerConfig(player.server);
     }
 
@@ -456,8 +453,10 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isInvulnerableAllowed());
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleStripAttributes());
         MaidFilePackets.writeStringList(buf,
-                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlockedList());
-        // 整合包饰品配置：白名单 + 是否托管（客户端据此只读展示黑/白名单）
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getOpBaubleBlockedList());
+        // 整合包饰品配置：黑名单 + 白名单 + 是否存在整合包配置（客户端据此把整合包强制的条目显示为只读勾选）
+        MaidFilePackets.writeStringList(buf,
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlacklist());
         MaidFilePackets.writeStringList(buf,
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleWhitelist());
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleConfigManaged());
