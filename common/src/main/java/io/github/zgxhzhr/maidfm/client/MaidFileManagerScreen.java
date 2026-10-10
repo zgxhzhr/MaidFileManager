@@ -5,6 +5,7 @@ import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import io.github.zgxhzhr.maidfm.data.MaidFileIo;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
+import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
 import net.minecraft.ChatFormatting;
@@ -12,6 +13,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.ObjectSelectionList;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.network.chat.Component;
@@ -58,6 +60,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private static final int PANEL_MAX_W = 430;
     /** 左侧工具列宽（竖排堆：全选 / 保留女仆 / 打开文件夹）—— 按钮统一宽 = SIDEBAR_W - 12 */
     private static final int SIDEBAR_W = 156;
+    /** 列表行内「档案」按钮尺寸 */
+    private static final int PROFILE_BTN_W = 34;
+    private static final int PROFILE_BTN_H = 12;
     /** 列表与左侧工具列之间内间距 */
     private static final int INNER_GAP = 8;
     /** 列表底部距离主动作按钮上方留多少（给 feedback 居中文字） */
@@ -93,6 +98,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private Button deleteImportFileBtn;
     /** 标题栏设置入口（进入 MaidConfigScreen） */
     private Button settingsBtn;
+    /** 标题栏备份管理入口（进入 MaidBackupBrowserScreen，浏览车万女仆自动备份并导出为 .maid） */
+    private Button backupBtn;
+    /** 等待服务端返回档案的女仆 entityId（收到不匹配的档案视图时忽略） */
+    private int pendingProfileEntityId = Integer.MIN_VALUE;
     /** 导出 Tab 全选状态 */
     private boolean selectAllState;
     /** 导入 Tab 全选状态 */
@@ -194,10 +203,18 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         settingsBtn = Button.builder(Component.translatable("maid_file_manager.gui.button.settings"),
                         b -> this.minecraft.setScreen(new MaidConfigScreen(this)))
                 .bounds(panelX + panelW - 34 - 8 - 56, panelY + 4, 56, 14).build();
+        // 备份管理入口（设置按钮左侧）：浏览各存档中车万女仆的自动备份并导出为 .maid
+        int backupW = 40;
+        backupBtn = Button.builder(Component.translatable("maid_file_manager.gui.button.backup"),
+                        b -> openBackupBrowser())
+                .bounds(panelX + panelW - 34 - 8 - 56 - 8 - backupW, panelY + 4, backupW, 14)
+                .tooltip(Tooltip.create(Component.translatable("maid_file_manager.gui.button.backup.tooltip")))
+                .build();
         addRenderableWidget(exportTabBtn);
         addRenderableWidget(importTabBtn);
         addRenderableWidget(refreshBtn);
         addRenderableWidget(settingsBtn);
+        addRenderableWidget(backupBtn);
         addRenderableWidget(closeBtn);
 
         // ============= 左侧工具列（竖排 3 行：全选 / 保留 / 文件夹。UI无问题版模型=工具按钮透明叠在列表左上，最大化列表高度——核心解决"列表看不见了"） =============
@@ -293,6 +310,13 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
         IMaidFileNetwork.ClientHandlerHolder.set(this);
         refreshCurrentTab();
+    }
+
+    /** 打开备份管理界面：浏览各存档中车万女仆的自动备份并导出为 .maid */
+    private void openBackupBrowser() {
+        if (this.minecraft != null) {
+            this.minecraft.setScreen(new MaidBackupBrowserScreen(this));
+        }
     }
 
     /**
@@ -1319,6 +1343,30 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         fileListWidget.refresh();
     }
 
+    /** 请求某女仆的档案：服务端读取后回发，由 {@link #onMaidProfileReceived} 打开档案界面 */
+    private void requestMaidProfile(int entityId) {
+        IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
+        if (net == null) {
+            Constants.LOG.warn("[maid_file_manager] 网络实现缺失，无法请求女仆档案");
+            return;
+        }
+        pendingProfileEntityId = entityId;
+        net.sendRequestMaidProfile(entityId);
+    }
+
+    @Override
+    public void onMaidProfileReceived(MaidProfileView view) {
+        if (view == null || this.minecraft == null) {
+            return;
+        }
+        // 只处理本次请求的返回，避免过期请求把玩家正在看的界面顶掉
+        if (pendingProfileEntityId != Integer.MIN_VALUE && view.entityId() != pendingProfileEntityId) {
+            return;
+        }
+        pendingProfileEntityId = Integer.MIN_VALUE;
+        this.minecraft.setScreen(new MaidProfileScreen(this, view));
+    }
+
     @Override
     public void onClose() {
         IMaidFileNetwork.ClientHandlerHolder.set(null);
@@ -1573,7 +1621,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 // 勾选框 + 文字：rowX 对齐 LIST_BG 左边缘（手绘复选框，不用缺字字符）
                 drawCheckBox(graphics, rowX + 28, top + 4, selected);
                 int textLeft = rowX + 49;
-                int contentRight = rowX + rowW - 10;
+                // 右侧为「档案」按钮预留空间，文字区主动避让，避免被按钮压住
+                int contentRight = rowX + rowW - 10 - PROFILE_BTN_W - 6;
                 int contentW = contentRight - textLeft;
                 net.minecraft.client.gui.Font font = MaidFileManagerScreen.this.font;
                 // 第一行：name 超长 → 截断+省略号…（不滚避免勾选框右晃动）
@@ -1617,6 +1666,38 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                     graphics.drawString(font, Component.literal(detail), textLeft - offset, top + 12, SUBTEXT_COLOR, false);
                     graphics.disableScissor();
                 }
+                drawProfileButton(graphics, rowX + rowW, top, height, mouseX, mouseY);
+            }
+
+            /** 绘制行内「档案」按钮（右边缘对齐 rowRight） */
+            private void drawProfileButton(GuiGraphics graphics, int rowRight, int top, int height,
+                                           int mouseX, int mouseY) {
+                // 统一导出模式下列表含其他玩家的女仆，不提供「档案」入口（仅本人女仆可查看档案）
+                if (MaidFileManagerScreen.this.serverExportMode) {
+                    return;
+                }
+                int bx = rowRight - PROFILE_BTN_W - 4;
+                int by = top + (height - PROFILE_BTN_H) / 2;
+                boolean hover = mouseX >= bx && mouseX <= bx + PROFILE_BTN_W
+                        && mouseY >= by && mouseY <= by + PROFILE_BTN_H;
+                graphics.fill(bx, by, bx + PROFILE_BTN_W, by + PROFILE_BTN_H, hover ? 0xFF4A3826 : 0xFF3A2C1C);
+                graphics.renderOutline(bx, by, PROFILE_BTN_W, PROFILE_BTN_H, PANEL_BORDER);
+                Component label = Component.translatable("maid_file_manager.gui.button.profile");
+                int tx = bx + (PROFILE_BTN_W - MaidFileManagerScreen.this.font.width(label)) / 2;
+                graphics.drawString(MaidFileManagerScreen.this.font, label, tx,
+                        by + (PROFILE_BTN_H - 8) / 2, TEXT_COLOR, false);
+            }
+
+            /** 是否命中行内「档案」按钮 */
+            private boolean isProfileButtonHit(double mouseX, double mouseY) {
+                if (MaidFileManagerScreen.this.serverExportMode || lastTop < 0) {
+                    return false;
+                }
+                int rowRight = MaidListWidget.this.listX + MaidListWidget.this.listW;
+                int bx = rowRight - PROFILE_BTN_W - 4;
+                int by = lastTop + (lastHeight - PROFILE_BTN_H) / 2;
+                return mouseX >= bx && mouseX <= bx + PROFILE_BTN_W
+                        && mouseY >= by && mouseY <= by + PROFILE_BTN_H;
             }
 
             @Override
@@ -1631,6 +1712,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
             @Override
             public boolean mouseClicked(double mouseX, double mouseY, int button) {
+                // 命中「档案」按钮 → 请求该女仆档案（不再触发勾选）
+                if (button == 0 && isProfileButtonHit(mouseX, mouseY)) {
+                    requestMaidProfile(info.entityId());
+                    return true;
+                }
                 boolean newVal = !selectedMaidIds.contains(info.entityId());
                 toggleRowSelection(info, newVal);
                 return true;
@@ -1796,7 +1882,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 // 勾选框：rowX 对齐 LIST_BG 左边缘（手绘复选框，不用缺字字符）
                 drawCheckBox(graphics, rowX + 28, top + 4, selected);
                 int textLeft = rowX + 49;
-                int contentRight = rowX + rowW - 10;
+                // 右侧为「档案」按钮预留空间，文字区主动避让，避免被按钮压住
+                int contentRight = rowX + rowW - 10 - PROFILE_BTN_W - 6;
                 int contentW = contentRight - textLeft;
                 net.minecraft.client.gui.Font font = MaidFileManagerScreen.this.font;
                 // 第一行：fileName 超长 → 左右跑马灯（文件名很长必须全显示）
@@ -1839,6 +1926,60 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                     drawTime = timeLine;
                 }
                 graphics.drawString(font, Component.literal(drawTime), textLeft, top + 12, SUBTEXT_COLOR, false);
+                drawProfileButton(graphics, rowX + rowW, top, height, mouseX, mouseY);
+            }
+
+            /** 绘制行内「档案」按钮（导入列表用文件内档案快照预览） */
+            private void drawProfileButton(GuiGraphics graphics, int rowRight, int top, int height,
+                                           int mouseX, int mouseY) {
+                int bx = rowRight - PROFILE_BTN_W - 4;
+                int by = top + (height - PROFILE_BTN_H) / 2;
+                boolean hover = mouseX >= bx && mouseX <= bx + PROFILE_BTN_W
+                        && mouseY >= by && mouseY <= by + PROFILE_BTN_H;
+                graphics.fill(bx, by, bx + PROFILE_BTN_W, by + PROFILE_BTN_H, hover ? 0xFF4A3826 : 0xFF3A2C1C);
+                graphics.renderOutline(bx, by, PROFILE_BTN_W, PROFILE_BTN_H, PANEL_BORDER);
+                Component label = Component.translatable("maid_file_manager.gui.button.profile");
+                int tx = bx + (PROFILE_BTN_W - MaidFileManagerScreen.this.font.width(label)) / 2;
+                graphics.drawString(MaidFileManagerScreen.this.font, label, tx,
+                        by + (PROFILE_BTN_H - 8) / 2, TEXT_COLOR, false);
+            }
+
+            /** 是否命中行内「档案」按钮 */
+            private boolean isProfileButtonHit(double mouseX, double mouseY) {
+                if (lastTop < 0) {
+                    return false;
+                }
+                int rowRight = FileListWidget.this.listX + FileListWidget.this.listW;
+                int bx = rowRight - PROFILE_BTN_W - 4;
+                int by = lastTop + (lastHeight - PROFILE_BTN_H) / 2;
+                return mouseX >= bx && mouseX <= bx + PROFILE_BTN_W
+                        && mouseY >= by && mouseY <= by + PROFILE_BTN_H;
+            }
+
+            /** 打开该导入文件内的档案快照（只读预览；文件无档案数据时提示） */
+            private void openOfflineProfile() {
+                try {
+                    Path gameDir = MaidFileManagerScreen.this.minecraft.gameDirectory.toPath().toAbsolutePath();
+                    Path dir = MaidFileIo.ensureImportsDir(gameDir);
+                    Path file = dir.resolve(fileName).normalize();
+                    if (!file.startsWith(dir)) {
+                        return;
+                    }
+                    MaidFileData data = MaidFileIo.readMaidFile(file);
+                    if (data == null) {
+                        return;
+                    }
+                    if (data.getProfile() == null) {
+                        MaidFileManagerScreen.this.setFeedback(
+                                Component.translatable("maid_file_manager.profile.not_in_file"));
+                        return;
+                    }
+                    MaidProfileView view = MaidProfileScreen.buildOfflineView(data);
+                    MaidFileManagerScreen.this.minecraft.setScreen(
+                            new MaidProfileScreen(MaidFileManagerScreen.this, view));
+                } catch (Throwable t) {
+                    Constants.LOG.warn("[maid_file_manager] 打开导入文件档案失败: {}", t.toString());
+                }
             }
 
             @Override
@@ -1853,6 +1994,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
             @Override
             public boolean mouseClicked(double mouseX, double mouseY, int button) {
+                // 命中「档案」按钮 → 打开该文件内的档案快照（只读），不再触发勾选
+                if (button == 0 && isProfileButtonHit(mouseX, mouseY)) {
+                    openOfflineProfile();
+                    return true;
+                }
                 boolean newVal = !selectedImportFileNames.contains(fileName);
                 toggleFileRowSelection(fileName, newVal);
                 return true;

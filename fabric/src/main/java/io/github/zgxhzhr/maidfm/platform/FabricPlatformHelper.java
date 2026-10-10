@@ -25,6 +25,7 @@ public class FabricPlatformHelper implements IPlatformHelper {
     private static volatile Method mGetSlots;
     private static volatile Method mSetSize;
     private static volatile Method mSetStack;
+    private static volatile Method mGetStack;
     private static volatile boolean baubleMethodsResolved;
 
     // 运行时持久化标签缓存（按实体 UUID 索引）。
@@ -78,7 +79,7 @@ public class FabricPlatformHelper implements IPlatformHelper {
             return false;
         }
         if (baubleMethodsResolved) {
-            return mGetSlots != null && mSetSize != null && mSetStack != null;
+            return mGetSlots != null && mSetSize != null && mSetStack != null && mGetStack != null;
         }
         baubleMethodsResolved = true;
         try {
@@ -86,11 +87,12 @@ public class FabricPlatformHelper implements IPlatformHelper {
             mGetSlots = c.getMethod("getSlots");
             mSetSize = c.getMethod("setSize", int.class);
             mSetStack = c.getMethod("setStackInSlot", int.class, ItemStack.class);
+            mGetStack = c.getMethod("getStackInSlot", int.class);
         } catch (Throwable t) {
             Constants.LOG.error("[maid_file_manager] Fabric 饰品 handler 方法解析失败，饰品将无法恢复: {}",
                     t.toString());
         }
-        return mGetSlots != null && mSetSize != null && mSetStack != null;
+        return mGetSlots != null && mSetSize != null && mSetStack != null && mGetStack != null;
     }
 
     @Override
@@ -134,6 +136,25 @@ public class FabricPlatformHelper implements IPlatformHelper {
     }
 
     /**
+     * 读取饰品栏指定槽位的物品（档案界面的饰品图标需要）。
+     * 槽位越界/读取失败返回空物品栈，绝不抛出（不影响档案其它字段展示）。
+     */
+    @Override
+    public ItemStack baubleGetStack(EntityMaid maid, int slot) {
+        try {
+            Object handler = maid.getMaidBauble();
+            if (!ensureBaubleMethods(handler)) {
+                return ItemStack.EMPTY;
+            }
+            Object stack = mGetStack.invoke(handler, slot);
+            return stack instanceof ItemStack is ? is : ItemStack.EMPTY;
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] baubleGetStack 失败: {}", t.toString());
+            return ItemStack.EMPTY;
+        }
+    }
+
+    /**
      * 1.20.x 物品 NBT 为 id+Count+tag 结构，ItemStack.of 直接完整还原
      * （附魔/耐久等全部 tag 状态）；registries 参数在 1.20 不需要，仅为与 1.21 接口对齐。
      */
@@ -162,6 +183,23 @@ public class FabricPlatformHelper implements IPlatformHelper {
         return ItemStack.EMPTY;
     }
 
+    /**
+     * 1.20.x 物品序列化：直接 {@code stack.save(new CompoundTag())} 写入 id+Count+tag 结构，
+     * 完整保留附魔/耐久/自定义 tag。1.20 无数据组件，registries 参数不使用。空物品返回空标签。
+     */
+    @Override
+    public CompoundTag serializeItemStack(RegistryAccess registries, ItemStack stack) {
+        try {
+            if (stack == null || stack.isEmpty()) {
+                return new CompoundTag();
+            }
+            return stack.save(new CompoundTag());
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Fabric serializeItemStack 失败: {}", t.toString());
+            return new CompoundTag();
+        }
+    }
+
     @Override
     public CompoundTag getStoredEffects(Entity entity) {
         return EFFECTS_CACHE.get(entity.getUUID());
@@ -173,6 +211,37 @@ public class FabricPlatformHelper implements IPlatformHelper {
             EFFECTS_CACHE.remove(entity.getUUID());
         } else {
             EFFECTS_CACHE.put(entity.getUUID(), effectsTag);
+        }
+    }
+
+    /**
+     * 读取女仆实体上持久化的档案 NBT。
+     * Fabric 无原版持久化标签 API，档案由 {@link io.github.zgxhzhr.maidfm.mixin.EntityMaidMixin}
+     * 注入 {@code EntityMaid} 字段承载，并随实体存档读写；无则返回 null。
+     */
+    @Override
+    public CompoundTag readMaidProfile(Entity entity) {
+        try {
+            if (entity instanceof io.github.zgxhzhr.maidfm.mixin.MaidProfileHolder holder) {
+                return holder.maidfm$getProfile();
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Fabric readMaidProfile 失败: {}", t.toString());
+        }
+        return null;
+    }
+
+    /**
+     * 将档案 NBT 写入女仆实体并随实体持久化；{@code tag} 为 null 时移除已有档案。
+     */
+    @Override
+    public void writeMaidProfile(Entity entity, CompoundTag tag) {
+        try {
+            if (entity instanceof io.github.zgxhzhr.maidfm.mixin.MaidProfileHolder holder) {
+                holder.maidfm$setProfile(tag);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Fabric writeMaidProfile 失败: {}", t.toString());
         }
     }
 }

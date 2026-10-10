@@ -1,0 +1,13 @@
+{
+    "required": true,
+    "minVersion": "0.8",
+    "package": "io.github.zgxhzhr.maidfm.mixin",
+    "compatibilityLevel": "JAVA_17",
+    "refmap": "maid_file_manager.refmap.json",
+    "mixins": [
+        "EntityMaidMixin"
+    ],
+    "injectors": {
+        "defaultRequire": 0
+    }
+}

@@ -1,6 +1,7 @@
 package io.github.zgxhzhr.maidfm.network;
 
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
+import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.minecraft.network.FriendlyByteBuf;
@@ -68,6 +69,35 @@ public final class FabricNetwork implements IMaidFileNetwork {
         FriendlyByteBuf buf = PacketByteBufs.create();
         MaidFilePackets.writePlayerExportRequests(buf, groups);
         sendC2S(MaidFilePackets.ID_SERVER_EXPORT_BATCH, buf);
+    }
+
+    @Override
+    public void sendRequestMaidProfile(int entityId) {
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        buf.writeVarInt(entityId);
+        sendC2S(MaidFilePackets.ID_REQUEST_MAID_PROFILE, buf);
+    }
+
+    @Override
+    public void sendSaveMaidProfile(int entityId, MaidProfile profile) {
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        buf.writeVarInt(entityId);
+        MaidFilePackets.writeMaidProfile(buf, profile);
+        sendC2S(MaidFilePackets.ID_SAVE_MAID_PROFILE, buf);
+    }
+
+    @Override
+    public void sendRequestBackupList() {
+        sendC2S(MaidFilePackets.ID_REQUEST_BACKUP_LIST, PacketByteBufs.create());
+    }
+
+    @Override
+    public void sendRequestBackupExport(String ownerUuid, String maidUuid, String fileName) {
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        buf.writeUtf(ownerUuid == null ? "" : ownerUuid, MaidFilePackets.MAX_TEXT_LEN);
+        buf.writeUtf(maidUuid == null ? "" : maidUuid, MaidFilePackets.MAX_TEXT_LEN);
+        buf.writeUtf(fileName == null ? "" : fileName, MaidFilePackets.MAX_TEXT_LEN);
+        sendC2S(MaidFilePackets.ID_REQUEST_BACKUP_EXPORT, buf);
     }
 
     private static void sendC2S(ResourceLocation id, FriendlyByteBuf buf) {

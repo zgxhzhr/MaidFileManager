@@ -1,7 +1,7 @@
 {
     "schemaVersion": 1,
     "id": "maid_file_manager",
-    "version": "1.4.3",
+    "version": "1.6.0",
     "name": "Maid File Manager",
     "description": "车万女仆附属模组，支持跨版本导入导出女仆数据",
     "authors": [
@@ -10,6 +10,9 @@
     "contact": {},
     "license": "MIT",
     "environment": "*",
+    "mixins": [
+        "maidfm.mixins.json"
+    ],
     "entrypoints": {
         "main": [
             "io.github.zgxhzhr.maidfm.MaidFileModFabric"

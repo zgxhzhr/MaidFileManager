@@ -4,10 +4,15 @@ import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.ImportResult;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
+import io.github.zgxhzhr.maidfm.data.MaidProfile;
+import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
+import io.github.zgxhzhr.maidfm.service.MaidBackupService;
+import io.github.zgxhzhr.maidfm.service.MaidProfileService;
 import io.github.zgxhzhr.maidfm.service.MaidServerCommands;
 import io.github.zgxhzhr.maidfm.service.MaidTransferService;
+import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
@@ -102,8 +107,7 @@ public class MaidFileModFabric implements ModInitializer {
             ImportResult result = MaidTransferService.importMaidFromData(
                     player, maidData, keepBaubles,
                     MaidConfigManager.isBaubleStripAttributes(),
-                    MaidTransferService.sanitizeBaubleBlockedList(
-                            MaidConfigManager.getBaubleBlockedList()));
+                    MaidConfigManager.getBaubleBlockedList());
             sendFeedback(player, MaidTransferService.withBaubleDetails(result));
         });
 
@@ -113,10 +117,9 @@ public class MaidFileModFabric implements ModInitializer {
             boolean keepBaubles = buf.readBoolean();
             boolean deleteAfterImport = buf.readBoolean();
             // 饰品导入策略以服务端配置为准（客户端不上传，杜绝非 OP 绕过）；
-            // 服务端收窄校验：禁用列表只保留车万本体/法术附属两命名空间内的 ID（收窄不放开）
+            // 禁用清单直接取服务端配置（含整合包 bauble_import.json 的中文名条目），不再做命名空间收窄
             boolean stripAttributes = MaidConfigManager.isBaubleStripAttributes();
-            List<String> blockedList = MaidTransferService.sanitizeBaubleBlockedList(
-                    MaidConfigManager.getBaubleBlockedList());
+            List<String> blockedList = MaidConfigManager.getBaubleBlockedList();
             List<ImportResult> results = new ArrayList<>(list.size());
             for (MaidFileData d : list) {
                 if (d == null) {
@@ -167,8 +170,12 @@ public class MaidFileModFabric implements ModInitializer {
                 sendFeedback(player, Component.translatable("maid_file_manager.config.fail.no_permission"));
                 return;
             }
-            MaidConfigManager.setServerBaubleBlockedList(
-                    MaidTransferService.sanitizeBaubleBlockedList(ids));
+            // 整合包配置（bauble_import.json）存在时黑/白名单被托管，游戏内（含 OP）不可改
+            if (!MaidConfigManager.setServerBaubleBlockedList(
+                    MaidTransferService.sanitizeBaubleBlockedList(ids))) {
+                sendFeedback(player, Component.translatable("maid_file_manager.config.fail.bauble_managed"));
+                return;
+            }
             broadcastServerConfig(server);
         });
 
@@ -212,6 +219,93 @@ public class MaidFileModFabric implements ModInitializer {
             }
             List<IMaidFileNetwork.PlayerExportRequest> requests = MaidFilePackets.readPlayerExportRequests(buf);
             sendFeedback(player, MaidServerCommands.exportForPlayers(server, requests));
+        });
+
+        // 请求女仆档案：非本人直接拒绝（不返回任何只读数据），本人则回发档案视图
+        registerC2SReceiver(MaidFilePackets.ID_REQUEST_MAID_PROFILE, (server, player, buf) -> {
+            int entityId = buf.readVarInt();
+            Entity e = player.level().getEntity(entityId);
+            if (!(e instanceof EntityMaid maid) || !maid.isOwnedBy(player)) {
+                sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.no_permission"));
+                return;
+            }
+            MaidProfileView view = MaidProfileService.buildView(player, maid);
+            if (view == null) {
+                sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.no_permission"));
+                return;
+            }
+            FriendlyByteBuf out = PacketByteBufs.create();
+            MaidFilePackets.writeMaidProfileView(out, view);
+            ServerPlayNetworking.send(player, MaidFilePackets.ID_MAID_PROFILE, out);
+        });
+
+        // 保存女仆档案：校验归属后写入实体并回执（复用 ID_FEEDBACK）
+        registerC2SReceiver(MaidFilePackets.ID_SAVE_MAID_PROFILE, (server, player, buf) -> {
+            int entityId = buf.readVarInt();
+            MaidProfile profile = MaidFilePackets.readMaidProfile(buf);
+            if (profile == null) {
+                sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.save_failed"));
+                return;
+            }
+            Entity e = player.level().getEntity(entityId);
+            if (!(e instanceof EntityMaid maid) || !maid.isOwnedBy(player)) {
+                sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.no_permission"));
+                return;
+            }
+            // 档案界面保存：背景故事同步写回 TLM AI 人设，保证双向一致
+            MaidProfileService.writeToMaid(maid, profile, true);
+            sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.save_ok"));
+        });
+
+        // 备份管理：服务端按权限过滤后返回可浏览的自动备份列表（OP 可见全部玩家，非 OP 仅自己）
+        registerC2SReceiver(MaidFilePackets.ID_REQUEST_BACKUP_LIST, (server, player, buf) -> {
+            List<IMaidFileNetwork.BackupOwner> owners = MaidBackupService.scan(
+                    server, player.getUUID(), player.hasPermissions(2));
+            // 发送前按接收端解码维度预检：主人组数、总字节均需在上限内，超限只回执提示，绝不发坏包把客户端断连
+            if (owners.size() > MaidFilePackets.MAX_BACKUP_OWNERS) {
+                sendFeedback(player, Component.literal(String.format(java.util.Locale.ROOT,
+                        "[女仆档案管理] 备份主人数量超过上限（%d > %d），无法列出，请清理备份后重试",
+                        owners.size(), MaidFilePackets.MAX_BACKUP_OWNERS)));
+                return;
+            }
+            FriendlyByteBuf out = PacketByteBufs.create();
+            MaidFilePackets.writeBackupOwners(out, owners);
+            int size = out.readableBytes();
+            if (size > MaidFilePackets.MAX_PACKET_BYTES) {
+                Constants.LOG.warn("[maid_file_manager] 备份列表 {} 字节超过单包上限 {}，拒绝发送",
+                        size, MaidFilePackets.MAX_PACKET_BYTES);
+                sendFeedback(player, Component.literal(String.format(java.util.Locale.ROOT,
+                        "[女仆档案管理] 备份列表数据过大（%d KB > %d KB），请清理备份后重试",
+                        size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024)));
+                out.release();
+                return;
+            }
+            ServerPlayNetworking.send(player, MaidFilePackets.ID_BACKUP_LIST, out);
+        });
+
+        // 备份管理：服务端校验权限（OP 或该备份主人）后读取该备份并回传，客户端再写本地文件
+        registerC2SReceiver(MaidFilePackets.ID_REQUEST_BACKUP_EXPORT, (server, player, buf) -> {
+            String ownerUuid = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
+            String maidUuid = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
+            String fileName = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
+            MaidFileData data = MaidBackupService.readForExport(
+                    server, player.getUUID(), player.hasPermissions(2), ownerUuid, maidUuid, fileName);
+            if (data == null) {
+                sendFeedback(player, Component.translatable("gui.maid_file_manager.backup.export_failed"));
+                return;
+            }
+            byte[] blob = MaidFilePackets.serializeMaidFileData(data);
+            // 预检单文件体积：超限只回执明确失败，绝不发坏包把客户端断连
+            if (blob == null || blob.length > MaidFilePackets.MAX_SINGLE_FILE_BYTES) {
+                Constants.LOG.warn("[maid_file_manager] 备份导出体积异常，拒绝发送: owner={}, maid={}, size={}",
+                        ownerUuid, maidUuid, blob == null ? -1 : blob.length);
+                sendFeedback(player, Component.literal("[女仆档案管理] 该备份体积过大，无法通过服务器导出"));
+                return;
+            }
+            FriendlyByteBuf out = PacketByteBufs.create();
+            out.writeVarInt(blob.length);
+            out.writeBytes(blob);
+            ServerPlayNetworking.send(player, MaidFilePackets.ID_BACKUP_EXPORT_RESULT, out);
         });
 
         // 玩家登录 → 仅向该玩家单播服务端配置（不再全服广播）；退出 → 清理同意状态
@@ -269,6 +363,9 @@ public class MaidFileModFabric implements ModInitializer {
         out.writeBoolean(MaidConfigManager.isInvulnerableAllowed());
         out.writeBoolean(MaidConfigManager.isBaubleStripAttributes());
         MaidFilePackets.writeStringList(out, MaidConfigManager.getBaubleBlockedList());
+        // 整合包饰品配置：白名单 + 是否托管（客户端据此只读展示黑/白名单）
+        MaidFilePackets.writeStringList(out, MaidConfigManager.getBaubleWhitelist());
+        out.writeBoolean(MaidConfigManager.isBaubleConfigManaged());
         ServerPlayNetworking.send(player, MaidFilePackets.ID_SERVER_CONFIG_SYNC, out);
     }
 

@@ -70,6 +70,11 @@ public class MaidFileData {
      * value 为该 provider 的 export 返回值。可空（旧版文件无此字段）。
      */
     private CompoundTag extras;
+    /**
+     * v7 新增：女仆档案（照片/职业/个人资料/偏好/背景故事快照等）。
+     * 旧 v6 文件无此字段，读取端容错为 null。
+     */
+    private MaidProfile profile;
 
     public MaidFileData() {
     }
@@ -112,6 +117,9 @@ public class MaidFileData {
         }
         if (extras != null) {
             root.put("extras", extras);
+        }
+        if (profile != null) {
+            root.put("profile", profile.writeToNbt());
         }
         return root;
     }
@@ -174,6 +182,10 @@ public class MaidFileData {
         // v5 新增：附属模组扩展数据（旧 v4 文件无此字段，容错为 null）
         if (root.contains("extras", Tag.TAG_COMPOUND)) {
             data.extras = root.getCompound("extras");
+        }
+        // v7 新增：女仆档案（旧 v6 文件无此字段，容错为 null；子键缺省同样容错）
+        if (root.contains("profile", Tag.TAG_COMPOUND)) {
+            data.profile = MaidProfile.readFromNbt(root.getCompound("profile"));
         }
         // v6 短暂存在过的 source_health_base/source_attack_base 字段已废弃：
         // 属性 base 导入时无条件回到 TLM 白板值，旧文件含这两个键时直接忽略。
@@ -333,5 +345,13 @@ public class MaidFileData {
 
     public void setExtras(CompoundTag extras) {
         this.extras = extras;
+    }
+
+    public MaidProfile getProfile() {
+        return profile;
+    }
+
+    public void setProfile(MaidProfile profile) {
+        this.profile = profile;
     }
 }

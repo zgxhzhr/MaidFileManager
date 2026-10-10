@@ -33,7 +33,11 @@ import java.util.stream.Stream;
  *   <li>同模型多个文件可通过文件名中的时间戳自然排序</li>
  * </ul>
  *
- * <p>目录：导出 → {@code maid_exports/}，导入源 → {@code maid_imports/}（玩家把自己的 .maid 放到此处）。
+ * <p>目录：导出 → {@code maid_file/maid_exports/}，导入源 → {@code maid_file/maid_imports/}
+ * （玩家把自己的 .maid 放到此处）；档案照片 → {@code maid_file/photos/}。
+ * 三者统一收纳在游戏根目录下的 {@code maid_file/} 内，方便一次性打包带走。
+ * 旧版散落在根目录的 {@code maid_exports/}、{@code maid_imports/} 与
+ * {@code config/maid_file_manager/photos/} 会在启动时由 {@link #migrateLegacyDirs(Path)} 自动搬运并入。
  */
 public final class MaidFileIo {
     /** 时间戳格式：年月日-时分秒 */
@@ -62,6 +66,100 @@ public final class MaidFileIo {
         Path dir = gameDir.resolve(sub);
         Files.createDirectories(dir);
         return dir;
+    }
+
+    /**
+     * 把旧版本散落的目录搬运并入新目录（{@code maid_file/} 之下）。
+     *
+     * <p>迁移对：{@code maid_exports/}→{@code maid_file/maid_exports/}、
+     * {@code maid_imports/}→{@code maid_file/maid_imports/}、
+     * {@code config/maid_file_manager/photos/}→{@code maid_file/photos/}。
+     * 目标目录不存在时整目录直接改名移动（最快）；已存在时逐项合并，
+     * 名称冲突一律保留新目录版本。迁移结束后清理已搬空的旧目录。
+     *
+     * <p>本方法幂等、且对缺失的旧目录静默跳过，可在每次启动时无副作用地调用。
+     */
+    public static void migrateLegacyDirs(Path gameDir) {
+        if (gameDir == null) {
+            return;
+        }
+        migrateInto(gameDir.resolve(Constants.LEGACY_EXPORTS_DIR), gameDir.resolve(Constants.MAID_EXPORTS_DIR));
+        migrateInto(gameDir.resolve(Constants.LEGACY_IMPORTS_DIR), gameDir.resolve(Constants.MAID_IMPORTS_DIR));
+        migrateInto(gameDir.resolve(Constants.LEGACY_PHOTOS_DIR), gameDir.resolve(Constants.MAID_PHOTOS_DIR));
+    }
+
+    /** 迁移单个目录；旧目录不存在或新旧同路径时跳过 */
+    private static void migrateInto(Path legacy, Path target) {
+        if (legacy == null || !Files.isDirectory(legacy)) {
+            return;
+        }
+        try {
+            if (legacy.toAbsolutePath().normalize().equals(target.toAbsolutePath().normalize())) {
+                return;
+            }
+            Path parent = target.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            if (!Files.exists(target)) {
+                try {
+                    Files.move(legacy, target);
+                    Constants.LOG.info("[maid_file_manager] 目录迁移: {} -> {}", legacy, target);
+                    return;
+                } catch (IOException e) {
+                    // 跨卷等场景整目录移动失败，退回逐项合并
+                    Files.createDirectories(target);
+                }
+            }
+            mergeDir(legacy, target);
+            deleteEmptyDirs(legacy);
+        } catch (IOException e) {
+            Constants.LOG.warn("[maid_file_manager] 旧目录迁移失败: {} -> {}: {}", legacy, target, e.toString());
+        }
+    }
+
+    /** 递归把 src 内容并入 dst；同名文件保留 dst 中已有版本，目录则递归合并 */
+    private static void mergeDir(Path src, Path dst) throws IOException {
+        Files.createDirectories(dst);
+        List<Path> children;
+        try (Stream<Path> stream = Files.list(src)) {
+            children = stream.toList();
+        }
+        for (Path child : children) {
+            Path dest = dst.resolve(child.getFileName().toString());
+            if (Files.isDirectory(child)) {
+                if (Files.exists(dest) && !Files.isDirectory(dest)) {
+                    continue; // 类型冲突：保留目标
+                }
+                mergeDir(child, dest);
+            } else {
+                if (Files.exists(dest)) {
+                    continue; // 同名文件：保留新目录版本
+                }
+                Files.move(child, dest);
+            }
+        }
+    }
+
+    /** 自底向上删除已空的目录树（保留尚存文件的目录） */
+    private static void deleteEmptyDirs(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) {
+            return;
+        }
+        List<Path> children;
+        try (Stream<Path> stream = Files.list(dir)) {
+            children = stream.toList();
+        }
+        for (Path child : children) {
+            if (Files.isDirectory(child)) {
+                deleteEmptyDirs(child);
+            }
+        }
+        try (Stream<Path> stream = Files.list(dir)) {
+            if (stream.findAny().isEmpty()) {
+                Files.deleteIfExists(dir);
+            }
+        }
     }
 
     /**
@@ -245,6 +343,22 @@ public final class MaidFileIo {
             }
         } catch (IOException | RuntimeException e) {
             Constants.LOG.error("读取 maid 文件失败: {}", file, e);
+            return null;
+        }
+    }
+
+    /**
+     * 读取一个 GZIP 压缩的 NBT 文件（如 TLM 备份 .dat / index.dat），失败返回 null。
+     *
+     * <p>与 {@link #readMaidFile} 相同口径：手动复刻 GZIP→Buffered→DataInput 管线并给出
+     * 显式解压配额（{@link MaidFilePackets#MAX_NBT_DECOMPRESSED_BYTES}），防止损坏或恶意文件打爆内存。
+     */
+    public static CompoundTag readCompressedNbt(Path file) {
+        try (DataInputStream dis = new DataInputStream(new BufferedInputStream(
+                new GZIPInputStream(Files.newInputStream(file))))) {
+            return NbtIo.read(dis, new NbtAccounter(MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES));
+        } catch (IOException | RuntimeException e) {
+            Constants.LOG.error("读取压缩 NBT 文件失败: {}", file, e);
             return null;
         }
     }
