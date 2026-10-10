@@ -113,7 +113,17 @@ public final class MaidProfileService {
         if (owner != null) {
             ownerName = owner.getName().getString();
         }
-        String displayName = MaidTransferService.getDisplayName(maid.getModelId());
+        // YSM 换模时展示名与模型 ID 一律改为 YSM 模型信息，与导出列表保持一致
+        String modelId = maid.getModelId();
+        String displayName = MaidTransferService.getDisplayName(modelId);
+        String ysmName = MaidTransferService.getYsmDisplayName(maid);
+        if (ysmName != null) {
+            displayName = ysmName;
+            String ysmId = MaidTransferService.getYsmDisplayId(maid);
+            if (ysmId != null) {
+                modelId = ysmId;
+            }
+        }
         String customName = maid.hasCustomName() ? maid.getCustomName().getString() : null;
         float maxHealth = (float) maid.getMaxHealth();
         float attackDamage = 0f;
@@ -126,7 +136,7 @@ public final class MaidProfileService {
                 maid.getId(),
                 maid.getUUID().toString(),
                 ownerName,
-                maid.getModelId(),
+                modelId,
                 displayName,
                 customName,
                 maid.getHealth(),

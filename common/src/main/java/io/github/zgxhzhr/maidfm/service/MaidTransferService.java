@@ -121,10 +121,21 @@ public final class MaidTransferService {
         String customName = maid.hasCustomName() ? maid.getCustomName().getString() : null;
         AttributeInstance maxHealthAttr = maid.getAttribute(Attributes.MAX_HEALTH);
         float maxHealth = maxHealthAttr == null ? maid.getMaxHealth() : (float) maxHealthAttr.getValue();
+        // YSM 换模时，展示名与模型 ID 一律改为 YSM 模型信息（底层 geckolib 模型 ID 对玩家无意义）
+        String modelId = maid.getModelId();
+        String displayName = getDisplayName(modelId);
+        String ysmName = getYsmDisplayName(maid);
+        if (ysmName != null) {
+            displayName = ysmName;
+            String ysmId = getYsmDisplayId(maid);
+            if (ysmId != null) {
+                modelId = ysmId;
+            }
+        }
         return new MaidInfo(
                 maid.getId(),
-                maid.getModelId(),
-                getDisplayName(maid.getModelId()),
+                modelId,
+                displayName,
                 maid.getFavorability(),
                 maid.getHealth(),
                 maxHealth,
@@ -133,6 +144,66 @@ public final class MaidTransferService {
                 ownerName,
                 customName
         );
+    }
+
+    /**
+     * 女仆是否使用 YSM（Yes Steve Model）替换模型。
+     *
+     * <p>TLM 未提供该 API（版本过旧）时按「否」处理，不影响原有功能。
+     */
+    public static boolean isYsmModel(EntityMaid maid) {
+        if (maid == null) {
+            return false;
+        }
+        try {
+            return maid.isYsmModel();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /**
+     * YSM 替换模型的展示名。
+     *
+     * <p>女仆被 YSM 换模后，TLM 的 {@link EntityMaid#getModelId()} 仍返回底层 geckolib 模型 ID，
+     * YSM 信息保存在独立字段中：优先取 {@link EntityMaid#getYsmModelName()}（如「Bra_月雪宫子」），
+     * 为空时退回 {@link EntityMaid#getYsmModelId()}。非 YSM 模型返回 null，由调用方回退到 TLM 模型名。
+     */
+    public static String getYsmDisplayName(EntityMaid maid) {
+        if (!isYsmModel(maid)) {
+            return null;
+        }
+        try {
+            Component name = maid.getYsmModelName();
+            if (name != null) {
+                String s = name.getString();
+                if (s != null && !s.isEmpty()) {
+                    return s;
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        try {
+            String id = maid.getYsmModelId();
+            if (id != null && !id.isEmpty()) {
+                return id;
+            }
+        } catch (Throwable ignored) {
+        }
+        return null;
+    }
+
+    /** YSM 模型的展示用 ID（形如 {@code ysm:<模型ID>}）；非 YSM 模型返回 null */
+    public static String getYsmDisplayId(EntityMaid maid) {
+        if (!isYsmModel(maid)) {
+            return null;
+        }
+        try {
+            String id = maid.getYsmModelId();
+            return (id != null && !id.isEmpty()) ? "ysm:" + id : null;
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     public static String getDisplayName(String modelId) {
@@ -283,8 +354,16 @@ public final class MaidTransferService {
             data.setSourceMaidUuid(maid.getUUID().toString());
             data.setOwnerName(ownerName);
             data.setData(fullNbt);
+            // .maid 内的 modelId 字段保持 TLM 底层模型 ID：导入回退与跨版本迁移都依赖它；
+            // YSM 信息本就随实体 NBT（IsYsmModel / YsmModelId / YsmModelName 等）一并保存，无需另存。
+            // 展示名则优先取 YSM 模型名，用于列表显示与导出文件名
             data.setModelId(modelId);
-            data.setDisplayName(getDisplayName(modelId));
+            String displayName = getDisplayName(modelId);
+            String ysmName = getYsmDisplayName(maid);
+            if (ysmName != null) {
+                displayName = ysmName;
+            }
+            data.setDisplayName(displayName);
             // 自定义命名（命名牌所取），用于文件名拼接与列表显示
             if (maid.hasCustomName()) {
                 String cn = maid.getCustomName().getString();
