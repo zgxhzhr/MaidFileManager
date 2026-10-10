@@ -33,10 +33,10 @@
 
 | Loader | Minecraft 版本 | JAR 文件名 |
 |--------|---------------|-----------|
-| Forge | 1.20 / 1.20.1 | maid_file_manager-forge-1.20.1-1.6.0.jar |
-| NeoForge | 1.21 / 1.21.1 | maid_file_manager-neoforge-1.21.1-1.6.0.jar |
-| Fabric | 1.20 / 1.20.1 | maid_file_manager-fabric-1.20.1-1.6.0.jar |
-| Fabric | 1.21 / 1.21.1 | maid_file_manager-fabric-1.21.1-1.6.0.jar |
+| Forge | 1.20 / 1.20.1 | maid_file_manager-forge-1.20.1-1.6.1.jar |
+| NeoForge | 1.21 / 1.21.1 | maid_file_manager-neoforge-1.21.1-1.6.1.jar |
+| Fabric | 1.20 / 1.20.1 | maid_file_manager-fabric-1.20.1-1.6.1.jar |
+| Fabric | 1.21 / 1.21.1 | maid_file_manager-fabric-1.21.1-1.6.1.jar |
 
 > 注：自 v1.4.0 起同一大版本内的小版本合并为单一 JAR：Forge 版基于 1.20.1 构建、兼容 1.20（Forge Loader 46+）；Fabric 1.20 系与 1.21 系同理单 JAR 通吃两个小版本。NeoForge 版自 v1.4.3 起 Minecraft 依赖范围放宽为 1.21～1.22（不含），1.21 原版与 1.21.1 均可加载，实际兼容性以前置车万女仆本体对相应版本的支持为准。
 
@@ -185,6 +185,11 @@ EntityEvents.spawned('touhou_little_maid:maid', event => {
 > 已经把数据写在女仆实体 NBT（含 `getPersistentData()` 与 Forge Capability 随存档序列化的字段）里的附属**无需接入**——本模组用 `EntityMaid#saveWithoutId` 导出完整女仆 NBT，这部分数据会自动随女仆迁移。
 
 ## 版本历史
+
+### v1.6.1
+- 新增：导入女仆时在女仆实体写入 `maidfm_imported` 标记。整合包作者可在实体生成事件（如 KubeJS 的 `EntityEvents.spawned`）中读取它，识别刚由本模组导入的女仆并发放补偿；标记写在实体加入世界之前，随实体存档与 `.maid` 文件迁移，反复导入只覆盖同一个键、不会累积。详见上文「整合包作者专用：识别导入的女仆」
+- 改进：备份管理的玩家名解析改为优先读取游戏目录的 `usernamecache.json`（感谢 Irsi 提出），避免重复维护对照表；界面手动输入玩家名时也可在该对照表中反查 UUID，正版玩家名现可正常匹配
+- 调整：下载 / 版本表格中四个 JAR 的版本号由 `1.6.0` 更新为 `1.6.1`
 
 ### v1.6.0
 - 新增：女仆备份管理——在档案管理器（按 U 唤出）标题栏的「备份」按钮或游戏主菜单入口打开，浏览车万女仆自动产出的备份并导出为 `.maid`。本机（单人世界 / 局域网主机）直接读取本机存档，游戏主菜单合并展示本机所有存档的备份；专业服务器由服务端代读（服务端只读，不写、不删任何数据），OP（权限等级 2）可见全部玩家的备份、非 OP 仅见自己名下；导出文件一律落在客户端 `maid_file/maid_exports/<玩家名>/`，命名规则与普通导出一致
