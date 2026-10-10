@@ -30,6 +30,8 @@ public class MultiLineEditBox extends EditBox {
     private static final int HINT_COLOR = 0xFF7A7264;
     private static final int PAD = 4;
     private static final int SCROLL_W = 2;
+    /** 滚轮每格滚动的显示行数 */
+    private static final int SCROLL_STEP = 2;
 
     private final Font font;
     private final int maxLength;
@@ -288,6 +290,33 @@ public class MultiLineEditBox extends EditBox {
         this.setFocused(true);
         this.cursor = line.start + col;
         ensureCursorVisible();
+        return true;
+    }
+
+    /**
+     * 处理落在本控件范围内的滚轮事件：内容超出可视区时按行滚动，否则不消费。
+     *
+     * <p>滚动不经过光标：只读预览（如导入界面的档案）下字段不可编辑，键盘与光标导航被整体禁用，
+     * 被截断的长文本只能靠滚轮查看，故独立于编辑逻辑单独提供。
+     *
+     * @param mouseX 鼠标 X（逻辑坐标）
+     * @param mouseY 鼠标 Y（逻辑坐标）
+     * @param amount 滚轮垂直量，正值为向上滚（查看更早的内容）
+     * @return 本次滚轮是否已被本控件消费
+     */
+    public boolean handleScroll(double mouseX, double mouseY, double amount) {
+        if (!this.visible
+                || mouseX < getX() || mouseX >= getX() + this.width
+                || mouseY < getY() || mouseY >= getY() + this.height) {
+            return false;
+        }
+        List<DLine> lines = buildDisplayLines();
+        int maxScroll = Math.max(0, lines.size() - visibleLines());
+        if (maxScroll <= 0) {
+            return false;
+        }
+        int step = amount > 0 ? -SCROLL_STEP : SCROLL_STEP;
+        this.scrollLine = Mth.clamp(this.scrollLine + step, 0, maxScroll);
         return true;
     }
 
