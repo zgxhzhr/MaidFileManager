@@ -810,6 +810,10 @@ public final class MaidTransferService {
         maid.setOrderedToSit(false);
         boolean ownerMatched = matchOwner(maid, player, data);
         maid.setPersistenceRequired();
+        // 导入产物标记：写在实体持久化标签上，供整合包脚本（如 KubeJS 实体生成事件）识别
+        // "这只女仆刚由本模组导入产生"。必须在 addFreshEntity 之前写入——实体入世界会立即触发
+        // 实体生成事件，晚写外部脚本就读不到标记。反复导入只会覆盖同一个键，不会累积。
+        Services.PLATFORM.get().markMaidImported(maid);
         if (!level.addFreshEntity(maid)) {
             // 失败原因细分：确定性目标 UUID 在已加载世界中已有女仆实体（最常见为同一文件重复导入
             // 且原女仆/前次副本就在身边）时，给出明确的重复提示；其他原因走通用添加失败文案。

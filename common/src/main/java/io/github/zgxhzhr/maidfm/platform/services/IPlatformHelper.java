@@ -162,6 +162,30 @@ public interface IPlatformHelper {
     void writeMaidProfile(Entity entity, CompoundTag tag);
 
     /**
+     * 在女仆实体上写入「导入产物」标记（{@link io.github.zgxhzhr.maidfm.Constants#IMPORTED_NBT_KEY}）。
+     *
+     * <p>用途：整合包作者在实体生成事件中读取该标记，识别刚由本模组导入的女仆并发放补偿。
+     * 各加载器实现：
+     * <ul>
+     *   <li>Forge / NeoForge：写入 {@code Entity#getPersistentData()}，即实体 NBT 的
+     *       {@code ForgeData} / {@code NeoForgeData} 子标签；这正是 KubeJS 的
+     *       {@code entity.persistentData}，脚本无需额外适配即可读取</li>
+     *   <li>Fabric：写入实体根 NBT（由 Mixin 承载），随实体存档与 .maid 文件迁移</li>
+     * </ul>
+     *
+     * @param entity 女仆实体
+     */
+    void markMaidImported(Entity entity);
+
+    /**
+     * 读取女仆实体上的「导入产物」标记。
+     *
+     * @param entity 女仆实体
+     * @return 该女仆是否由本模组导入产生；未标记或读取失败返回 false
+     */
+    boolean isMaidImported(Entity entity);
+
+    /**
      * 将 ItemStack 序列化为 NBT（档案界面的饰品图标需要跨网络传输）。
      *
      * <p>与 {@link #parseItemStack(RegistryAccess, CompoundTag)} 配对使用；

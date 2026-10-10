@@ -203,4 +203,31 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
             Constants.LOG.warn("[maid_file_manager] NeoForge writeMaidProfile 失败: {}", t.toString());
         }
     }
+
+    /** 导入产物标记键（落在 NeoForgeData 下，即 KubeJS 的 entity.persistentData） */
+    private static final String KEY_IMPORTED = Constants.IMPORTED_NBT_KEY;
+
+    /**
+     * 在女仆实体的持久化标签上写入导入产物标记。
+     * NeoForge 的 {@code getPersistentData()} 会被写入实体 NBT 的 {@code NeoForgeData} 键随实体保存，
+     * 也正是 KubeJS 的 {@code entity.persistentData}，脚本可直接读取。
+     */
+    @Override
+    public void markMaidImported(Entity entity) {
+        try {
+            entity.getPersistentData().putBoolean(KEY_IMPORTED, true);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] NeoForge markMaidImported 失败: {}", t.toString());
+        }
+    }
+
+    @Override
+    public boolean isMaidImported(Entity entity) {
+        try {
+            return entity.getPersistentData().getBoolean(KEY_IMPORTED);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] NeoForge isMaidImported 失败: {}", t.toString());
+            return false;
+        }
+    }
 }
