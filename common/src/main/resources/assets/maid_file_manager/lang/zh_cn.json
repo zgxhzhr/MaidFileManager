@@ -21,7 +21,7 @@
     "gui.maid_file_manager.config.allow_baubles": "导入时允许携带饰品",
     "gui.maid_file_manager.config.allow_advancements": "导入时一并转移女仆相关成就",
     "gui.maid_file_manager.config.allow_effects": "导入时允许恢复药水效果",
-    "gui.maid_file_manager.config.allow_invulnerable": "导入时允许带走女仆无敌状态（替身地藏）",
+    "gui.maid_file_manager.config.allow_invulnerable": "导入时允许携带女仆无敌状态（替身地藏）",
     "gui.maid_file_manager.config.client_section": "客户端设置（本人随时可改）",
     "gui.maid_file_manager.config.allow_server_export": "允许服务端统一导出你的女仆（默认禁止）",
     "gui.maid_file_manager.config.skip_remove_confirm": "当前存档：导出并移除女仆时不再二次确认（默认禁止）",
