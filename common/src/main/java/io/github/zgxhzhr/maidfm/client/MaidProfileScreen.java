@@ -633,14 +633,17 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
 
     private void renderReadonly(GuiGraphics graphics) {
         String faction = view != null && view.ownerName() != null ? view.ownerName() : "-";
-        String model = view != null && view.displayName() != null ? view.displayName() : "-";
+        // 姓名行：设有命名牌（自定义名称）时显示姓名，否则回退显示模型名
+        String modelName = view != null && view.displayName() != null ? view.displayName() : "-";
+        String custom = view != null ? view.customName() : null;
+        String shownName = custom != null && !custom.isBlank() ? custom : modelName;
         graphics.drawString(this.font,
                 Component.translatable("gui.maid_file_manager.profile.faction")
                         .append(Component.literal("：" + faction))
                         .getString(),
                 colX, factionY, TEXT_COLOR, false);
-        String modelLine = tr("gui.maid_file_manager.profile.model") + "：" + model;
-        graphics.drawString(this.font, modelLine, colX + colW - this.font.width(modelLine),
+        String nameLine = tr("gui.maid_file_manager.profile.name") + "：" + shownName;
+        graphics.drawString(this.font, nameLine, colX + colW - this.font.width(nameLine),
                 factionY, TEXT_COLOR, false);
 
         // 基础数值底框

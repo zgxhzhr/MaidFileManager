@@ -84,7 +84,7 @@
     "gui.maid_file_manager.profile.title": "Maid Profile",
     "gui.maid_file_manager.profile.id": "Profile ID",
     "gui.maid_file_manager.profile.faction": "Faction",
-    "gui.maid_file_manager.profile.model": "Model",
+    "gui.maid_file_manager.profile.name": "Name",
     "gui.maid_file_manager.profile.health": "Health",
     "gui.maid_file_manager.profile.attack": "Attack",
     "gui.maid_file_manager.profile.favor": "Favor",
