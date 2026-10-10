@@ -33,12 +33,24 @@ public class Constants {
     // ---------- 女仆档案 ----------
     /** 档案在女仆实体上的自定义 NBT 标签键（带 MODID 前缀，避免与他模冲突） */
     public static final String PROFILE_NBT_KEY = MOD_ID + ":profile";
-    /** 照片目录（相对游戏根目录）：玩家把 1:1 图片放入此处后在档案界面挑选 */
-    public static final String MAID_PHOTOS_DIR = MAID_FILE_ROOT + "/photos";
+    /** 照片候选目录（相对游戏根目录）：玩家把图片放入此处后在档案界面挑选 */
+    public static final String MAID_PHOTO_CANDIDATES_DIR = MAID_FILE_ROOT + "/photos";
+    /**
+     * 档案照片库目录（相对游戏根目录，位于服务端）。
+     *
+     * <p>每位女仆的照片以 {@code <女仆UUID>.png} 独立存盘，<b>不再写入女仆实体 NBT</b>，
+     * 避免实体每次保存都携带体积较大的图片数据。与 {@link #MAID_PHOTO_CANDIDATES_DIR}
+     * （玩家投放的候选图）职责严格分离：本目录由模组自动维护，玩家无需手动干预。
+     */
+    public static final String MAID_PHOTOS_DIR = MAID_FILE_ROOT + "/maid_photos";
     /** 旧版照片目录（曾位于 config 下，迁移用） */
     public static final String LEGACY_PHOTOS_DIR = "config/" + MOD_ID + "/photos";
-    /** 档案照片边长（1:1，实际存盘为 128×128 PNG） */
-    public static final int PROFILE_PHOTO_SIZE = 128;
+    /**
+     * 档案照片最长边上限（等比缩放，不裁剪，存盘为 PNG）。
+     * 显示框为 96 逻辑像素，512 足以覆盖高 GUI 缩放下的清晰度需求，
+     * 同时把字节体积控制在网络包与 {@code .maid} 单文件上限之内。
+     */
+    public static final int PROFILE_PHOTO_MAX_SIDE = 512;
     /**
      * 档案照片「可选原图」文件字节上限（10 MiB）。
      * 玩家在档案界面挑选的照片原图超过此值即拒绝读取，提示换一张更小的图片；
@@ -46,11 +58,12 @@ public class Constants {
      */
     public static final long PROFILE_PHOTO_SOURCE_MAX_BYTES = 10L * 1024 * 1024;
     /**
-     * 档案照片「存盘 PNG」字节上限（96 KiB）。
-     * 缩放后固定为 128×128 RGBA，最坏情况 PNG 亦不超过约 66 KiB，本值留有余量，
-     * 既避免误拒真图，又防止实体 NBT 每次保存无谓膨胀。
+     * 档案照片「存盘 PNG」字节上限（128 KiB）。
+     * 照片存盘与传输（档案视图下发、{@code .maid} 打包）共用本上限：
+     * 编码时若超限会自动降低边长重编码，务必让 {@code .maid} 单文件体积
+     * 仍落在网络线格式的 512 KiB 上限之内。
      */
-    public static final int PROFILE_PHOTO_MAX_BYTES = 96 * 1024;
+    public static final int PROFILE_PHOTO_MAX_BYTES = 128 * 1024;
     /** 档案可编辑文本字段的字符上限（生日/个人资料/偏好/背景故事等） */
     public static final int PROFILE_TEXT_MAX_LEN = 2048;
 
