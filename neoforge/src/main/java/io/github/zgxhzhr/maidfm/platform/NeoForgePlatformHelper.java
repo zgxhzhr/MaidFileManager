@@ -72,6 +72,16 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
         ((ItemStackHandler) maid.getMaidBauble()).setStackInSlot(slot, stack);
     }
 
+    @Override
+    public ItemStack baubleGetStack(EntityMaid maid, int slot) {
+        try {
+            return ((ItemStackHandler) maid.getMaidBauble()).getStackInSlot(slot);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] NeoForge baubleGetStack 失败: {}", t.toString());
+            return ItemStack.EMPTY;
+        }
+    }
+
     /**
      * 1.21 物品以数据组件形式保存，必须经 ItemStack.parse(HolderLookup.Provider, CompoundTag)
      * 用当前世界注册表解析才能保留附魔/耐久/全部组件；RegistryAccess 即 HolderLookup.Provider。
@@ -113,6 +123,24 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
     }
 
     /**
+     * 1.21 物品序列化必须经 ItemStack.save(HolderLookup.Provider) 才能完整保留数据组件
+     * （附魔/耐久/自定义组件）；RegistryAccess 即 HolderLookup.Provider。空物品返回空标签。
+     */
+    @Override
+    public CompoundTag serializeItemStack(RegistryAccess registries, ItemStack stack) {
+        try {
+            if (stack == null || stack.isEmpty()) {
+                return new CompoundTag();
+            }
+            net.minecraft.nbt.Tag saved = stack.save(registries);
+            return saved instanceof CompoundTag ct ? ct : new CompoundTag();
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] NeoForge serializeItemStack 失败: {}", t.toString());
+            return new CompoundTag();
+        }
+    }
+
+    /**
      * NeoForge 持久化数据键名：用 modId 命名空间前缀避免与其他模组冲突。
      * entity.getPersistentData() 返回的 CompoundTag 会被写入实体 NBT 的 "ForgeData" 键下，
      * 随实体一起保存到存档，服务器重启后数据仍在（与 Forge 行为一致）。
@@ -143,6 +171,36 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
             }
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] NeoForge storeEffects 失败: {}", t.toString());
+        }
+    }
+
+    /** 女仆档案持久化键名（同样用 modId 命名空间前缀隔离） */
+    private static final String KEY_PROFILE = "maid_file_manager:profile";
+
+    @Override
+    public CompoundTag readMaidProfile(Entity entity) {
+        try {
+            CompoundTag persistentData = entity.getPersistentData();
+            if (persistentData.contains(KEY_PROFILE, CompoundTag.TAG_COMPOUND)) {
+                return persistentData.getCompound(KEY_PROFILE);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] NeoForge readMaidProfile 失败: {}", t.toString());
+        }
+        return null;
+    }
+
+    @Override
+    public void writeMaidProfile(Entity entity, CompoundTag tag) {
+        try {
+            CompoundTag persistentData = entity.getPersistentData();
+            if (tag == null) {
+                persistentData.remove(KEY_PROFILE);
+            } else {
+                persistentData.put(KEY_PROFILE, tag);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] NeoForge writeMaidProfile 失败: {}", t.toString());
         }
     }
 }

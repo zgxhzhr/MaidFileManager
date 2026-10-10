@@ -1,9 +1,13 @@
 package io.github.zgxhzhr.maidfm.network;
 
+import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.ImportResult;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
+import io.github.zgxhzhr.maidfm.data.MaidProfile;
+import io.github.zgxhzhr.maidfm.data.MaidProfileView;
+import io.github.zgxhzhr.maidfm.service.MaidProfileService;
 import io.github.zgxhzhr.maidfm.service.MaidTransferService;
 import io.netty.buffer.ByteBuf;
 import net.minecraft.core.RegistryAccess;
@@ -188,8 +192,7 @@ public final class MaidFilePayloads {
                         // 饰品导入策略由服务端配置决定，客户端不上传，杜绝非 OP 绕过
                         ImportResult result = MaidTransferService.importMaidFromData(sp, data, keepBaubles,
                                 MaidConfigManager.isBaubleStripAttributes(),
-                                MaidTransferService.sanitizeBaubleBlockedList(
-                                        MaidConfigManager.getBaubleBlockedList()));
+                                MaidConfigManager.getBaubleBlockedList());
                         feedback(sp, MaidTransferService.withBaubleDetails(result));
                     } catch (Throwable t) {
                         handleError(sp, "IMPORT_FILE", t);
@@ -324,10 +327,9 @@ public final class MaidFilePayloads {
                         FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
                         List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(fbb);
                         // 饰品导入策略以服务端配置为准（客户端不上传，杜绝非 OP 绕过）；
-                        // 服务端收窄校验：禁用列表只保留车万本体/法术附属两命名空间内的 ID（收窄不放开）
+                        // 禁用清单直接取服务端配置（含整合包 bauble_import.json 的中文名条目），不再做命名空间收窄
                         boolean stripAttributes = MaidConfigManager.isBaubleStripAttributes();
-                        List<String> blocked = MaidTransferService.sanitizeBaubleBlockedList(
-                                MaidConfigManager.getBaubleBlockedList());
+                        List<String> blocked = MaidConfigManager.getBaubleBlockedList();
                         // 成败统计只认 ImportResult.State 枚举，严禁反解中文展示文案
                         List<ImportResult> results = new ArrayList<>(list.size());
                         for (MaidFileData d : list) {
@@ -557,8 +559,12 @@ public final class MaidFilePayloads {
                             feedback(sp, Component.translatable("maid_file_manager.config.fail.no_permission"));
                             return;
                         }
-                        MaidConfigManager.setServerBaubleBlockedList(
-                                MaidTransferService.sanitizeBaubleBlockedList(ids));
+                        // 整合包配置（bauble_import.json）存在时黑/白名单被托管，游戏内（含 OP）不可改
+                        if (!MaidConfigManager.setServerBaubleBlockedList(
+                                MaidTransferService.sanitizeBaubleBlockedList(ids))) {
+                            feedback(sp, Component.translatable("maid_file_manager.config.fail.bauble_managed"));
+                            return;
+                        }
                         broadcastServerConfig(sp.server);
                     } catch (Throwable t) {
                         handleError(sp, "SET_SERVER_BAUBLE_BLOCKED_LIST", t);
@@ -568,12 +574,205 @@ public final class MaidFilePayloads {
         }
     }
 
+    /** C2S：请求某女仆档案（服务端校验归属后回发 {@link MaidProfilePayload}） */
+    public record RequestMaidProfilePayload(int entityId) implements CustomPacketPayload {
+        public static final Type<RequestMaidProfilePayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "request_maid_profile"));
+        public static final StreamCodec<ByteBuf, RequestMaidProfilePayload> STREAM_CODEC =
+                StreamCodec.composite(
+                        ByteBufCodecs.VAR_INT, RequestMaidProfilePayload::entityId,
+                        RequestMaidProfilePayload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                if (ctx.player() instanceof ServerPlayer sp) {
+                    try {
+                        EntityMaid maid = resolveOwnedMaid(sp, entityId);
+                        MaidProfileView view = maid == null ? null : MaidProfileService.buildView(sp, maid);
+                        if (view == null) {
+                            // 女仆不存在或非请求者所有：直接拒绝，不泄露任何档案内容
+                            feedback(sp, Component.translatable("gui.maid_file_manager.profile.no_permission"));
+                            return;
+                        }
+                        PacketDistributor.sendToPlayer(sp, new MaidProfilePayload(view));
+                    } catch (Throwable t) {
+                        handleError(sp, "REQUEST_MAID_PROFILE", t);
+                    }
+                }
+            });
+        }
+    }
+
+    /** C2S：保存女仆档案（服务端校验归属后写入实体并回执） */
+    public record SaveMaidProfilePayload(int entityId, MaidProfile profile) implements CustomPacketPayload {
+        public static final Type<SaveMaidProfilePayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "save_maid_profile"));
+        public static final StreamCodec<ByteBuf, SaveMaidProfilePayload> STREAM_CODEC =
+                StreamCodec.ofMember(
+                        (p, buf) -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            fbb.writeInt(p.entityId);
+                            MaidFilePackets.writeMaidProfile(fbb, p.profile);
+                        },
+                        buf -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            int entityId = fbb.readInt();
+                            return new SaveMaidProfilePayload(entityId, MaidFilePackets.readMaidProfile(fbb));
+                        });
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                if (ctx.player() instanceof ServerPlayer sp) {
+                    try {
+                        if (profile == null) {
+                            feedback(sp, Component.translatable("gui.maid_file_manager.profile.save_failed"));
+                            return;
+                        }
+                        EntityMaid maid = resolveOwnedMaid(sp, entityId);
+                        if (maid == null) {
+                            feedback(sp, Component.translatable("gui.maid_file_manager.profile.no_permission"));
+                            return;
+                        }
+                        // 档案界面保存：背景故事同步写回 TLM AI 人设，保证双向一致
+                        MaidProfileService.writeToMaid(maid, profile, true);
+                        feedback(sp, Component.translatable("gui.maid_file_manager.profile.save_ok"));
+                    } catch (Throwable t) {
+                        handleError(sp, "SAVE_MAID_PROFILE", t);
+                    }
+                }
+            });
+        }
+    }
+
+    /** C2S：备份管理——请求服务端返回可浏览的自动备份列表（服务端按权限过滤后回发 BackupListPayload） */
+    public record RequestBackupListPayload() implements CustomPacketPayload {
+        public static final Type<RequestBackupListPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "request_backup_list"));
+        public static final StreamCodec<ByteBuf, RequestBackupListPayload> STREAM_CODEC =
+                StreamCodec.unit(new RequestBackupListPayload());
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                if (ctx.player() instanceof ServerPlayer sp) {
+                    try {
+                        // 权限：OP 可见全部玩家备份，非 OP 仅可见自己名下的备份
+                        List<IMaidFileNetwork.BackupOwner> owners =
+                                io.github.zgxhzhr.maidfm.service.MaidBackupService.scan(
+                                        sp.server, sp.getUUID(), sp.hasPermissions(2));
+                        // 发送前按接收端解码维度预检：主人组数、总字节均需在上限内，
+                        // 超限只回执提示，绝不发坏包把客户端断连
+                        if (owners.size() > MaidFilePackets.MAX_BACKUP_OWNERS) {
+                            feedback(sp, Component.literal(String.format(java.util.Locale.ROOT,
+                                    "[女仆档案管理] 备份主人数量超过上限（%d > %d），无法列出，请清理备份后重试",
+                                    owners.size(), MaidFilePackets.MAX_BACKUP_OWNERS)));
+                            return;
+                        }
+                        FriendlyByteBuf probe = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+                        try {
+                            MaidFilePackets.writeBackupOwners(probe, owners);
+                            int size = probe.readableBytes();
+                            if (size > MaidFilePackets.MAX_PACKET_BYTES) {
+                                Constants.LOG.warn("[maid_file_manager] 备份列表 {} 字节超过单包上限 {}，拒绝发送",
+                                        size, MaidFilePackets.MAX_PACKET_BYTES);
+                                feedback(sp, Component.literal(String.format(java.util.Locale.ROOT,
+                                        "[女仆档案管理] 备份列表数据过大（%d KB > %d KB），请清理备份后重试",
+                                        size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024)));
+                                return;
+                            }
+                        } finally {
+                            probe.release();
+                        }
+                        PacketDistributor.sendToPlayer(sp, new BackupListPayload(owners));
+                    } catch (Throwable t) {
+                        handleError(sp, "REQUEST_BACKUP_LIST", t);
+                    }
+                }
+            });
+        }
+    }
+
+    /** C2S：备份管理——请求服务端导出某条备份（服务端校验权限后回传 BackupExportResultPayload） */
+    public record RequestBackupExportPayload(String ownerUuid, String maidUuid, String fileName)
+            implements CustomPacketPayload {
+        public static final Type<RequestBackupExportPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "request_backup_export"));
+        public static final StreamCodec<ByteBuf, RequestBackupExportPayload> STREAM_CODEC =
+                StreamCodec.ofMember(
+                        (p, buf) -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            fbb.writeUtf(p.ownerUuid == null ? "" : p.ownerUuid, MaidFilePackets.MAX_TEXT_LEN);
+                            fbb.writeUtf(p.maidUuid == null ? "" : p.maidUuid, MaidFilePackets.MAX_TEXT_LEN);
+                            fbb.writeUtf(p.fileName == null ? "" : p.fileName, MaidFilePackets.MAX_TEXT_LEN);
+                        },
+                        buf -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            return new RequestBackupExportPayload(
+                                    fbb.readUtf(MaidFilePackets.MAX_TEXT_LEN),
+                                    fbb.readUtf(MaidFilePackets.MAX_TEXT_LEN),
+                                    fbb.readUtf(MaidFilePackets.MAX_TEXT_LEN));
+                        });
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                if (ctx.player() instanceof ServerPlayer sp) {
+                    try {
+                        MaidFileData data = io.github.zgxhzhr.maidfm.service.MaidBackupService.readForExport(
+                                sp.server, sp.getUUID(), sp.hasPermissions(2), ownerUuid, maidUuid, fileName);
+                        if (data == null) {
+                            feedback(sp, Component.translatable("gui.maid_file_manager.backup.export_failed"));
+                            return;
+                        }
+                        byte[] blob = MaidFilePackets.serializeMaidFileData(data);
+                        if (blob == null || blob.length > MaidFilePackets.MAX_SINGLE_FILE_BYTES) {
+                            Constants.LOG.warn("[maid_file_manager] 备份导出体积异常，拒绝发送: owner={}, maid={}, size={}",
+                                    ownerUuid, maidUuid, blob == null ? -1 : blob.length);
+                            feedback(sp, Component.literal("[女仆档案管理] 该备份体积过大，无法通过服务器导出"));
+                            return;
+                        }
+                        PacketDistributor.sendToPlayer(sp, new BackupExportResultPayload(blob));
+                    } catch (Throwable t) {
+                        handleError(sp, "REQUEST_BACKUP_EXPORT", t);
+                    }
+                }
+            });
+        }
+    }
+
+    /** 解析请求者名下的女仆：实体不存在或不属于请求者时返回 null */
+    private static EntityMaid resolveOwnedMaid(ServerPlayer sp, int entityId) {
+        if (!(sp.level().getEntity(entityId) instanceof EntityMaid maid)) {
+            return null;
+        }
+        return maid.isOwnedBy(sp) ? maid : null;
+    }
+
     // ================ S2C 包（服务端 -> 客户端） ================
 
     /** 服务端配置同步（登录时单播 + 修改后全服同步）；客户端收到后更新缓存并回发同意状态 */
     public record ServerConfigSyncPayload(boolean allowImport, boolean allowBaubles, boolean allowAdvancements,
                                           boolean allowEffects, boolean allowInvulnerable,
-                                          boolean baubleStripAttributes, List<String> baubleBlockedList)
+                                          boolean baubleStripAttributes, List<String> baubleBlockedList,
+                                          List<String> baubleWhitelist, boolean baubleManaged)
             implements CustomPacketPayload {
         public static final Type<ServerConfigSyncPayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "server_config_sync"));
@@ -588,6 +787,9 @@ public final class MaidFilePayloads {
                             fbb.writeBoolean(p.allowInvulnerable);
                             fbb.writeBoolean(p.baubleStripAttributes);
                             writeStringList(fbb, p.baubleBlockedList);
+                            // 整合包饰品配置：白名单 + 是否托管（客户端据此只读展示黑/白名单）
+                            writeStringList(fbb, p.baubleWhitelist);
+                            fbb.writeBoolean(p.baubleManaged);
                         },
                         buf -> {
                             FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
@@ -598,8 +800,11 @@ public final class MaidFilePayloads {
                             boolean allowInvulnerable = fbb.readBoolean();
                             boolean baubleStripAttributes = fbb.readBoolean();
                             List<String> baubleBlockedList = readStringList(fbb);
+                            List<String> baubleWhitelist = readStringList(fbb);
+                            boolean baubleManaged = fbb.readBoolean();
                             return new ServerConfigSyncPayload(allowImport, allowBaubles, allowAdvancements,
-                                    allowEffects, allowInvulnerable, baubleStripAttributes, baubleBlockedList);
+                                    allowEffects, allowInvulnerable, baubleStripAttributes, baubleBlockedList,
+                                    baubleWhitelist, baubleManaged);
                         }
                 );
 
@@ -611,7 +816,7 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> MaidConfigManager.handleServerConfigSync(
                     allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable,
-                    baubleStripAttributes, baubleBlockedList));
+                    baubleStripAttributes, baubleBlockedList, baubleWhitelist, baubleManaged));
         }
     }
 
@@ -625,7 +830,9 @@ public final class MaidFilePayloads {
                     MaidConfigManager.isEffectsAllowed(),
                     MaidConfigManager.isInvulnerableAllowed(),
                     MaidConfigManager.isBaubleStripAttributes(),
-                    MaidConfigManager.getBaubleBlockedList()));
+                    MaidConfigManager.getBaubleBlockedList(),
+                    MaidConfigManager.getBaubleWhitelist(),
+                    MaidConfigManager.isBaubleConfigManaged()));
         }
     }
 
@@ -824,6 +1031,87 @@ public final class MaidFilePayloads {
                 if (handler != null) {
                     FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
                     handler.onServerExportListReceived(MaidFilePackets.readPlayerMaidGroups(fbb));
+                }
+            });
+        }
+    }
+
+    /** S2C：返回女仆档案视图（档案正文 + 只读展示数据 + 饰品图标） */
+    public record MaidProfilePayload(MaidProfileView view) implements CustomPacketPayload {
+        public static final Type<MaidProfilePayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "maid_profile"));
+        public static final StreamCodec<ByteBuf, MaidProfilePayload> STREAM_CODEC =
+                StreamCodec.ofMember(
+                        (p, buf) -> MaidFilePackets.writeMaidProfileView(new FriendlyByteBuf(buf), p.view),
+                        buf -> new MaidProfilePayload(MaidFilePackets.readMaidProfileView(new FriendlyByteBuf(buf))));
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                var handler = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (handler != null && view != null) {
+                    handler.onMaidProfileReceived(view);
+                }
+            });
+        }
+    }
+
+    /** S2C：备份管理——返回按权限过滤后的自动备份列表 */
+    public record BackupListPayload(List<IMaidFileNetwork.BackupOwner> owners) implements CustomPacketPayload {
+        public static final Type<BackupListPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "backup_list"));
+        public static final StreamCodec<ByteBuf, BackupListPayload> STREAM_CODEC =
+                StreamCodec.ofMember(
+                        (p, buf) -> MaidFilePackets.writeBackupOwners(new FriendlyByteBuf(buf), p.owners),
+                        buf -> new BackupListPayload(MaidFilePackets.readBackupOwners(new FriendlyByteBuf(buf))));
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                var handler = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (handler != null) handler.onBackupListReceived(owners);
+            });
+        }
+    }
+
+    /** S2C：备份管理——回传单条备份数据（客户端据此写入本地 maid_file/maid_exports/） */
+    public record BackupExportResultPayload(byte[] encoded) implements CustomPacketPayload {
+        public static final Type<BackupExportResultPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "backup_export_result"));
+        public static final StreamCodec<ByteBuf, BackupExportResultPayload> STREAM_CODEC =
+                StreamCodec.ofMember(
+                        (p, buf) -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            fbb.writeVarInt(p.encoded.length);
+                            fbb.writeBytes(p.encoded);
+                        },
+                        buf -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            int len = MaidFilePackets.checkSize(fbb.readVarInt(),
+                                    MaidFilePackets.MAX_SINGLE_FILE_BYTES, "backup_export_result");
+                            byte[] arr = new byte[len];
+                            fbb.readBytes(arr);
+                            return new BackupExportResultPayload(arr);
+                        });
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                var handler = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (handler != null) {
+                    handler.onBackupExportReceived(MaidFilePackets.deserializeMaidFileData(encoded));
                 }
             });
         }

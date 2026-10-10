@@ -1,6 +1,7 @@
 package io.github.zgxhzhr.maidfm.network;
 
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
+import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.List;
@@ -48,5 +49,26 @@ public class NeoForgeNetwork implements IMaidFileNetwork {
     @Override
     public void sendServerExportBatch(List<IMaidFileNetwork.PlayerExportRequest> groups) {
         PacketDistributor.sendToServer(new MaidFilePayloads.ServerExportBatchPayload(groups));
+    }
+
+    @Override
+    public void sendRequestMaidProfile(int entityId) {
+        PacketDistributor.sendToServer(new MaidFilePayloads.RequestMaidProfilePayload(entityId));
+    }
+
+    @Override
+    public void sendSaveMaidProfile(int entityId, MaidProfile profile) {
+        PacketDistributor.sendToServer(new MaidFilePayloads.SaveMaidProfilePayload(entityId, profile));
+    }
+
+    @Override
+    public void sendRequestBackupList() {
+        PacketDistributor.sendToServer(new MaidFilePayloads.RequestBackupListPayload());
+    }
+
+    @Override
+    public void sendRequestBackupExport(String ownerUuid, String maidUuid, String fileName) {
+        PacketDistributor.sendToServer(
+                new MaidFilePayloads.RequestBackupExportPayload(ownerUuid, maidUuid, fileName));
     }
 }

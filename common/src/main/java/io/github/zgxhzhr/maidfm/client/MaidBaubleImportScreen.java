@@ -98,6 +98,10 @@ public class MaidBaubleImportScreen extends Screen {
     private final Set<String> blockedIds = new LinkedHashSet<>();
     /** 当前玩家是否为 OP：服务端配置仅 OP 可改，非 OP 只读（开关/勾选禁用） */
     private boolean canEdit;
+    /** 黑/白名单是否由整合包配置（bauble_import.json）托管：托管时即使 OP 也只读展示 */
+    private boolean managed;
+    /** 是否允许勾选禁用列表：需 OP 且未被整合包托管 */
+    private boolean canEditList;
     /** 两命名空间全部饰品（id → 物品栈，供图标/名称显示） */
     private final List<ItemEntry> entries = new ArrayList<>();
     /** 当前搜索结果（entries 按搜索关键字过滤后的子集，列表只渲染它） */
@@ -115,6 +119,7 @@ public class MaidBaubleImportScreen extends Screen {
         // 读取登录时同步下来的服务端配置缓存（非 OP 只读展示）
         this.stripAttributes = MaidConfigManager.cachedBaubleStripAttributes();
         this.blockedIds.addAll(MaidConfigManager.cachedBaubleBlockedList());
+        this.managed = MaidConfigManager.cachedBaubleConfigManaged();
     }
 
     @Override
@@ -124,6 +129,8 @@ public class MaidBaubleImportScreen extends Screen {
         // 服务端配置仅 OP 可改：局域网联机=宿主默认 OP
         this.canEdit = this.minecraft != null && this.minecraft.player != null
                 && this.minecraft.player.hasPermissions(2);
+        // 黑/白名单托管（整合包 bauble_import.json 存在）时，列表只读：OP 也不能在游戏内增删
+        this.canEditList = this.canEdit && !this.managed;
         // 枚举两命名空间里真正可佩戴的饰品：判定以 TLM 的饰品注册表 BaubleManager 为准。
         // 饰品物品本体（如 ItemDamageableBauble）并未实现 IMaidBauble——饰品行为对象
         // 是由 BaubleManager 以「物品 → 饰品行为」映射登记的（与游戏内饰品槽位校验同源），
@@ -160,11 +167,26 @@ public class MaidBaubleImportScreen extends Screen {
         // 非 OP 时在丢弃属性开关下方补一行"无权限"提示
         int hintRowH = canEdit ? 0 : 12;
 
+        // 整合包托管提示（1 行）+ 白名单摘要（白名单非空时 1 行，只读展示）
+        List<String> managedHints = new ArrayList<>();
+        if (managed) {
+            managedHints.add(Component.translatable(
+                    "gui.maid_file_manager.config.bauble_import_managed_hint").getString());
+            List<String> wl = MaidConfigManager.cachedBaubleWhitelist();
+            if (!wl.isEmpty()) {
+                managedHints.add(Component.translatable(
+                        "gui.maid_file_manager.config.bauble_import_whitelist_summary",
+                        wl.size(), String.join("、", wl)).getString());
+            }
+        }
+        int managedRowH = managedHints.size() * 11;
+
         // 先按内容结构算出面板高度，再垂直居中
         panelH = 8 + 16 + 4     // 标题
                 + stripRowH     // 丢弃属性区块：说明文字行 + 开关
                 + hintRowH      // 无权限提示行（仅非 OP）
                 + 14            // 禁用列表区块标题
+                + managedRowH   // 整合包托管提示 / 白名单摘要（仅托管时）
                 + SEARCH_H + 6  // 搜索框行
                 + LIST_H        // 列表区
                 + 12 + DONE_H + 12;   // 完成按钮 + 底部边距
@@ -191,6 +213,11 @@ public class MaidBaubleImportScreen extends Screen {
         rowLabels.add(new RowLabel(Component.translatable("gui.maid_file_manager.config.bauble_import_blocked_list"),
                 labelX, y, HEADER_COLOR));
         y += 14;
+        // 整合包托管提示 / 白名单摘要（只读）：贴在区块标题下方，明确"游戏内不可改"的原因与当前白名单
+        for (String hint : managedHints) {
+            rowLabels.add(new RowLabel(Component.literal(hint), labelX, y, SUBTEXT_COLOR));
+            y += 11;
+        }
         // 搜索框：按饰品名称/ID 实时过滤列表
         searchField = new EditBox(this.font, labelX, y, PANEL_W - 40 - SCROLL_W - 4, SEARCH_H,
                 Component.translatable("gui.maid_file_manager.config.bauble_import_search"));
@@ -218,7 +245,10 @@ public class MaidBaubleImportScreen extends Screen {
             IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
             if (net != null) {
                 net.sendSetServerConfig(MaidConfigManager.KEY_BAUBLE_STRIP_ATTRIBUTES, stripAttributes);
-                net.sendSetServerBaubleBlockedList(new ArrayList<>(blockedIds));
+                // 黑/白名单被整合包托管时游戏内不可改：不提交列表，避免服务端拒绝并弹失败提示
+                if (!managed) {
+                    net.sendSetServerBaubleBlockedList(new ArrayList<>(blockedIds));
+                }
             } else {
                 Constants.LOG.warn("[maid_file_manager] 网络实现缺失，饰品导入设置未提交服务端");
             }
@@ -321,7 +351,7 @@ public class MaidBaubleImportScreen extends Screen {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // 非 OP 只读：列表只展示，不允许勾选
-        if (button == 0 && canEdit && isInsideList(mouseX, mouseY)) {
+        if (button == 0 && canEditList && isInsideList(mouseX, mouseY)) {
             int index = scrollOffset + (int) ((mouseY - listY) / ROW_H);
             if (index >= 0 && index < filtered.size()) {
                 toggleBlocked(index);

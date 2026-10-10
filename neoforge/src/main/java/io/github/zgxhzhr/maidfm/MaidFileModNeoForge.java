@@ -80,6 +80,18 @@ public class MaidFileModNeoForge {
         registrar.playToServer(MaidFilePayloads.ServerExportBatchPayload.TYPE,
                 MaidFilePayloads.ServerExportBatchPayload.STREAM_CODEC,
                 MaidFilePayloads.ServerExportBatchPayload::handle);
+        registrar.playToServer(MaidFilePayloads.RequestMaidProfilePayload.TYPE,
+                MaidFilePayloads.RequestMaidProfilePayload.STREAM_CODEC,
+                MaidFilePayloads.RequestMaidProfilePayload::handle);
+        registrar.playToServer(MaidFilePayloads.SaveMaidProfilePayload.TYPE,
+                MaidFilePayloads.SaveMaidProfilePayload.STREAM_CODEC,
+                MaidFilePayloads.SaveMaidProfilePayload::handle);
+        registrar.playToServer(MaidFilePayloads.RequestBackupListPayload.TYPE,
+                MaidFilePayloads.RequestBackupListPayload.STREAM_CODEC,
+                MaidFilePayloads.RequestBackupListPayload::handle);
+        registrar.playToServer(MaidFilePayloads.RequestBackupExportPayload.TYPE,
+                MaidFilePayloads.RequestBackupExportPayload.STREAM_CODEC,
+                MaidFilePayloads.RequestBackupExportPayload::handle);
 
         registrar.playToClient(MaidFilePayloads.MaidListPayload.TYPE,
                 MaidFilePayloads.MaidListPayload.STREAM_CODEC,
@@ -99,8 +111,17 @@ public class MaidFileModNeoForge {
         registrar.playToClient(MaidFilePayloads.ServerExportListPayload.TYPE,
                 MaidFilePayloads.ServerExportListPayload.STREAM_CODEC,
                 MaidFilePayloads.ServerExportListPayload::handle);
+        registrar.playToClient(MaidFilePayloads.MaidProfilePayload.TYPE,
+                MaidFilePayloads.MaidProfilePayload.STREAM_CODEC,
+                MaidFilePayloads.MaidProfilePayload::handle);
+        registrar.playToClient(MaidFilePayloads.BackupListPayload.TYPE,
+                MaidFilePayloads.BackupListPayload.STREAM_CODEC,
+                MaidFilePayloads.BackupListPayload::handle);
+        registrar.playToClient(MaidFilePayloads.BackupExportResultPayload.TYPE,
+                MaidFilePayloads.BackupExportResultPayload.STREAM_CODEC,
+                MaidFilePayloads.BackupExportResultPayload::handle);
 
-        Constants.LOG.info("[maid_file_manager] CustomPayload handlers registered: 9 C2S + 6 S2C");
+        Constants.LOG.info("[maid_file_manager] CustomPayload handlers registered: 13 C2S + 9 S2C");
     }
 
     private void onRegisterCommands(RegisterCommandsEvent event) {

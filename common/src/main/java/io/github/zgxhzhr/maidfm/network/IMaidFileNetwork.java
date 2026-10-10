@@ -2,6 +2,8 @@ package io.github.zgxhzhr.maidfm.network;
 
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
+import io.github.zgxhzhr.maidfm.data.MaidProfile;
+import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
@@ -44,12 +46,51 @@ public interface IMaidFileNetwork {
     /** OP 请求服务端代为导出：按玩家分组的女仆 entityId，导出文件保存到服务端磁盘 maid_exports/<玩家名>/ */
     void sendServerExportBatch(List<PlayerExportRequest> groups);
 
+    /** 请求某女仆的档案：服务端读取后回发 {@link ClientHandler#onMaidProfileReceived} */
+    void sendRequestMaidProfile(int entityId);
+
+    /** 保存女仆档案：服务端校验归属后写入实体并回执（复用 ID_FEEDBACK） */
+    void sendSaveMaidProfile(int entityId, MaidProfile profile);
+
+    /**
+     * 备份管理：请求服务端返回可浏览的车万女仆自动备份列表。
+     *
+     * <p>服务端读取存档下的 {@code data/maid_backups} 并按权限过滤：OP 可见全部玩家，
+     * 非 OP 仅可见自己（主人 UUID 与请求者一致）的备份。
+     */
+    void sendRequestBackupList();
+
+    /**
+     * 备份管理：请求服务端导出某条备份。
+     *
+     * <p>服务端校验权限（OP 或该备份主人）后读取 .dat 并回传为 {@link MaidFileData}，
+     * 由客户端写入本地 {@code maid_file/maid_exports/}。服务端不写任何文件、不移除任何数据。
+     */
+    void sendRequestBackupExport(String ownerUuid, String maidUuid, String fileName);
+
     /** 统一导出浏览：某玩家为中心的女仆列表（服务端收集） */
     record PlayerMaidGroup(String playerName, boolean consented, List<MaidInfo> maids) {
     }
 
     /** 统一导出提交：某玩家名下要导出的女仆 entityId 集合 */
     record PlayerExportRequest(String playerName, List<Integer> entityIds) {
+    }
+
+    /** 备份管理：某主人名下的女仆备份节点 */
+    record BackupMaid(String maidUuid, String maidName, List<String> files) {
+    }
+
+    /** 备份管理：某主人（按主人 UUID 分组）的全部女仆备份 */
+    record BackupOwner(String ownerUuid, List<BackupMaid> maids) {
+    }
+
+    /**
+     * 备份管理：某个存档下的全部主人备份。
+     *
+     * <p>仅用于客户端本机浏览：游戏主菜单没有「当前存档」上下文，需要先按存档分组再逐层展开；
+     * 专业服务端只持有其当前存档的数据，不使用本结构（界面会包成单个「当前服务器」节点）。
+     */
+    record BackupWorld(String worldName, List<BackupOwner> owners) {
     }
 
     /**
@@ -92,6 +133,23 @@ public interface IMaidFileNetwork {
 
         /** OP 统一导出：收到服务端收集的所有在线玩家女仆列表 */
         void onServerExportListReceived(List<PlayerMaidGroup> groups);
+
+        /** 收到女仆档案视图（请求档案后由服务端返回） */
+        void onMaidProfileReceived(MaidProfileView view);
+
+        /**
+         * 备份管理：收到服务端返回的可浏览备份列表（已按权限过滤）。
+         * 默认空实现，避免与备份界面无关的活跃界面被迫实现。
+         */
+        default void onBackupListReceived(List<BackupOwner> owners) {
+        }
+
+        /**
+         * 备份管理：收到服务端回传的单条备份数据（{@code null} 表示权限不足或读取失败）。
+         * 默认空实现。
+         */
+        default void onBackupExportReceived(MaidFileData data) {
+        }
     }
 
     /**

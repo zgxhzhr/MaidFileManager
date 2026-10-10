@@ -3,6 +3,8 @@ package io.github.zgxhzhr.maidfm.network;
 import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
+import io.github.zgxhzhr.maidfm.data.MaidProfile;
+import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
@@ -65,6 +67,22 @@ public final class MaidFilePackets {
     /** S2C：服务端配置同步（body: boolean allowImport + boolean allowBaubles + boolean allowAdvancements） */
     public static final ResourceLocation ID_SERVER_CONFIG_SYNC = id("server_config_sync");
 
+    /** C2S：请求某女仆的档案（body: int entityId） */
+    public static final ResourceLocation ID_REQUEST_MAID_PROFILE = id("request_maid_profile");
+    /** S2C：返回女仆档案视图（档案正文 + 只读展示数据 + 饰品图标） */
+    public static final ResourceLocation ID_MAID_PROFILE = id("maid_profile");
+    /** C2S：保存女仆档案（body: int entityId + MaidProfile NBT） */
+    public static final ResourceLocation ID_SAVE_MAID_PROFILE = id("save_maid_profile");
+
+    /** C2S：备份管理——请求服务端返回可浏览的自动备份列表（服务端按权限过滤） */
+    public static final ResourceLocation ID_REQUEST_BACKUP_LIST = id("request_backup_list");
+    /** S2C：备份管理——返回按权限过滤后的备份列表 */
+    public static final ResourceLocation ID_BACKUP_LIST = id("backup_list");
+    /** C2S：备份管理——请求服务端导出某条备份（body: utf 主人 UUID + utf 女仆 UUID + utf 文件名） */
+    public static final ResourceLocation ID_REQUEST_BACKUP_EXPORT = id("request_backup_export");
+    /** S2C：备份管理——回传单条备份数据（客户端据此写入本地 maid_file/maid_exports/） */
+    public static final ResourceLocation ID_BACKUP_EXPORT_RESULT = id("backup_export_result");
+
     // ---------- 收包长度上限（防止恶意/损坏包打爆内存或触发底层数组上限断连） ----------
     /** 单个女仆信息/实体 ID 列表的最大条目数 */
     public static final int MAX_MAID_LIST_ENTRIES = 256;
@@ -74,6 +92,12 @@ public final class MaidFilePackets {
     public static final int MAX_IMPORT_BATCH_FILES = 64;
     /** 统一导出分组（玩家组数）上限 */
     public static final int MAX_PLAYER_GROUPS = 128;
+    /** 备份列表：主人（玩家）组数上限 */
+    public static final int MAX_BACKUP_OWNERS = 128;
+    /** 备份列表：单个主人名下的女仆数上限 */
+    public static final int MAX_BACKUP_MAIDS = 256;
+    /** 备份列表：单个女仆的备份文件数上限 */
+    public static final int MAX_BACKUP_FILES = 64;
     /** 单个 .maid 文件经网络传输的最大字节数（512 KiB，指 GZIP 压缩后的线上体积） */
     public static final int MAX_SINGLE_FILE_BYTES = 512 * 1024;
     /**
@@ -387,6 +411,56 @@ public final class MaidFilePackets {
         return list;
     }
 
+    // ---------- 备份管理列表（主人 → 女仆 → 备份文件） ----------
+
+    /** 写备份列表：主人组数、每组主人 UUID 与其女仆节点、每个节点的备份文件名 */
+    public static void writeBackupOwners(FriendlyByteBuf buf, List<IMaidFileNetwork.BackupOwner> owners) {
+        List<IMaidFileNetwork.BackupOwner> safe = owners == null ? List.of() : owners;
+        buf.writeVarInt(Math.min(safe.size(), MAX_BACKUP_OWNERS));
+        int ownerCount = Math.min(safe.size(), MAX_BACKUP_OWNERS);
+        for (int i = 0; i < ownerCount; i++) {
+            IMaidFileNetwork.BackupOwner owner = safe.get(i);
+            buf.writeUtf(owner.ownerUuid() == null ? "" : owner.ownerUuid(), MAX_TEXT_LEN);
+            List<IMaidFileNetwork.BackupMaid> maids = owner.maids() == null ? List.of() : owner.maids();
+            int maidCount = Math.min(maids.size(), MAX_BACKUP_MAIDS);
+            buf.writeVarInt(maidCount);
+            for (int j = 0; j < maidCount; j++) {
+                IMaidFileNetwork.BackupMaid maid = maids.get(j);
+                buf.writeUtf(maid.maidUuid() == null ? "" : maid.maidUuid(), MAX_TEXT_LEN);
+                buf.writeUtf(maid.maidName() == null ? "" : maid.maidName(), MAX_TEXT_LEN);
+                List<String> files = maid.files() == null ? List.of() : maid.files();
+                int fileCount = Math.min(files.size(), MAX_BACKUP_FILES);
+                buf.writeVarInt(fileCount);
+                for (int k = 0; k < fileCount; k++) {
+                    buf.writeUtf(files.get(k) == null ? "" : files.get(k), MAX_TEXT_LEN);
+                }
+            }
+        }
+    }
+
+    /** 读备份列表；各层级数量超限一律拒绝（读端自律，坏包走异常断连/回执） */
+    public static List<IMaidFileNetwork.BackupOwner> readBackupOwners(FriendlyByteBuf buf) {
+        int ownerCount = checkSize(buf.readVarInt(), MAX_BACKUP_OWNERS, "backupOwners");
+        List<IMaidFileNetwork.BackupOwner> owners = new ArrayList<>(ownerCount);
+        for (int i = 0; i < ownerCount; i++) {
+            String ownerUuid = buf.readUtf(MAX_TEXT_LEN);
+            int maidCount = checkSize(buf.readVarInt(), MAX_BACKUP_MAIDS, "backupMaids");
+            List<IMaidFileNetwork.BackupMaid> maids = new ArrayList<>(maidCount);
+            for (int j = 0; j < maidCount; j++) {
+                String maidUuid = buf.readUtf(MAX_TEXT_LEN);
+                String maidName = buf.readUtf(MAX_TEXT_LEN);
+                int fileCount = checkSize(buf.readVarInt(), MAX_BACKUP_FILES, "backupFiles");
+                List<String> files = new ArrayList<>(fileCount);
+                for (int k = 0; k < fileCount; k++) {
+                    files.add(buf.readUtf(MAX_TEXT_LEN));
+                }
+                maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, maidName, files));
+            }
+            owners.add(new IMaidFileNetwork.BackupOwner(ownerUuid, maids));
+        }
+        return owners;
+    }
+
     // ---------- 饰品导入设置（跨版本属性保留 / 禁用携带列表） ----------
 
     /** 写字符串列表（数量上限 256，单串上限 256 字符，防畸形包 OOM） */
@@ -406,5 +480,87 @@ public final class MaidFilePackets {
             out.add(buf.readUtf(MAX_TEXT_LEN));
         }
         return out;
+    }
+
+    // ---------- 女仆档案 ----------
+
+    /** 随档案视图发送的饰品图标件数上限 */
+    public static final int MAX_BAUBLE_ICONS = 64;
+
+    /** 写可空字符串（1 字节存在标志 + 字符串） */
+    private static void writeNullableUtf(FriendlyByteBuf buf, String s) {
+        buf.writeBoolean(s != null);
+        if (s != null) {
+            buf.writeUtf(s, MAX_TEXT_LEN);
+        }
+    }
+
+    /** 读可空字符串 */
+    private static String readNullableUtf(FriendlyByteBuf buf) {
+        return buf.readBoolean() ? buf.readUtf(MAX_TEXT_LEN) : null;
+    }
+
+    /** 写档案（可空）：存在标志 + NBT */
+    public static void writeMaidProfile(FriendlyByteBuf buf, MaidProfile profile) {
+        buf.writeBoolean(profile != null);
+        if (profile != null) {
+            buf.writeNbt(profile.writeToNbt());
+        }
+    }
+
+    /** 读档案（可空） */
+    public static MaidProfile readMaidProfile(FriendlyByteBuf buf) {
+        if (!buf.readBoolean()) {
+            return null;
+        }
+        return MaidProfile.readFromNbt(buf.readNbt());
+    }
+
+    /** 写档案视图（S2C） */
+    public static void writeMaidProfileView(FriendlyByteBuf buf, MaidProfileView v) {
+        buf.writeInt(v.entityId());
+        writeNullableUtf(buf, v.maidUuid());
+        writeNullableUtf(buf, v.ownerName());
+        buf.writeUtf(v.modelId() == null ? "" : v.modelId(), MAX_TEXT_LEN);
+        buf.writeUtf(v.displayName() == null ? "" : v.displayName(), MAX_TEXT_LEN);
+        writeNullableUtf(buf, v.customName());
+        buf.writeFloat(v.health());
+        buf.writeFloat(v.maxHealth());
+        buf.writeFloat(v.attackDamage());
+        buf.writeVarInt(v.favorability());
+        buf.writeBoolean(v.struckByLightning());
+        writeMaidProfile(buf, v.profile());
+        List<CompoundTag> baubles = v.baubleItems() == null ? List.of() : v.baubleItems();
+        int count = Math.min(baubles.size(), MAX_BAUBLE_ICONS);
+        buf.writeVarInt(count);
+        for (int i = 0; i < count; i++) {
+            buf.writeNbt(baubles.get(i));
+        }
+    }
+
+    /** 读档案视图（S2C） */
+    public static MaidProfileView readMaidProfileView(FriendlyByteBuf buf) {
+        int entityId = buf.readInt();
+        String maidUuid = readNullableUtf(buf);
+        String ownerName = readNullableUtf(buf);
+        String modelId = buf.readUtf(MAX_TEXT_LEN);
+        String displayName = buf.readUtf(MAX_TEXT_LEN);
+        String customName = readNullableUtf(buf);
+        float health = buf.readFloat();
+        float maxHealth = buf.readFloat();
+        float attackDamage = buf.readFloat();
+        int favorability = buf.readVarInt();
+        boolean struckByLightning = buf.readBoolean();
+        MaidProfile profile = readMaidProfile(buf);
+        int count = checkSize(buf.readVarInt(), MAX_BAUBLE_ICONS, "baubleIcons");
+        List<CompoundTag> baubles = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            CompoundTag t = buf.readNbt();
+            if (t != null) {
+                baubles.add(t);
+            }
+        }
+        return new MaidProfileView(entityId, maidUuid, ownerName, modelId, displayName, customName,
+                health, maxHealth, attackDamage, favorability, struckByLightning, profile, baubles);
     }
 }

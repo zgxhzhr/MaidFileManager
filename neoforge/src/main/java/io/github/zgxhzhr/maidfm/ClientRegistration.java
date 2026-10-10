@@ -1,14 +1,20 @@
 package io.github.zgxhzhr.maidfm;
 
+import io.github.zgxhzhr.maidfm.client.MaidBackupBrowserScreen;
 import io.github.zgxhzhr.maidfm.client.MaidFileKeyMappings;
 import io.github.zgxhzhr.maidfm.client.MaidFileManagerScreen;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.ScreenEvent;
 
 @EventBusSubscriber(modid = Constants.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
 public class ClientRegistration {
@@ -20,6 +26,28 @@ public class ClientRegistration {
         if (MaidFileKeyMappings.OPEN_MANAGER.consumeClick()) {
             openGui();
         }
+    }
+
+    /**
+     * 在游戏主菜单（标题界面）左下角注入「女仆档案管理」入口小按钮。
+     *
+     * <p>该入口只放在原版主菜单，与游戏内管理界面分离：用于浏览各存档中车万女仆的
+     * 自动备份并导出为符合本模组规范的 .maid 文件，因此不依赖进入世界。
+     */
+    @SubscribeEvent
+    public static void onScreenInit(ScreenEvent.Init.Post event) {
+        if (!(event.getScreen() instanceof TitleScreen)) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        Button button = Button.builder(
+                        Component.translatable("maid_file_manager.gui.button.profile_browser"),
+                        b -> mc.setScreen(new MaidBackupBrowserScreen(mc.screen)))
+                .bounds(6, 6, 56, 20)
+                .tooltip(Tooltip.create(
+                        Component.translatable("maid_file_manager.gui.button.profile_browser.tooltip")))
+                .build();
+        event.addListener(button);
     }
 
     public static void openGui() {
