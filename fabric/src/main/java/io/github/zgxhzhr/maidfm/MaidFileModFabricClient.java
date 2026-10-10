@@ -1,10 +1,12 @@
 package io.github.zgxhzhr.maidfm;
 
+import io.github.zgxhzhr.maidfm.client.MaidBackupBrowserScreen;
 import io.github.zgxhzhr.maidfm.client.MaidFileManagerScreen;
 import io.github.zgxhzhr.maidfm.client.MaidFileKeyMappings;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
+import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import io.github.zgxhzhr.maidfm.network.FabricNetwork;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
@@ -13,6 +15,11 @@ import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.Screens;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -109,9 +116,49 @@ public class MaidFileModFabricClient implements ClientModInitializer {
             boolean allowInvulnerable = body.readBoolean();
             boolean baubleStripAttributes = body.readBoolean();
             List<String> baubleBlockedList = MaidFilePackets.readStringList(body);
+            List<String> baubleWhitelist = MaidFilePackets.readStringList(body);
+            boolean baubleManaged = body.readBoolean();
             context.client().execute(() -> MaidConfigManager.handleServerConfigSync(
                     allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable,
-                    baubleStripAttributes, baubleBlockedList));
+                    baubleStripAttributes, baubleBlockedList, baubleWhitelist, baubleManaged));
+        });
+
+        // 女仆档案视图：服务端校验归属后返回，交由当前活跃界面展示
+        ClientPlayNetworking.registerGlobalReceiver(MaidPayload.typeOf(MaidFilePackets.ID_MAID_PROFILE), (payload, context) -> {
+            MaidProfileView view = MaidFilePackets.readMaidProfileView(payload.body());
+            context.client().execute(() -> {
+                IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (h != null) {
+                    h.onMaidProfileReceived(view);
+                }
+            });
+        });
+
+        // 备份管理：收到服务端按权限过滤后的备份列表（OP 见全部玩家，非 OP 仅自己）
+        ClientPlayNetworking.registerGlobalReceiver(MaidPayload.typeOf(MaidFilePackets.ID_BACKUP_LIST), (payload, context) -> {
+            List<IMaidFileNetwork.BackupOwner> owners = MaidFilePackets.readBackupOwners(payload.body());
+            context.client().execute(() -> {
+                IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (h != null) {
+                    h.onBackupListReceived(owners);
+                }
+            });
+        });
+
+        // 备份管理：收到服务端回传的单条备份数据（线上字节经 checkSize 预检后反序列化为 MaidFileData）
+        ClientPlayNetworking.registerGlobalReceiver(MaidPayload.typeOf(MaidFilePackets.ID_BACKUP_EXPORT_RESULT), (payload, context) -> {
+            FriendlyByteBuf body = payload.body();
+            int len = MaidFilePackets.checkSize(body.readVarInt(),
+                    MaidFilePackets.MAX_SINGLE_FILE_BYTES, "backup_export_result");
+            byte[] bytes = new byte[len];
+            body.readBytes(bytes);
+            MaidFileData data = MaidFilePackets.deserializeMaidFileData(bytes);
+            context.client().execute(() -> {
+                IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (h != null) {
+                    h.onBackupExportReceived(data);
+                }
+            });
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
@@ -121,6 +168,22 @@ public class MaidFileModFabricClient implements ClientModInitializer {
             while (MaidFileKeyMappings.OPEN_MANAGER.consumeClick()) {
                 mc.setScreen(new MaidFileManagerScreen());
             }
+        });
+
+        // 在原版主菜单（标题界面）左上角注入「女仆档案管理」入口小按钮：与游戏内管理界面分离，
+        // 用于浏览各存档中车万女仆的自动备份并导出为符合本模组规范的 .maid 文件，无需进入世界
+        ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+            if (!(screen instanceof TitleScreen)) {
+                return;
+            }
+            Button button = Button.builder(
+                            Component.translatable("maid_file_manager.gui.button.profile_browser"),
+                            b -> client.setScreen(new MaidBackupBrowserScreen(client.screen)))
+                    .bounds(6, 6, 56, 20)
+                    .tooltip(Tooltip.create(
+                            Component.translatable("maid_file_manager.gui.button.profile_browser.tooltip")))
+                    .build();
+            Screens.getButtons(screen).add(button);
         });
 
         Constants.LOG.info("Maid File Manager client initialized");

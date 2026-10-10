@@ -8,14 +8,57 @@ public class Constants {
     public static final String MOD_NAME = "Maid File Manager";
     public static final Logger LOG = LoggerFactory.getLogger(MOD_NAME);
 
-    /** 导出目录名（玩家导出女仆后，.maid 文件落在这里，方便打包带走） */
-    public static final String MAID_EXPORTS_DIR = "maid_exports";
-    /** 导入目录名（玩家把外部的 .maid 文件放到这里后，可在游戏内导入） */
-    public static final String MAID_IMPORTS_DIR = "maid_imports";
+    /**
+     * 本模组玩家可见文件的根目录（位于游戏/版本根目录下）。
+     * 导出、导入、档案照片三个子目录统一收纳于此，方便玩家一次性打包带走。
+     */
+    public static final String MAID_FILE_ROOT = "maid_file";
+    /** 导出目录（相对游戏根目录）：玩家导出女仆后，.maid 文件落在这里 */
+    public static final String MAID_EXPORTS_DIR = MAID_FILE_ROOT + "/maid_exports";
+    /** 导入目录（相对游戏根目录）：玩家把外部的 .maid 文件放到这里后，可在游戏内导入 */
+    public static final String MAID_IMPORTS_DIR = MAID_FILE_ROOT + "/maid_imports";
+
+    // ---------- 旧版目录（迁移用） ----------
+    /** 旧版导出目录（曾直接位于游戏根目录下） */
+    public static final String LEGACY_EXPORTS_DIR = "maid_exports";
+    /** 旧版导入目录（曾直接位于游戏根目录下） */
+    public static final String LEGACY_IMPORTS_DIR = "maid_imports";
     /** .maid 文件扩展名 */
     public static final String MAID_FILE_EXT = ".maid";
-    /** 当前 .maid 文件格式版本，跨版本兼容时可用于迁移 */
-    public static final int MAID_FILE_FORMAT_VERSION = 6;
+    /** 当前 .maid 文件格式版本，跨版本兼容时可用于迁移（v7 起新增顶层 profile 档案字段） */
+    public static final int MAID_FILE_FORMAT_VERSION = 7;
     /** 导入时女仆生成在玩家前方的距离（格） */
     public static final double IMPORT_SPAWN_DISTANCE = 2.5;
+
+    // ---------- 女仆档案 ----------
+    /** 档案在女仆实体上的自定义 NBT 标签键（带 MODID 前缀，避免与他模冲突） */
+    public static final String PROFILE_NBT_KEY = MOD_ID + ":profile";
+    /** 照片目录（相对游戏根目录）：玩家把 1:1 图片放入此处后在档案界面挑选 */
+    public static final String MAID_PHOTOS_DIR = MAID_FILE_ROOT + "/photos";
+    /** 旧版照片目录（曾位于 config 下，迁移用） */
+    public static final String LEGACY_PHOTOS_DIR = "config/" + MOD_ID + "/photos";
+    /** 档案照片边长（1:1，实际存盘为 128×128 PNG） */
+    public static final int PROFILE_PHOTO_SIZE = 128;
+    /**
+     * 档案照片「可选原图」文件字节上限（10 MiB）。
+     * 玩家在档案界面挑选的照片原图超过此值即拒绝读取，提示换一张更小的图片；
+     * 与本值无关的存盘体积见 {@link #PROFILE_PHOTO_MAX_BYTES}。
+     */
+    public static final long PROFILE_PHOTO_SOURCE_MAX_BYTES = 10L * 1024 * 1024;
+    /**
+     * 档案照片「存盘 PNG」字节上限（96 KiB）。
+     * 缩放后固定为 128×128 RGBA，最坏情况 PNG 亦不超过约 66 KiB，本值留有余量，
+     * 既避免误拒真图，又防止实体 NBT 每次保存无谓膨胀。
+     */
+    public static final int PROFILE_PHOTO_MAX_BYTES = 96 * 1024;
+    /** 档案可编辑文本字段的字符上限（生日/个人资料/偏好/背景故事等） */
+    public static final int PROFILE_TEXT_MAX_LEN = 2048;
+
+    // ---------- TLM 备份管理器 ----------
+    /** TLM 自动备份目录名（位于存档 data/ 之下） */
+    public static final String MAID_BACKUPS_DIR = "maid_backups";
+    /** 玩家名解析缓存文件名（相对游戏根目录 config/maid_file_manager 下） */
+    public static final String NAME_CACHE_FILE = "name_cache.json";
+    /** 玩家名解析最小请求间隔（毫秒）：Mojang 接口限速约 1 次/分钟 */
+    public static final long NAME_LOOKUP_MIN_INTERVAL_MS = 60_000L;
 }

@@ -1,6 +1,6 @@
 # .maid 文件格式规范
 
-**规范版本**：对应格式版本 6（MaidFileManager 1.4.2）
+**规范版本**：对应格式版本 7（MaidFileManager 1.6.0）
 **文档性质**：格式权威定义。本文档描述的所有读取行为均以 MaidFileManager 实现为准；产出方与读取方均应遵循本文档的必选/可选约定。
 
 ---
@@ -33,7 +33,7 @@
 
 | 字段 | NBT 类型 | 必选性 | 含义 |
 |---|---|---|---|
-| `format_version` | `Int` | 必选 | 格式自身的版本号，与 Minecraft 数据版本无关；当前为 `6` |
+| `format_version` | `Int` | 必选 | 格式自身的版本号，与 Minecraft 数据版本无关；当前为 `7` |
 | `exported_at` | `Long` | 必选 | 产出时间，Unix 时间戳（毫秒） |
 | `source_mc_version` | `String` | 必选 | 产出时的 Minecraft 版本字符串，如 `1.21.1` |
 | `source_tlm_version` | `String` | 必选（允许空串） | 产出时的 TLM 模组版本字符串 |
@@ -50,12 +50,13 @@
 | `advancements` | `Compound` | 可选 | TLM 成就数据，格式版本 3 起；结构见第 4 节 |
 | `effects` | `Compound` | 可选 | 药水效果数据，格式版本 4 起；结构见第 5 节 |
 | `extras` | `Compound` | 可选 | 附属模组扩展数据，格式版本 5 起；结构见第 6 节 |
+| `profile` | `Compound` | 可选 | 女仆档案快照（照片 / 职业 / 生日 / 个人资料 / 偏好 / 背景故事），格式版本 7 起；结构见第 12 节 |
 
 ### 2.1 结构示例
 
 ```text
 {
-  format_version: 6,
+  format_version: 7,
   exported_at: 1780000000000L,
   source_mc_version: "1.21.1",
   source_tlm_version: "1.5.3",
@@ -71,7 +72,8 @@
   custom_name: "灵梦",
   advancements: { /* 见第 4 节 */ },
   effects: { /* 见第 5 节 */ },
-  extras: { /* 见第 6 节 */ }
+  extras: { /* 见第 6 节 */ },
+  profile: { /* 女仆档案快照，见第 12 节 */ }
 }
 ```
 
@@ -272,7 +274,8 @@ SPI 的隔离保证：
 | 3 | 新增 `advancements` 成就字段 |
 | 4 | 新增 `effects` 药水效果字段；早期临时键 `spell_maid` 已废弃，读取时忽略 |
 | 5 | 新增 `extras` 扩展字段与 SPI 机制 |
-| 6（当前） | 实体根 NBT 不再携带 `UUID`/`UUIDLeast`/`UUIDMost`（迁移时统一删除）；源女仆 UUID 以顶层 `source_maid_uuid` 记录；`source_health_base`/`source_attack_base` 曾短暂存在后废弃，读取时忽略 |
+| 6 | 实体根 NBT 不再携带 `UUID`/`UUIDLeast`/`UUIDMost`（迁移时统一删除）；源女仆 UUID 以顶层 `source_maid_uuid` 记录；`source_health_base`/`source_attack_base` 曾短暂存在后废弃，读取时忽略 |
+| 7（当前） | 新增顶层 `profile` 女仆档案快照字段（照片 / 职业 / 生日 / 个人资料 / 偏好 / 背景故事）；`story_snapshot` 仅为背景故事的冗余快照，权威内容仍是女仆实体的 `MaidAIChat.CustomSetting` |
 
 ### 7.2 数据版本（`data_version`）编码
 
@@ -323,7 +326,7 @@ maid_file_manager|import-v1|<源女仆 UUID>|<导入玩家 UUID>
 | `mod_id` 缺失 | 视为 `maid_file_manager` |
 | `data_version` 缺失 | 先按 `source_mc_version` 推导；若根标签存在大写 `DataVersion` 整数键，则读取该键 |
 | `model_id` 缺失 | 从 `data` 实体 NBT 回退读取（`model_id` 优先，其次 `ModelId`），仅用于展示 |
-| 任一可选字段（`owner_uuid`、`owner_name`、`advancements`、`effects`、`extras` 等）缺失 | 视为空，不报错 |
+| 任一可选字段（`owner_uuid`、`owner_name`、`advancements`、`effects`、`extras`、`profile` 等）缺失 | 视为空，不报错 |
 | UUID 字符串格式非法 | 该字段视为缺失，继续尝试下一解析来源 |
 | `effects` 缺失但实体 NBT 含 `ActiveEffects` 列表 | 将该列表作为原始效果提取（仅同版本直读可靠，无标准化跨版本路径） |
 | 已废弃键（`spell_maid`、`source_health_base`、`source_attack_base`）存在 | 直接忽略 |
@@ -352,10 +355,13 @@ MaidFileManager 导出的文件名规则：
 
 | 目录 | 用途 |
 |---|---|
-| `maid_exports/` | 导出文件写入目录 |
-| `maid_imports/` | 导入文件来源目录：玩家把 `.maid` 文件放入此处后由游戏内界面读取 |
+| `maid_file/maid_exports/` | 导出文件写入目录 |
+| `maid_file/maid_imports/` | 导入文件来源目录：玩家把 `.maid` 文件放入此处后由游戏内界面读取 |
+| `maid_file/photos/` | 女仆档案头像图片目录（不属 `.maid` 格式，仅供档案界面挑选后打包进档案） |
 
-导出与导入目录严格分离。本地联机中导出文件写入客户端游戏目录；服务器统一导出按玩家名分子目录保存于服务器端，并对玩家名做目录穿越防护。
+导出与导入目录严格分离，三者统一收纳在游戏根目录下的 `maid_file/` 内。旧版本散落在根目录的 `maid_exports/`、`maid_imports/` 与 `config/maid_file_manager/photos/`，会在启动时**一次性自动搬运并入** `maid_file/` 下：目标不存在时整目录改名移动，已存在时逐项合并、同名文件保留新目录版本，迁移结束后清理已搬空的旧目录（幂等，无旧目录则跳过）。
+
+本地联机中导出文件写入客户端游戏目录；服务器统一导出按玩家名分子目录保存于服务器端，并对玩家名做目录穿越防护。
 
 ---
 
@@ -367,3 +373,43 @@ MaidFileManager 导出的文件名规则：
 4. **服务端权限闸门**：客户端导入、饰品保留、成就转移、药水恢复均由服务端配置控制，客户端只能发起请求；
 5. **原子写入**：导出先写临时文件再同目录移动替换，防止崩溃产生半截文件；
 6. **解压配额**：读取文件（含本地文件）时施加显式 NBT 解压大小配额。
+
+---
+
+## 11. 由车万女仆自动备份导出为 .maid
+
+除直接导出存活女仆外，MaidFileManager 亦可读取 TLM 自动产出的备份，并按本规范组装为 `.maid` 文件。TLM 的自动备份位于存档根目录下的 `data/maid_backups/<主人 UUID>/<女仆 UUID>/*.dat`（同目录的 `index.dat` 记录女仆名）；其单个备份文件的存储内容与本规范 `data` 字段同构（顶层即女仆实体 NBT）。因此备份只存在于持有存档的一端。
+
+### 11.1 读取路径
+
+| 场景 | 数据来源 | 说明 |
+|---|---|---|
+| 本机（单人世界 / 局域网主机 / 游戏主菜单） | 客户端直接读取本机存档 `saves/<存档>/data/maid_backups` | 游戏主菜单没有当前存档上下文，会合并展示本机所有存档的备份 |
+| 专业服务器 | 服务端代读 | 备份位于服务器磁盘，客户端无法直读；客户端发起请求，服务端读取自身存档后回传，客户端再组装并写入本地文件。服务端只读，不写、不删任何数据 |
+
+### 11.2 权限模型（专业服务器）
+
+- **OP（权限等级 2）**：可见并导出全部玩家的备份；
+- **非 OP**：仅可见 / 导出主人 UUID 与请求者一致（即自己名下）的备份。
+
+### 11.3 导出产物
+
+无论数据来自本机还是专业服务器，导出的 `.maid` 文件一律落在**客户端**的 `maid_file/maid_exports/<玩家名>/` 目录，文件名规则与普通导出一致（见第 9.1 节）。浏览列表按玩家分组、玩家下再按女仆分组，最内层为各时间点的备份文件；玩家名解析与离线玩家名匹配沿用既有机制。
+
+---
+
+## 12. `profile`：女仆档案快照
+
+格式版本 7 起，`.maid` 顶层新增可选的 `profile` 复合标签，承载与游戏内「女仆档案」界面一致的档案快照。字段如下：
+
+| 子字段 | NBT 类型 | 必选性 | 含义 |
+|---|---|---|---|
+| `profile_version` | `Int` | 必选 | 档案结构版本，当前为 `1` |
+| `photo` | `ByteArray` | 可选 | 1:1 裁切并缩放至 128×128 的 PNG 字节；超过上限时读取端丢弃 |
+| `occupation` | `String` | 可选 | 职业；空表示默认「女仆」 |
+| `birthday` | `String` | 可选 | 生日 |
+| `personal_note` | `String` | 可选 | 其他个人资料 |
+| `preferences` | `String` | 可选 | 偏好与特长 |
+| `story_snapshot` | `String` | 可选 | 背景故事的冗余快照；权威内容仍是女仆实体的 `MaidAIChat.CustomSetting`，本字段仅供无实体场景（如导入前预览）展示 |
+
+全部子字段均可空：旧文件缺 `profile` 或缺少某些子键时，读取端一律按默认值处理。档案同时保存在女仆实体的自定义标签 `maid_file_manager:profile` 内，导出时落到顶层 `profile`，导入时随实体一并恢复。

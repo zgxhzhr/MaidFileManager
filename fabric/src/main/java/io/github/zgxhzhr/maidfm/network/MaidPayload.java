@@ -67,11 +67,19 @@ public final class MaidPayload implements CustomPacketPayload {
                 MaidFilePackets.ID_EXPORT_BATCH_RESULT,
                 MaidFilePackets.ID_IMPORT_FILE,
                 MaidFilePackets.ID_SET_SERVER_CONFIG,
+                MaidFilePackets.ID_SET_SERVER_BAUBLE_BLOCKED_LIST,
                 MaidFilePackets.ID_CLIENT_CONSENT,
                 MaidFilePackets.ID_REQUEST_SERVER_EXPORT_LIST,
                 MaidFilePackets.ID_SERVER_EXPORT_LIST,
                 MaidFilePackets.ID_SERVER_EXPORT_BATCH,
-                MaidFilePackets.ID_SERVER_CONFIG_SYNC
+                MaidFilePackets.ID_SERVER_CONFIG_SYNC,
+                MaidFilePackets.ID_REQUEST_MAID_PROFILE,
+                MaidFilePackets.ID_MAID_PROFILE,
+                MaidFilePackets.ID_SAVE_MAID_PROFILE,
+                MaidFilePackets.ID_REQUEST_BACKUP_LIST,
+                MaidFilePackets.ID_BACKUP_LIST,
+                MaidFilePackets.ID_REQUEST_BACKUP_EXPORT,
+                MaidFilePackets.ID_BACKUP_EXPORT_RESULT
         );
         for (ResourceLocation id : ids) {
             CustomPacketPayload.Type<MaidPayload> type = typeOf(id);
