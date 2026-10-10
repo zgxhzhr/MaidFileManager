@@ -72,6 +72,8 @@ public class Constants {
     public static final String MAID_BACKUPS_DIR = "maid_backups";
     /** 玩家名解析缓存文件名（相对游戏根目录 config/maid_file_manager 下） */
     public static final String NAME_CACHE_FILE = "name_cache.json";
+    /** 游戏目录下由 Minecraft 本体维护的「UUID → 最后已知用户名」对照表文件名 */
+    public static final String USERNAME_CACHE_FILE = "usernamecache.json";
     /** 玩家名解析最小请求间隔（毫秒）：Mojang 接口限速约 1 次/分钟 */
     public static final long NAME_LOOKUP_MIN_INTERVAL_MS = 60_000L;
 }
