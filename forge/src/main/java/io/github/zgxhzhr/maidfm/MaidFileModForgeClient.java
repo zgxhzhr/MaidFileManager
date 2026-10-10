@@ -1,12 +1,18 @@
 package io.github.zgxhzhr.maidfm;
 
+import io.github.zgxhzhr.maidfm.client.MaidBackupBrowserScreen;
 import io.github.zgxhzhr.maidfm.client.MaidFileKeyMappings;
 import io.github.zgxhzhr.maidfm.client.MaidFileManagerScreen;
 import io.github.zgxhzhr.maidfm.network.ForgeNetwork;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
+import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -42,6 +48,25 @@ public final class MaidFileModForgeClient {
     public static void onClientSetup(FMLClientSetupEvent event) {
         IMaidFileNetwork.Holder.set(new ForgeNetwork());
         MinecraftForge.EVENT_BUS.addListener(MaidFileModForgeClient::onClientTick);
+        MinecraftForge.EVENT_BUS.addListener(MaidFileModForgeClient::onScreenInit);
+    }
+
+    /**
+     * 主菜单界面初始化时注入「女仆档案管理」入口小按钮（左上角），点击打开备份浏览器。
+     * 仅对原版标题界面生效，其余界面一并忽略。
+     */
+    private static void onScreenInit(ScreenEvent.Init.Post event) {
+        if (!(event.getScreen() instanceof TitleScreen)) {
+            return;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        Button button = Button.builder(
+                Component.translatable("maid_file_manager.gui.button.profile_browser"),
+                b -> mc.setScreen(new MaidBackupBrowserScreen(mc.screen)))
+                .bounds(6, 6, 56, 20)
+                .tooltip(Tooltip.create(Component.translatable("maid_file_manager.gui.button.profile_browser.tooltip")))
+                .build();
+        event.addListener(button);
     }
 
     /** 客户端 tick：按下按键且当前无界面时打开女仆档案管理界面 */

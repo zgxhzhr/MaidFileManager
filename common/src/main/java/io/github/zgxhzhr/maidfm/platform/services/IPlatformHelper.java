@@ -75,6 +75,11 @@ public interface IPlatformHelper {
     int baubleGetSlots(EntityMaid maid);
 
     /**
+     * 读取饰品栏指定槽位的物品；槽位越界或读取失败返回空物品栈。
+     */
+    ItemStack baubleGetStack(EntityMaid maid, int slot);
+
+    /**
      * 调整饰品栏容量（setSize 会重建槽位列表，必须在写入物品之前调用一次）。
      */
     void baubleResize(EntityMaid maid, int slots);
@@ -133,4 +138,39 @@ public interface IPlatformHelper {
      * @param effectsTag 效果 NBT（含 active_effects 键）
      */
     void storeEffects(Entity entity, CompoundTag effectsTag);
+
+    /**
+     * 读取女仆实体上持久化的档案 NBT（自定义标签 {@code maid_file_manager:profile}），无则返回 null。
+     *
+     * <p>各加载器实现：
+     * <ul>
+     *   <li>Forge / NeoForge：{@code Entity#getPersistentData()}（随实体自动持久化）</li>
+     *   <li>Fabric：原版无持久化标签 API，由 Mixin 注入 {@code EntityMaid} 的
+     *       {@code addAdditionalSaveData/readAdditionalSaveData} 承载，随实体保存</li>
+     * </ul>
+     *
+     * @param entity 女仆实体
+     * @return 档案 NBT；不存在或读取失败返回 null
+     */
+    CompoundTag readMaidProfile(Entity entity);
+
+    /**
+     * 将档案 NBT 写入女仆实体并随实体持久化。
+     *
+     * @param entity 女仆实体
+     * @param tag    档案 NBT；为 null 时移除已有档案
+     */
+    void writeMaidProfile(Entity entity, CompoundTag tag);
+
+    /**
+     * 将 ItemStack 序列化为 NBT（档案界面的饰品图标需要跨网络传输）。
+     *
+     * <p>与 {@link #parseItemStack(RegistryAccess, CompoundTag)} 配对使用；
+     * 网络两端版本一致，因此本方法仅需覆盖同版本序列化（不走跨版本转换）。
+     *
+     * @param registries 当前世界的注册表访问（1.21 组件序列化需要；1.20.x 实现忽略此参数）
+     * @param stack      要序列化的物品；空物品返回空标签
+     * @return 物品 NBT；序列化失败返回空标签
+     */
+    CompoundTag serializeItemStack(RegistryAccess registries, ItemStack stack);
 }

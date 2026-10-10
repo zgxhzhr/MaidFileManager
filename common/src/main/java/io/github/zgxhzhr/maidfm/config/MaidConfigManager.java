@@ -1,6 +1,10 @@
 package io.github.zgxhzhr.maidfm.config;
 
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import io.github.zgxhzhr.maidfm.Constants;
+import io.github.zgxhzhr.maidfm.data.MaidFileIo;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 
 import java.io.IOException;
@@ -30,6 +34,17 @@ import java.util.concurrent.ConcurrentHashMap;
  *       <li>{@code allow_invulnerable}：导入时是否允许带走女仆无敌状态（默认开启）</li>
  *       <li>{@code bauble_strip_attributes}：导入时丢弃饰品属性，恢复为全新物品（默认 false=保留）</li>
  *       <li>{@code bauble_blocked_list}：禁用携带的饰品 ID 列表，逗号分隔（默认空=不限制）</li>
+ *     </ul>
+ *   </li>
+ *   <li><b>整合包饰品导入配置</b> {@code config/maid_file_manager/bauble_import.json}（JSON，整合包作者专用）：
+ *     <ul>
+ *       <li>该文件<b>存在即接管</b>（{@code managed}）：白/黑名单以文件内容为准，覆盖 properties 的
+ *           {@code bauble_blocked_list}，且游戏内（含 OP）无法再修改这两张清单，实现"整合包作者设置后玩家不易改"；</li>
+ *       <li>结构：{@code {"whitelist": ["物品ID 或 中文名"], "blacklist": ["物品ID 或 中文名"]}}；</li>
+ *       <li>匹配规则：物品注册 ID 或物品中文显示名<b>精确匹配</b>；黑名单优先于白名单；
+ *           白名单非空时只有命中白名单的物品才放行（仍受命名空间白名单约束）；</li>
+ *       <li>文件解析失败时<b>失败关闭</b>：按"拒绝导入全部饰品"处理并打 ERROR 日志，防止管控形同虚设；</li>
+ *       <li>OP 仍可在游戏内修改其它开关（{@code allow_baubles}、{@code bauble_strip_attributes} 等）。</li>
  *     </ul>
  *   </li>
  *   <li>客户端配置 {@code config/maid_file_manager-client.properties}：
@@ -77,6 +92,15 @@ public final class MaidConfigManager {
     private static volatile boolean serverBaubleStripAttributes = false;
     /** 服务端配置内存值：禁用携带的饰品 ID 列表（不可变，默认空） */
     private static volatile List<String> serverBaubleBlockedList = List.of();
+    /** 整合包白名单（来自 bauble_import.json；不可变，默认空） */
+    private static volatile List<String> serverBaubleWhitelist = List.of();
+    /** 整合包配置是否已接管黑/白名单（bauble_import.json 存在即 true；此时游戏内不可修改这两张清单） */
+    private static volatile boolean baubleConfigManaged = false;
+    /**
+     * 是否强制白名单：白名单非空时为 true；配置文件解析失败时亦置 true 并按"拒绝全部饰品"处理
+     * （失败关闭：宁可拒绝也不能让整合包作者的管控被静默绕过）。
+     */
+    private static volatile boolean baubleWhitelistEnforced = false;
     /** 客户端配置内存值 */
     private static volatile boolean clientAllowServerExport = false;
     /** 客户端配置内存值：各存档/服务器是否跳过移除二次确认（key=存档标识，见 client 包存档标识工具） */
@@ -86,6 +110,7 @@ public final class MaidConfigManager {
 
     private static Path serverConfigFile;
     private static Path clientConfigFile;
+    private static Path baubleImportConfigFile;
 
     private MaidConfigManager() {
     }
@@ -94,8 +119,13 @@ public final class MaidConfigManager {
     public static void init(Path gameDir) {
         serverConfigFile = gameDir.resolve("config").resolve("maid_file_manager-server.properties");
         clientConfigFile = gameDir.resolve("config").resolve("maid_file_manager-client.properties");
+        baubleImportConfigFile = gameDir.resolve("config").resolve("maid_file_manager").resolve("bauble_import.json");
+        // 目录结构升级：把旧版本散落的导出/导入/照片目录搬入 maid_file/ 之下（幂等，无旧目录则跳过）
+        MaidFileIo.migrateLegacyDirs(gameDir);
         loadServer();
         loadClient();
+        // 整合包配置最后加载：存在时覆盖 properties 的黑名单并启用白名单（整合包作者优先级最高）
+        loadBaubleImportConfig();
     }
 
     // ==================== 服务端配置（读取） ====================
@@ -169,10 +199,17 @@ public final class MaidConfigManager {
     /**
      * 服务端修改「禁用携带的饰品 ID 列表」（C2S 包处理，调用方已做 OP 权限校验）。
      * <p>仅做去除首尾空白与去重；命名空间收窄由调用方在写入前完成（收窄不放开）。
+     *
+     * @return true=已写入；false=整合包配置已接管（bauble_import.json 存在），游戏内不可修改，调用方须回执拒绝
      */
-    public static synchronized void setServerBaubleBlockedList(List<String> ids) {
+    public static synchronized boolean setServerBaubleBlockedList(List<String> ids) {
+        if (baubleConfigManaged) {
+            Constants.LOG.warn("[女仆档案管理] 拒绝写入禁用饰品列表：黑/白名单已由整合包配置 bauble_import.json 托管");
+            return false;
+        }
         serverBaubleBlockedList = List.copyOf(ids == null ? List.of() : ids);
         saveServer();
+        return true;
     }
 
     // ==================== 客户端配置 ====================
@@ -213,15 +250,43 @@ public final class MaidConfigManager {
         return serverBaubleStripAttributes;
     }
 
-    /** 禁用携带的饰品 ID 列表（不可变，仅限车万本体/万法皆通两命名空间）；服务端读配置、客户端读登录同步缓存 */
+    /** 禁用携带的饰品 ID/中文名列表（不可变）；服务端读配置、客户端读登录同步缓存 */
     public static List<String> getBaubleBlockedList() {
         return serverBaubleBlockedList;
+    }
+
+    /** 整合包白名单（不可变；物品 ID 或中文显示名） */
+    public static List<String> getBaubleWhitelist() {
+        return serverBaubleWhitelist;
+    }
+
+    /** 黑/白名单是否已被整合包配置（bauble_import.json）托管：托管时游戏内不可修改这两张清单 */
+    public static boolean isBaubleConfigManaged() {
+        return baubleConfigManaged;
+    }
+
+    /**
+     * 判定单件饰品是否通过整合包白名单。
+     *
+     * <p>未启用白名单时一律放行；启用时需物品注册 ID 或物品中文显示名精确命中，否则拒绝。
+     * 传入的显示名由调用方通过物品注册表解析得到（导入时条目 ID 可能是跨版本旧键，
+     * 中文名匹配为整合包作者提供更友好的书写方式）。
+     */
+    public static boolean isBaubleWhitelistPass(String id, String displayName) {
+        if (!baubleWhitelistEnforced) {
+            return true;
+        }
+        if (id != null && !id.isEmpty() && serverBaubleWhitelist.contains(id)) {
+            return true;
+        }
+        return displayName != null && !displayName.isEmpty() && serverBaubleWhitelist.contains(displayName);
     }
 
     /** 客户端收到服务端配置同步（S2C 包处理）：更新本地缓存并回发同意状态 */
     public static void handleServerConfigSync(boolean allowImport, boolean allowBaubles, boolean allowAdvancements,
                                               boolean allowEffects, boolean allowInvulnerable,
-                                              boolean baubleStripAttributes, List<String> baubleBlockedList) {
+                                              boolean baubleStripAttributes, List<String> baubleBlockedList,
+                                              List<String> baubleWhitelist, boolean baubleManaged) {
         serverAllowClientImport = allowImport;
         serverAllowBaubles = allowBaubles;
         serverAllowAdvancements = allowAdvancements;
@@ -229,6 +294,9 @@ public final class MaidConfigManager {
         serverAllowInvulnerable = allowInvulnerable;
         serverBaubleStripAttributes = baubleStripAttributes;
         serverBaubleBlockedList = List.copyOf(baubleBlockedList == null ? List.of() : baubleBlockedList);
+        serverBaubleWhitelist = List.copyOf(baubleWhitelist == null ? List.of() : baubleWhitelist);
+        baubleConfigManaged = baubleManaged;
+        baubleWhitelistEnforced = baubleManaged && !serverBaubleWhitelist.isEmpty();
         IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
         if (net != null) {
             net.sendClientConsent(clientAllowServerExport);
@@ -264,9 +332,19 @@ public final class MaidConfigManager {
         return serverBaubleStripAttributes;
     }
 
-    /** 客户端读取服务端同步缓存：禁用携带的饰品 ID 列表（饰品导入设置界面显示用） */
+    /** 客户端读取服务端同步缓存：禁用携带的饰品 ID/中文名列表（饰品导入设置界面显示用） */
     public static List<String> cachedBaubleBlockedList() {
         return serverBaubleBlockedList;
+    }
+
+    /** 客户端读取服务端同步缓存：整合包白名单（饰品导入设置界面显示用） */
+    public static List<String> cachedBaubleWhitelist() {
+        return serverBaubleWhitelist;
+    }
+
+    /** 客户端读取服务端同步缓存：黑/白名单是否由整合包配置托管（托管时界面只读） */
+    public static boolean cachedBaubleConfigManaged() {
+        return baubleConfigManaged;
     }
 
     // ==================== 文件 IO ====================
@@ -315,10 +393,69 @@ public final class MaidConfigManager {
         props.setProperty(KEY_ALLOW_EFFECTS, String.valueOf(serverAllowEffects));
         props.setProperty(KEY_ALLOW_INVULNERABLE, String.valueOf(serverAllowInvulnerable));
         props.setProperty(KEY_BAUBLE_STRIP_ATTRIBUTES, String.valueOf(serverBaubleStripAttributes));
-        if (!serverBaubleBlockedList.isEmpty()) {
+        // 托管时黑名单来自 bauble_import.json，不写入 properties（避免误导与覆盖整合包配置）
+        if (!baubleConfigManaged && !serverBaubleBlockedList.isEmpty()) {
             props.setProperty(KEY_BAUBLE_BLOCKED_LIST, String.join(",", serverBaubleBlockedList));
         }
         store(props, serverConfigFile, "Maid File Manager server config (edited via in-game settings, OP only)");
+    }
+
+    /**
+     * 加载整合包饰品导入配置 {@code config/maid_file_manager/bauble_import.json}。
+     *
+     * <p>文件存在即接管（{@code managed=true}）：以文件内容覆盖 properties 的黑名单，并启用白名单，
+     * 游戏内不再允许修改这两张清单。文件不存在则维持 properties 行为（不托管）。
+     *
+     * <p>解析失败时<b>失败关闭</b>：置为托管且强制白名单（此时白名单为空 → 拒绝导入全部饰品），
+     * 并打 ERROR 日志，绝不放任整合包作者的管控被静默绕过。
+     */
+    private static void loadBaubleImportConfig() {
+        if (baubleImportConfigFile == null || !Files.isRegularFile(baubleImportConfigFile)) {
+            baubleConfigManaged = false;
+            baubleWhitelistEnforced = false;
+            serverBaubleWhitelist = List.of();
+            return;
+        }
+        try (Reader reader = Files.newBufferedReader(baubleImportConfigFile, StandardCharsets.UTF_8)) {
+            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+            List<String> whitelist = readStringArray(root, "whitelist");
+            List<String> blacklist = readStringArray(root, "blacklist");
+            serverBaubleWhitelist = whitelist;
+            serverBaubleBlockedList = blacklist;
+            baubleConfigManaged = true;
+            baubleWhitelistEnforced = !whitelist.isEmpty();
+            Constants.LOG.info("[女仆档案管理] 已加载整合包饰品导入配置（已托管）：白名单 {} 项，黑名单 {} 项",
+                    whitelist.size(), blacklist.size());
+        } catch (Throwable t) {
+            serverBaubleWhitelist = List.of();
+            serverBaubleBlockedList = List.of();
+            baubleConfigManaged = true;
+            baubleWhitelistEnforced = true;
+            Constants.LOG.error("[女仆档案管理] 整合包饰品导入配置解析失败，已按「拒绝导入全部饰品」的失败关闭策略处理，"
+                    + "请检查 {}: {}", baubleImportConfigFile, t.toString());
+        }
+    }
+
+    /** 读取 JSON 数组字段为去重后的字符串列表；字段缺失或类型不符返回空列表 */
+    private static List<String> readStringArray(JsonObject root, String key) {
+        if (root == null || !root.has(key) || !root.get(key).isJsonArray()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (JsonElement element : root.getAsJsonArray(key)) {
+            if (element == null || !element.isJsonPrimitive()) {
+                continue;
+            }
+            String value = element.getAsString();
+            if (value == null) {
+                continue;
+            }
+            value = value.trim();
+            if (!value.isEmpty() && !out.contains(value)) {
+                out.add(value);
+            }
+        }
+        return List.copyOf(out);
     }
 
     private static void saveClient() {

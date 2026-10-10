@@ -3,6 +3,7 @@ package io.github.zgxhzhr.maidfm.network;
 import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.MaidFileModForge;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
+import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
@@ -73,6 +74,35 @@ public final class ForgeNetwork implements IMaidFileNetwork {
         FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
         MaidFilePackets.writePlayerExportRequests(buf, groups);
         sendC2S(MaidFilePackets.ID_SERVER_EXPORT_BATCH, buf);
+    }
+
+    @Override
+    public void sendRequestMaidProfile(int entityId) {
+        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        buf.writeVarInt(entityId);
+        sendC2S(MaidFilePackets.ID_REQUEST_MAID_PROFILE, buf);
+    }
+
+    @Override
+    public void sendSaveMaidProfile(int entityId, MaidProfile profile) {
+        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        buf.writeVarInt(entityId);
+        MaidFilePackets.writeMaidProfile(buf, profile);
+        sendC2S(MaidFilePackets.ID_SAVE_MAID_PROFILE, buf);
+    }
+
+    @Override
+    public void sendRequestBackupList() {
+        sendC2S(MaidFilePackets.ID_REQUEST_BACKUP_LIST, new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer()));
+    }
+
+    @Override
+    public void sendRequestBackupExport(String ownerUuid, String maidUuid, String fileName) {
+        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        buf.writeUtf(ownerUuid == null ? "" : ownerUuid, MaidFilePackets.MAX_TEXT_LEN);
+        buf.writeUtf(maidUuid == null ? "" : maidUuid, MaidFilePackets.MAX_TEXT_LEN);
+        buf.writeUtf(fileName == null ? "" : fileName, MaidFilePackets.MAX_TEXT_LEN);
+        sendC2S(MaidFilePackets.ID_REQUEST_BACKUP_EXPORT, buf);
     }
 
     private static void sendC2S(ResourceLocation id, FriendlyByteBuf data) {

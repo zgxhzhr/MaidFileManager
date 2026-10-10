@@ -24,6 +24,8 @@ public class ForgePlatformHelper implements IPlatformHelper {
     private static Method mGetSlots;
     private static Method mSetSize;
     private static Method mSetStack;
+    // 档案界面读取饰品图标需要按槽位取物品（与 Fabric/Orihime 版同名反射）
+    private static Method mGetStack;
     private static boolean baubleMethodsResolved;
 
     @Override
@@ -69,6 +71,7 @@ public class ForgePlatformHelper implements IPlatformHelper {
             mGetSlots = c.getMethod("getSlots");
             mSetSize = c.getMethod("setSize", int.class);
             mSetStack = c.getMethod("setStackInSlot", int.class, ItemStack.class);
+            mGetStack = c.getMethod("getStackInSlot", int.class);
         } catch (Throwable t) {
             Constants.LOG.error("[maid_file_manager] Forge 饰品 handler 方法解析失败，饰品将无法恢复: {}",
                     t.toString());
@@ -117,6 +120,26 @@ public class ForgePlatformHelper implements IPlatformHelper {
     }
 
     /**
+     * 读取饰品栏指定槽位的物品（档案界面的饰品图标需要）。
+     * 槽位越界/读取失败返回空物品栈，绝不抛出（不影响档案其它字段展示）。
+     * mGetStack 独立判空：即使三个既有方法已解析，getStackInSlot 缺失时也不影响它们。
+     */
+    @Override
+    public ItemStack baubleGetStack(EntityMaid maid, int slot) {
+        try {
+            Object handler = maid.getMaidBauble();
+            if (!ensureBaubleMethods(handler) || mGetStack == null) {
+                return ItemStack.EMPTY;
+            }
+            Object stack = mGetStack.invoke(handler, slot);
+            return stack instanceof ItemStack is ? is : ItemStack.EMPTY;
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] baubleGetStack 失败: {}", t.toString());
+            return ItemStack.EMPTY;
+        }
+    }
+
+    /**
      * 1.20.x 物品 NBT 为 id+Count+tag 结构，ItemStack.of 直接完整还原
      * （附魔/耐久等全部 tag 状态）；registries 参数在 1.20 不需要，仅为与 1.21 接口对齐。
      */
@@ -146,11 +169,31 @@ public class ForgePlatformHelper implements IPlatformHelper {
     }
 
     /**
+     * 1.20.x 物品序列化：直接 {@code stack.save(new CompoundTag())} 写入 id+Count+tag 结构，
+     * 完整保留附魔/耐久/自定义 tag。1.20 无数据组件，registries 参数不使用。空物品返回空标签，
+     * 序列化异常一律捕获并返回空标签（档案界面丢弃该图标，不影响其它字段展示）。
+     */
+    @Override
+    public CompoundTag serializeItemStack(RegistryAccess registries, ItemStack stack) {
+        try {
+            if (stack == null || stack.isEmpty()) {
+                return new CompoundTag();
+            }
+            return stack.save(new CompoundTag());
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Forge serializeItemStack 失败: {}", t.toString());
+            return new CompoundTag();
+        }
+    }
+
+    /**
      * Forge 持久化数据键名：用 modId 命名空间前缀避免与其他模组冲突。
      * ForgeData（entity.getPersistentData() 返回的 CompoundTag）会被写入实体 NBT 的 "ForgeData" 键下，
      * 随实体一起保存到存档，服务器重启后数据仍在。
      */
     private static final String KEY_EFFECTS = "maid_file_manager:stored_effects";
+    /** 女仆档案 NBT 键名（与 NeoForge 版一致），同样落在 ForgeData 下随实体保存 */
+    private static final String KEY_PROFILE = "maid_file_manager:profile";
 
     @Override
     public CompoundTag getStoredEffects(Entity entity) {
@@ -176,6 +219,41 @@ public class ForgePlatformHelper implements IPlatformHelper {
             }
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] Forge storeEffects 失败: {}", t.toString());
+        }
+    }
+
+    /**
+     * 读取女仆实体上持久化的档案 NBT（键 {@code maid_file_manager:profile}）。
+     * Forge 有 PersistentData 机制，档案随 ForgeData 写入实体 NBT 一并存档，服务器重启后仍在；
+     * 无则返回 null。
+     */
+    @Override
+    public CompoundTag readMaidProfile(Entity entity) {
+        try {
+            CompoundTag persistentData = entity.getPersistentData();
+            if (persistentData.contains(KEY_PROFILE, CompoundTag.TAG_COMPOUND)) {
+                return persistentData.getCompound(KEY_PROFILE);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Forge readMaidProfile 失败: {}", t.toString());
+        }
+        return null;
+    }
+
+    /**
+     * 将档案 NBT 写入女仆实体并随实体持久化；{@code tag} 为 null 时移除已有档案。
+     */
+    @Override
+    public void writeMaidProfile(Entity entity, CompoundTag tag) {
+        try {
+            CompoundTag persistentData = entity.getPersistentData();
+            if (tag == null) {
+                persistentData.remove(KEY_PROFILE);
+            } else {
+                persistentData.put(KEY_PROFILE, tag);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Forge writeMaidProfile 失败: {}", t.toString());
         }
     }
 }

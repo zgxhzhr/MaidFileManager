@@ -3,6 +3,7 @@ package io.github.zgxhzhr.maidfm.network;
 import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
+import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -46,9 +47,11 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     boolean allowInvulnerable = packet.data.readBoolean();
                     boolean baubleStripAttributes = packet.data.readBoolean();
                     java.util.List<String> baubleBlockedList = MaidFilePackets.readStringList(packet.data);
+                    java.util.List<String> baubleWhitelist = MaidFilePackets.readStringList(packet.data);
+                    boolean baubleManaged = packet.data.readBoolean();
                     io.github.zgxhzhr.maidfm.config.MaidConfigManager.handleServerConfigSync(
                             allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable,
-                            baubleStripAttributes, baubleBlockedList);
+                            baubleStripAttributes, baubleBlockedList, baubleWhitelist, baubleManaged);
                     return;
                 }
                 IMaidFileNetwork.ClientHandler handler = IMaidFileNetwork.ClientHandlerHolder.get();
@@ -80,6 +83,20 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                 } else if (MaidFilePackets.ID_SERVER_EXPORT_LIST.equals(id)) {
                     List<IMaidFileNetwork.PlayerMaidGroup> groups = MaidFilePackets.readPlayerMaidGroups(data);
                     handler.onServerExportListReceived(groups);
+                } else if (MaidFilePackets.ID_MAID_PROFILE.equals(id)) {
+                    // 服务端校验归属后返回的档案视图，交由当前活跃界面展示
+                    MaidProfileView view = MaidFilePackets.readMaidProfileView(data);
+                    if (view != null) {
+                        handler.onMaidProfileReceived(view);
+                    }
+                } else if (MaidFilePackets.ID_BACKUP_LIST.equals(id)) {
+                    // 备份管理：服务端按权限过滤后返回的可浏览备份列表
+                    List<IMaidFileNetwork.BackupOwner> owners = MaidFilePackets.readBackupOwners(data);
+                    handler.onBackupListReceived(owners);
+                } else if (MaidFilePackets.ID_BACKUP_EXPORT_RESULT.equals(id)) {
+                    // 备份管理：服务端回传的单条备份数据（null=权限不足或读取失败）
+                    MaidFileData backup = MaidFilePackets.readMaidFileData(data);
+                    handler.onBackupExportReceived(backup);
                 } else {
                     Constants.LOG.warn("[maid_file_manager] 未知的 S2C 包: {}", id);
                 }
