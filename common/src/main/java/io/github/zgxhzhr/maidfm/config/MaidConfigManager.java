@@ -31,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *       <li>{@code allow_baubles}：导入时是否允许携带饰品（默认开启）</li>
  *       <li>{@code allow_advancements}：导入时是否一并转移女仆相关成就（默认开启）</li>
  *       <li>{@code allow_effects}：导入时是否恢复药水效果到实体（默认开启）</li>
- *       <li>{@code allow_invulnerable}：导入时是否允许带走女仆无敌状态（默认开启）</li>
+ *       <li>{@code allow_invulnerable}：导入时是否允许携带女仆无敌状态（默认关闭）</li>
  *       <li>{@code bauble_strip_attributes}：导入时丢弃饰品属性，恢复为全新物品（默认 false=保留）</li>
  *       <li>{@code bauble_blocked_list}：禁用携带的饰品 ID 列表，逗号分隔（默认空=不限制）</li>
  *     </ul>
@@ -71,7 +71,7 @@ public final class MaidConfigManager {
     public static final String KEY_ALLOW_ADVANCEMENTS = "allow_advancements";
     /** 服务端配置键：导入时允许恢复药水效果到实体（关闭则效果保留在持久化标签，不恢复到实体） */
     public static final String KEY_ALLOW_EFFECTS = "allow_effects";
-    /** 服务端配置键：导入时带走 TLM 本体无敌状态（替身地藏赋予的 Invulnerable） */
+    /** 服务端配置键：导入时携带 TLM 本体无敌状态（替身地藏赋予的 Invulnerable，默认关闭） */
     public static final String KEY_ALLOW_INVULNERABLE = "allow_invulnerable";
     /** 服务端配置键：导入时丢弃饰品属性（附魔/耐久/无法破坏/属性修饰符等），恢复为全新物品（默认关=保留） */
     public static final String KEY_BAUBLE_STRIP_ATTRIBUTES = "bauble_strip_attributes";
@@ -87,7 +87,7 @@ public final class MaidConfigManager {
     private static volatile boolean serverAllowBaubles = true;
     private static volatile boolean serverAllowAdvancements = true;
     private static volatile boolean serverAllowEffects = true;
-    private static volatile boolean serverAllowInvulnerable = true;
+    private static volatile boolean serverAllowInvulnerable = false;
     /** 服务端配置内存值：导入时丢弃饰品属性（默认关=保留） */
     private static volatile boolean serverBaubleStripAttributes = false;
     /** 服务端配置内存值：OP 在游戏内维护的「禁用携带饰品」清单（不可变，默认空；与整合包黑名单相互独立） */
@@ -396,7 +396,7 @@ public final class MaidConfigManager {
         serverAllowBaubles = parse(props, KEY_ALLOW_BAUBLES, true);
         serverAllowAdvancements = parse(props, KEY_ALLOW_ADVANCEMENTS, true);
         serverAllowEffects = parse(props, KEY_ALLOW_EFFECTS, true);
-        serverAllowInvulnerable = parse(props, KEY_ALLOW_INVULNERABLE, true);
+        serverAllowInvulnerable = parse(props, KEY_ALLOW_INVULNERABLE, false);
         serverBaubleStripAttributes = parse(props, KEY_BAUBLE_STRIP_ATTRIBUTES, false);
         serverBaubleBlockedList = parseIdList(props, KEY_BAUBLE_BLOCKED_LIST);
     }
