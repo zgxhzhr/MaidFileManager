@@ -449,18 +449,20 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
             setFeedback(Component.translatable("gui.maid_file_manager.backup.need_name"), ERROR_COLOR);
             return;
         }
-        UUID offline = PlayerNameResolver.offlineUuid(name);
+        // 先在名字对照表（含 usernamecache.json）里反查 UUID，因此正版玩家也能匹配；
+        // 对照表未命中才回退到离线 UUID 规则
+        UUID matchedUuid = PlayerNameResolver.resolveUuidByName(name);
         boolean matched = false;
         for (WorldNode world : worlds) {
             for (OwnerNode owner : world.owners) {
-                if (owner.uuid.equalsIgnoreCase(offline.toString())) {
+                if (owner.uuid.equalsIgnoreCase(matchedUuid.toString())) {
                     owner.displayName = name;
                     matched = true;
                 }
             }
         }
         if (matched) {
-            PlayerNameResolver.putCached(offline, name);
+            PlayerNameResolver.putCached(matchedUuid, name);
             setFeedback(Component.translatable("gui.maid_file_manager.backup.matched", name), ACCENT);
         } else {
             setFeedback(Component.translatable("gui.maid_file_manager.backup.not_matched", name), ERROR_COLOR);
