@@ -244,5 +244,33 @@ public class FabricPlatformHelper implements IPlatformHelper {
             Constants.LOG.warn("[maid_file_manager] Fabric writeMaidProfile 失败: {}", t.toString());
         }
     }
+
+    /**
+     * 在女仆实体上写入导入产物标记。
+     * Fabric 无原版持久化标签 API，标记由 {@link io.github.zgxhzhr.maidfm.mixin.EntityMaidMixin}
+     * 注入 {@code EntityMaid} 字段承载，并在实体保存时写入根 NBT 键，随实体存档与 .maid 文件迁移。
+     */
+    @Override
+    public void markMaidImported(Entity entity) {
+        try {
+            if (entity instanceof io.github.zgxhzhr.maidfm.mixin.MaidImportedHolder holder) {
+                holder.maidfm$setImported(true);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Fabric markMaidImported 失败: {}", t.toString());
+        }
+    }
+
+    @Override
+    public boolean isMaidImported(Entity entity) {
+        try {
+            if (entity instanceof io.github.zgxhzhr.maidfm.mixin.MaidImportedHolder holder) {
+                return holder.maidfm$isImported();
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Fabric isMaidImported 失败: {}", t.toString());
+        }
+        return false;
+    }
 }
 

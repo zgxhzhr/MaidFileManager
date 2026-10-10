@@ -18,13 +18,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *
  * <p>注入点选 {@code TAIL}：TLM 的 {@code EntityMaid} 可能被其它模组 Mixin 处理，
  * 放在原逻辑之后读写最稳妥。
+ *
+ * <p>同时承载「导入产物」标记（见 {@link MaidImportedHolder}）：该标记供整合包作者在实体
+ * 生成事件中识别刚由本模组导入的女仆，随实体存档与 .maid 文件迁移。
  */
 @Mixin(EntityMaid.class)
-public abstract class EntityMaidMixin implements MaidProfileHolder {
+public abstract class EntityMaidMixin implements MaidProfileHolder, MaidImportedHolder {
 
     /** 档案承载字段（{@code @Unique} 保证不与父类/其它 Mixin 成员冲突） */
     @Unique
     private CompoundTag maidfm$profile;
+
+    /** 导入产物标记承载字段（{@code @Unique} 保证不与父类/其它 Mixin 成员冲突） */
+    @Unique
+    private boolean maidfm$imported;
 
     @Override
     public CompoundTag maidfm$getProfile() {
@@ -34,6 +41,16 @@ public abstract class EntityMaidMixin implements MaidProfileHolder {
     @Override
     public void maidfm$setProfile(CompoundTag tag) {
         this.maidfm$profile = tag;
+    }
+
+    @Override
+    public boolean maidfm$isImported() {
+        return this.maidfm$imported;
+    }
+
+    @Override
+    public void maidfm$setImported(boolean imported) {
+        this.maidfm$imported = imported;
     }
 
     /**
@@ -56,6 +73,22 @@ public abstract class EntityMaidMixin implements MaidProfileHolder {
     private void maidfm$readProfile(CompoundTag tag, CallbackInfo ci) {
         if (tag.contains(Constants.PROFILE_NBT_KEY, CompoundTag.TAG_COMPOUND)) {
             this.maidfm$profile = tag.getCompound(Constants.PROFILE_NBT_KEY);
+        }
+    }
+
+    /** 实体保存：带导入产物标记时写入根 NBT 键（仅标记为真才写，避免无谓的键膨胀；描述符解析原因同上） */
+    @Inject(method = "addAdditionalSaveData(Lnet/minecraft/nbt/CompoundTag;)V", at = @At("TAIL"))
+    private void maidfm$saveImported(CompoundTag tag, CallbackInfo ci) {
+        if (this.maidfm$imported) {
+            tag.putBoolean(Constants.IMPORTED_NBT_KEY, true);
+        }
+    }
+
+    /** 实体读取：存在该键时回填字段，保证服务器重启后标记不丢（描述符解析原因同上） */
+    @Inject(method = "readAdditionalSaveData(Lnet/minecraft/nbt/CompoundTag;)V", at = @At("TAIL"))
+    private void maidfm$readImported(CompoundTag tag, CallbackInfo ci) {
+        if (tag.getBoolean(Constants.IMPORTED_NBT_KEY)) {
+            this.maidfm$imported = true;
         }
     }
 }
