@@ -107,11 +107,12 @@ public class MaidFileModFabricClient implements ClientModInitializer {
             boolean allowInvulnerable = buf.readBoolean();
             boolean baubleStripAttributes = buf.readBoolean();
             List<String> baubleBlockedList = MaidFilePackets.readStringList(buf);
+            List<String> baubleBlacklist = MaidFilePackets.readStringList(buf);
             List<String> baubleWhitelist = MaidFilePackets.readStringList(buf);
             boolean baubleManaged = buf.readBoolean();
             client.execute(() -> MaidConfigManager.handleServerConfigSync(
                     allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable,
-                    baubleStripAttributes, baubleBlockedList, baubleWhitelist, baubleManaged));
+                    baubleStripAttributes, baubleBlockedList, baubleBlacklist, baubleWhitelist, baubleManaged));
         });
 
         // 女仆档案视图：服务端校验归属后返回，交由当前活跃界面展示
