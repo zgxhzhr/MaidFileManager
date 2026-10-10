@@ -76,4 +76,13 @@ public class Constants {
     public static final String USERNAME_CACHE_FILE = "usernamecache.json";
     /** 玩家名解析最小请求间隔（毫秒）：Mojang 接口限速约 1 次/分钟 */
     public static final long NAME_LOOKUP_MIN_INTERVAL_MS = 60_000L;
+
+    // ---------- 导入产物标记 ----------
+    /**
+     * 导入产物标记键名：写入女仆实体的持久化标签，随实体存档与 .maid 文件迁移。
+     *
+     * <p>供整合包作者在实体生成事件（如 KubeJS）中读取，识别"这只女仆由本模组导入产生"，
+     * 从而对结构特殊女仆等场景发放补偿。键名一经发布不可更改，外部脚本依赖它。
+     */
+    public static final String IMPORTED_NBT_KEY = "maidfm_imported";
 }
