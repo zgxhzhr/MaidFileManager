@@ -269,7 +269,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         int listAreaX = sideX + SIDEBAR_W + INNER_GAP;     // UI无问题版：列表 X = 工具列右 + 内间距
         int listAreaW = panelX + panelW - 8 - listAreaX;   // UI无问题版：列表宽 = 面板右端点（贴内右边距 8）- 列表左
         int listTop = panelY + HEADER_TOTAL_H;             // UI无问题版：列表顶 = Tab 下沿
-        int listBottom = panelY + panelH - 56;             // UI无问题版：列表底 = 面板底 - 56
+        int listBottom = panelY + panelH - LIST_BOTTOM_PAD; // 与反馈起点（面板底 - LIST_BOTTOM_PAD + 6）留 6px 间隔，避免反馈首行压住列表底
         if (listBottom - listTop < 80) listBottom = listTop + 80; // UI无问题版：高度兜底 ≥ 80
         // 【Fix B 最小硬上限】：与 updateBottomButtonLayout btnY-4 同公式，防极矮屏兜底冲出按钮区
         int btnYFloor = panelY + panelH - 20 - 22 - 4;
