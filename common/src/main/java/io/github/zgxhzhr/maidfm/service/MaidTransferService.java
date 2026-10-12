@@ -1670,27 +1670,6 @@ public final class MaidTransferService {
         return false;
     }
 
-    /**
-     * 查找女仆原主人的在线 ServerPlayer（用于成就合并应用）。
-     * 逻辑与 matchOwner 一致：UUID 精确 > 在线玩家名 > null。
-     */
-    private static ServerPlayer findOriginalOwner(ServerPlayer player, MaidFileData data) {
-        if (data.getOwnerUuid() != null) {
-            try {
-                UUID uuid = UUID.fromString(data.getOwnerUuid());
-                if (uuid.equals(player.getUUID())) {
-                    return player;
-                }
-                return player.getServer().getPlayerList().getPlayer(uuid);
-            } catch (IllegalArgumentException ignored) {
-            }
-        }
-        if (data.getOwnerName() != null && !data.getOwnerName().isEmpty()) {
-            return player.getServer().getPlayerList().getPlayerByName(data.getOwnerName());
-        }
-        return null;
-    }
-
     // ============================ 批量结果汇总（全平台共用，禁止在平台层反解文案） ============================
 
     /**
