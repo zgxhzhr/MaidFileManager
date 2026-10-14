@@ -367,6 +367,8 @@ public class MaidFileModFabric implements ModInitializer {
         MaidFilePackets.writeStringList(out, MaidConfigManager.getBaubleBlacklist());
         MaidFilePackets.writeStringList(out, MaidConfigManager.getBaubleWhitelist());
         out.writeBoolean(MaidConfigManager.isBaubleConfigManaged());
+        MaidFilePackets.writeStringList(out, MaidConfigManager.getBaubleBlockedNamespaces());
+        MaidFilePackets.writeStringList(out, MaidConfigManager.getBaubleBlockedCuriosSlots());
         ServerPlayNetworking.send(player, MaidPayload.of(MaidFilePackets.ID_SERVER_CONFIG_SYNC, out));
     }
 
