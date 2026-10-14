@@ -172,23 +172,14 @@ EntityEvents.spawned('touhou_little_maid:maid', event => {
 
 ## 附属模组接入（SPI）
 
-本模组不针对任何具体附属做硬编码适配，而是对外提供一套统一迁移接口。附属模组如果有**挂在女仆身上、但不在女仆实体 NBT 内**的数据（独立 `SavedData`、Forge Capability、玩家持久化数据、外部数据库等，通常通过女仆 UUID 关联），可以自行接入，让这部分数据随 `.maid` 一起迁移。
+本模组不针对任何具体附属做硬编码适配，而是对外提供统一的扩展接口：
 
-接入只需两步：
+- **数据迁移 SPI（`MaidMigrationProvider`）**：把**不在女仆实体 NBT 上**的数据（独立 `SavedData`、Forge Capability、玩家持久化数据、外部存储等，通常按女仆 UUID 关联）随 `.maid` 一起迁移；附属未加载时自动跳过、不报错。
+- **饰品携带声明 SPI（`MaidBaubleCarrier`）**：女仆自带饰品栏与 Curios 槽位里的物品**默认不携带**，由各模组自行声明可携带的命名空间（可选槽位名单；容器类槽位硬禁）。
 
-1. 实现 `io.github.zgxhzhr.maidfm.spi.MaidMigrationProvider`，共四个方法——`getId()`（唯一标识，建议 `你的modid:数据名`）、`getDependencyModId()`（依赖的 modid，用于软依赖检测）、`export(EntityMaid)`（导出该女仆的附属数据为 `CompoundTag`，无数据返回 `null`）、`importData(EntityMaid, CompoundTag)`（导入时把数据写回你的存储系统）。
-2. 在你的模组初始化阶段调用一行 `MaidMigrationRegistry.register(new XxxProvider());`。
+**完整接口说明**（方法签名、注册方式、接入示例、依赖姿势、安全约束、判定优先级、硬禁名单依据、二进制兼容承诺）见 **[《附属模组接口说明（模组作者）.md》](<附属模组接口说明（模组作者）.md>)**。
 
-设计约束与保障：
-
-- 接口参数只依赖女仆实体与 NBT，不引入任何具体附属的类型，编译时 `compileOnly` 依赖本模组即可
-- 数据存在哪里完全由附属自己决定，本模组只负责在导出 / 导入时调用并搬运 `CompoundTag`
-- 附属模组未加载时对应数据段自动跳过，不报错；附属 `export` / `importData` 抛异常会被隔离，不影响女仆主体和其他附属
-- 导入后女仆会获得新 UUID，附属需以 `maid.getUUID()` 为准写回，不要使用导出时的旧 UUID
-- `.maid` 文件 v5 起新增 `extras` 复合标签承载附属数据；旧版无此标签的文件正常导入（向后兼容），新版文件在旧版本模组中导入时该标签被忽略
-
-> 已经把数据写在女仆实体 NBT（含 `getPersistentData()` 与 Forge Capability 随存档序列化的字段）里的附属**无需接入**——本模组用 `EntityMaid#saveWithoutId` 导出完整女仆 NBT，这部分数据会自动随女仆迁移。
-
+> 已经把数据写在女仆实体 NBT（含 `getPersistentData()` 与随存档自动序列化的 Capability）里的附属**无需接入**——本模组用 `EntityMaid#saveWithoutId` 导出完整女仆 NBT，这部分数据会自动随女仆迁移。
 ## 版本历史
 
 ### v1.6.2
