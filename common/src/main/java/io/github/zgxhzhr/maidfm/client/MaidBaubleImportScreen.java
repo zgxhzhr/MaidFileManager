@@ -255,7 +255,7 @@ public class MaidBaubleImportScreen extends Screen {
                         opBlocked.add(id);
                     }
                 }
-                net.sendSetServerBaubleBlockedList(opBlocked);
+                net.sendSetServerListConfig(MaidConfigManager.KEY_BAUBLE_BLOCKED_LIST, opBlocked);
             } else {
                 Constants.LOG.warn("[maid_file_manager] 网络实现缺失，饰品导入设置未提交服务端");
             }

@@ -38,7 +38,13 @@ public interface IMaidFileNetwork {
     void sendSetServerConfig(String key, boolean value);
 
     /** OP 请求服务端修改「禁用携带的饰品 ID 列表」（服务端校验 OP 权限后写文件并广播同步） */
-    void sendSetServerBaubleBlockedList(List<String> ids);
+    /**
+     * 提交 OP 维护的禁用清单（客户端 → 服务端）。
+     *
+     * @param key {@code bauble_blocked_list}（按物品）/ {@code bauble_blocked_namespaces}（按模组）
+     *            / {@code bauble_blocked_curios_slots}（按 Curios 槽位）
+     */
+    void sendSetServerListConfig(String key, List<String> ids);
 
     /** OP 请求服务端返回所有在线玩家的女仆列表（以各玩家为中心搜索，供统一导出浏览） */
     void sendRequestServerExportList();

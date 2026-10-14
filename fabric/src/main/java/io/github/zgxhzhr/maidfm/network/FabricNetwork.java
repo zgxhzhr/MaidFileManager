@@ -53,8 +53,9 @@ public final class FabricNetwork implements IMaidFileNetwork {
     }
 
     @Override
-    public void sendSetServerBaubleBlockedList(List<String> ids) {
+    public void sendSetServerListConfig(String key, List<String> ids) {
         FriendlyByteBuf buf = PacketByteBufs.create();
+        buf.writeUtf(key == null ? "" : key, MaidFilePackets.MAX_TEXT_LEN);
         MaidFilePackets.writeStringList(buf, ids);
         sendC2S(MaidFilePackets.ID_SET_SERVER_BAUBLE_BLOCKED_LIST, buf);
     }
