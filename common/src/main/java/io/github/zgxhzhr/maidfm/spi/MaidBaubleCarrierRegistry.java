@@ -5,6 +5,7 @@ import io.github.zgxhzhr.maidfm.Constants;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -70,6 +71,11 @@ public final class MaidBaubleCarrierRegistry {
 
     private static final List<MaidBaubleCarrier> PROVIDERS = new CopyOnWriteArrayList<>();
     private static final Set<String> DECLARED_NAMESPACES = ConcurrentHashMap.newKeySet();
+    /**
+     * 命名空间 → 该命名空间允许携带的 Curios 槽位名单。
+     * <p>只有声明者显式列出槽位时才有条目；没有条目表示"不限制槽位"（按命名空间携带）。
+     */
+    private static final Map<String, Set<String>> SLOT_RESTRICTIONS = new ConcurrentHashMap<>();
 
     static {
         // 内置声明：保持既有行为（车万本体 + 万法皆通）。
@@ -136,7 +142,17 @@ public final class MaidBaubleCarrierRegistry {
             return;
         }
         PROVIDERS.add(carrier);
+        Set<String> slotWhitelist = carrier.carriedCuriosSlots() == null
+                ? Set.of()
+                : carrier.carriedCuriosSlots().stream()
+                        .filter(slot -> slot != null && !slot.isBlank())
+                        .map(MaidBaubleCarrierRegistry::normalizeIdentifier)
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet());
         for (String ns : accepted) {
+            if (!slotWhitelist.isEmpty()) {
+                SLOT_RESTRICTIONS.put(ns, slotWhitelist);
+                Constants.LOG.info("[maid_file_manager] 声明者 {} 限定了可携带的 Curios 槽位: {}", owner, slotWhitelist);
+            }
             if (DECLARED_NAMESPACES.add(ns)) {
                 Constants.LOG.info("[maid_file_manager] 已登记可携带饰品的命名空间: {}（声明者 {}）", ns, owner);
             } else {
@@ -166,9 +182,7 @@ public final class MaidBaubleCarrierRegistry {
         if (slotIdentifier == null || slotIdentifier.isEmpty()) {
             return false;
         }
-        int colon = slotIdentifier.indexOf(':');
-        String name = (colon >= 0 ? slotIdentifier.substring(colon + 1) : slotIdentifier)
-                .toLowerCase(java.util.Locale.ROOT);
+        String name = normalizeIdentifier(slotIdentifier);
         if (FORBIDDEN_CURIOS_SLOT_NAMES.contains(name)) {
             return true;
         }
@@ -183,6 +197,32 @@ public final class MaidBaubleCarrierRegistry {
             }
         }
         return false;
+    }
+    /**
+     * 综合判定：某命名空间的物品能否出现在某 Curios 槽位。
+     *
+     * <p>规则：命名空间必须已被声明；若该声明的模组给出了槽位名单（{@link MaidBaubleCarrier#carriedCuriosSlots()}），
+     * 槽位名还必须落在名单内。硬禁槽位由 {@link #isCuriosSlotForbidden(String)} 单独拦截，且优先级更高。
+     */
+    public static boolean isCuriosItemCarriable(String namespace, String slotIdentifier) {
+        if (!isNamespaceCarriable(namespace)) {
+            return false;
+        }
+        Set<String> allowedSlots = SLOT_RESTRICTIONS.get(namespace);
+        if (allowedSlots == null || allowedSlots.isEmpty()) {
+            return true;
+        }
+        return slotIdentifier != null && allowedSlots.contains(normalizeIdentifier(slotIdentifier));
+    }
+
+    /** 槽位标识规范化：剥掉可能的命名空间前缀并转小写（{@code Curios:BACK} → {@code back}）。 */
+    private static String normalizeIdentifier(String slotIdentifier) {
+        if (slotIdentifier == null) {
+            return "";
+        }
+        int colon = slotIdentifier.indexOf(':');
+        String name = colon >= 0 ? slotIdentifier.substring(colon + 1) : slotIdentifier;
+        return name.toLowerCase(java.util.Locale.ROOT);
     }
 
     /** 当前所有可用的声明（供界面展示"谁声明了什么"）。 */
