@@ -87,6 +87,9 @@ public class MaidBaubleExtraBlockScreen extends Screen {
     private final List<String> slotEntries = new ArrayList<>();
 
     private final Set<String> blockedNamespaces = new LinkedHashSet<>();
+    /** 整合包强制禁用的模组 / 槽位（只读，游戏内不可取消） */
+    private final Set<String> managedNamespaces = new LinkedHashSet<>();
+    private final Set<String> managedSlots = new LinkedHashSet<>();
     private final Set<String> blockedSlots = new LinkedHashSet<>();
 
     private final List<String> shown = new ArrayList<>();
@@ -112,6 +115,10 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         blockedNamespaces.addAll(MaidConfigManager.cachedBaubleBlockedNamespaces());
         blockedSlots.clear();
         blockedSlots.addAll(MaidConfigManager.cachedBaubleBlockedCuriosSlots());
+        managedNamespaces.clear();
+        managedNamespaces.addAll(MaidConfigManager.cachedBaubleImportBlockedNamespaces());
+        managedSlots.clear();
+        managedSlots.addAll(MaidConfigManager.cachedBaubleImportBlockedCuriosSlots());
 
         declared.clear();
         declared.addAll(MaidBaubleCarrierRegistry.declaredNamespaces());
@@ -440,9 +447,13 @@ public class MaidBaubleExtraBlockScreen extends Screen {
                 int index = page * ROWS_PER_PAGE + row;
                 if (index >= 0 && index < shown.size()) {
                     if (tab == 1) {
-                        toggleMod(shown.get(index));
+                        if (!managedNamespaces.contains(shown.get(index))) {
+                            toggleMod(shown.get(index));
+                        }
                     } else if (tab == 2) {
-                        toggleSlot(shown.get(index));
+                        if (!managedSlots.contains(shown.get(index))) {
+                            toggleSlot(shown.get(index));
+                        }
                     }
                     return true;
                 }
@@ -478,14 +489,17 @@ public class MaidBaubleExtraBlockScreen extends Screen {
             String value = shown.get(index);
             int rowY = top + i * ROW_H;
             boolean hardBlocked = tab == 2 && HARD_BLOCKED_SLOTS.contains(value);
-            boolean checked = hardBlocked
+            boolean managed = hardBlocked
+                    || (tab == 1 ? managedNamespaces.contains(value)
+                            : (tab == 2 && managedSlots.contains(value)));
+            boolean checked = managed
                     || (tab == 0 ? blockedItems.contains(value)
                             : (tab == 1 ? blockedNamespaces.contains(value) : blockedSlots.contains(value)));
-            boolean hovered = !hardBlocked && mouseX >= listX && mouseX <= listX + listW
+            boolean hovered = !managed && mouseX >= listX && mouseX <= listX + listW
                     && mouseY >= rowY && mouseY < rowY + ROW_H;
             if (checked || hovered) {
                 graphics.fill(listX, rowY, listX + listW, rowY + ROW_H - 1,
-                        hardBlocked ? ROW_READONLY : (checked ? ROW_CHECKED : ROW_HOVER));
+                        managed ? ROW_READONLY : (checked ? ROW_CHECKED : ROW_HOVER));
             }
             int boxY = rowY + 3;
             graphics.fill(listX + 3, boxY, listX + 11, boxY + 8, CHECK_OFF);
@@ -518,10 +532,12 @@ public class MaidBaubleExtraBlockScreen extends Screen {
             } else {
                 graphics.drawString(this.font, value, listX + 16, rowY + 3,
                         hardBlocked ? SUBTEXT_COLOR : TEXT_COLOR, false);
-                if (hardBlocked) {
-                    String hard = Component.translatable("gui.maid_file_manager.config.bauble_extra_hard").getString();
-                    graphics.drawString(this.font, hard,
-                            listX + listW - this.font.width(hard) - 4, rowY + 3, SUBTEXT_COLOR, false);
+                if (hardBlocked || managed) {
+                    String mark = Component.translatable(hardBlocked
+                            ? "gui.maid_file_manager.config.bauble_extra_hard"
+                            : "gui.maid_file_manager.config.bauble_extra_managed").getString();
+                    graphics.drawString(this.font, mark,
+                            listX + listW - this.font.width(mark) - 4, rowY + 3, SUBTEXT_COLOR, false);
                 }
             }
         }

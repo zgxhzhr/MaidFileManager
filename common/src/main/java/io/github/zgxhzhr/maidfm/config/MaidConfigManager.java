@@ -286,6 +286,17 @@ public final class MaidConfigManager {
     }
 
     /** 整合包按模组禁用清单（只读；用于界面把整合包强制的条目显示为不可取消） */
+    /** 纯 OP 清单（不含整合包项）：用于 S2C 同步，客户端据此显示"可取消的勾选" */
+    public static List<String> getOpBaubleBlockedNamespaces() {
+        return serverBaubleBlockedNamespaces;
+    }
+
+    /** 纯 OP 清单（不含整合包项）：用于 S2C 同步 */
+    public static List<String> getOpBaubleBlockedCuriosSlots() {
+        return serverBaubleBlockedCuriosSlots;
+    }
+
+    /** 整合包按模组禁用清单（只读） */
     public static List<String> getBaubleImportBlockedNamespaces() {
         return baubleImportBlockedNamespaces;
     }
@@ -428,7 +439,9 @@ public final class MaidConfigManager {
                                               boolean baubleStripAttributes, List<String> baubleBlockedList,
                                               List<String> baubleBlacklist, List<String> baubleWhitelist,
                                               boolean baubleManaged, List<String> baubleBlockedNamespaces,
-                                              List<String> baubleBlockedCuriosSlots) {
+                                              List<String> baubleBlockedCuriosSlots,
+                                              List<String> baubleImportBlockedNamespaces,
+                                              List<String> baubleImportBlockedCuriosSlots) {
         serverAllowClientImport = allowImport;
         serverAllowBaubles = allowBaubles;
         serverAllowAdvancements = allowAdvancements;
@@ -439,6 +452,10 @@ public final class MaidConfigManager {
                 baubleBlockedNamespaces == null ? List.of() : sanitizeList(baubleBlockedNamespaces));
         serverBaubleBlockedCuriosSlots = List.copyOf(
                 baubleBlockedCuriosSlots == null ? List.of() : sanitizeList(baubleBlockedCuriosSlots));
+        baubleImportBlockedNamespaces = List.copyOf(
+                baubleImportBlockedNamespaces == null ? List.of() : sanitizeList(baubleImportBlockedNamespaces));
+        baubleImportBlockedCuriosSlots = List.copyOf(
+                baubleImportBlockedCuriosSlots == null ? List.of() : sanitizeList(baubleImportBlockedCuriosSlots));
         serverBaubleStripAttributes = baubleStripAttributes;
         serverBaubleBlockedList = List.copyOf(baubleBlockedList == null ? List.of() : baubleBlockedList);
         baubleImportBlacklist = List.copyOf(baubleBlacklist == null ? List.of() : baubleBlacklist);
@@ -491,6 +508,16 @@ public final class MaidConfigManager {
     }
 
     /** 客户端读取服务端同步缓存：按 Curios 槽位禁用清单（设置界面显示用） */
+    /** 客户端读取服务端同步缓存：整合包按模组禁用清单（界面显示为只读勾选） */
+    public static List<String> cachedBaubleImportBlockedNamespaces() {
+        return baubleImportBlockedNamespaces;
+    }
+
+    /** 客户端读取服务端同步缓存：整合包按 Curios 槽位禁用清单（界面显示为只读勾选） */
+    public static List<String> cachedBaubleImportBlockedCuriosSlots() {
+        return baubleImportBlockedCuriosSlots;
+    }
+
     public static List<String> cachedBaubleBlockedCuriosSlots() {
         return serverBaubleBlockedCuriosSlots;
     }

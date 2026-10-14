@@ -470,10 +470,14 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         MaidFilePackets.writeStringList(buf,
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleWhitelist());
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleConfigManaged());
+                MaidFilePackets.writeStringList(buf,
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getOpBaubleBlockedNamespaces());
         MaidFilePackets.writeStringList(buf,
-                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlockedNamespaces());
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getOpBaubleBlockedCuriosSlots());
         MaidFilePackets.writeStringList(buf,
-                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlockedCuriosSlots());
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleImportBlockedNamespaces());
+        MaidFilePackets.writeStringList(buf,
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleImportBlockedCuriosSlots());
         ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_SERVER_CONFIG_SYNC, buf);
     }
 

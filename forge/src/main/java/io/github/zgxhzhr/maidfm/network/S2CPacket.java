@@ -53,10 +53,13 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     boolean baubleManaged = packet.data.readBoolean();
                     java.util.List<String> baubleBlockedNamespaces = MaidFilePackets.readStringList(packet.data);
                     java.util.List<String> baubleBlockedCuriosSlots = MaidFilePackets.readStringList(packet.data);
+                    java.util.List<String> baubleImportBlockedNamespaces = MaidFilePackets.readStringList(packet.data);
+                    java.util.List<String> baubleImportBlockedCuriosSlots = MaidFilePackets.readStringList(packet.data);
                     io.github.zgxhzhr.maidfm.config.MaidConfigManager.handleServerConfigSync(
                             allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable, carryCurios,
                             baubleStripAttributes, baubleBlockedList, baubleBlacklist, baubleWhitelist, baubleManaged,
-                            baubleBlockedNamespaces, baubleBlockedCuriosSlots);
+                            baubleBlockedNamespaces, baubleBlockedCuriosSlots,
+                            baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots);
                     return;
                 }
                 IMaidFileNetwork.ClientHandler handler = IMaidFileNetwork.ClientHandlerHolder.get();

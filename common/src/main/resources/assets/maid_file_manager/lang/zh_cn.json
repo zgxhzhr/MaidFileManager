@@ -42,6 +42,7 @@
     "gui.maid_file_manager.config.bauble_extra_by_slot": "按 Curios 槽位",
     "gui.maid_file_manager.config.bauble_extra_add": "添加",
     "gui.maid_file_manager.config.bauble_extra_slot_hint": "输入槽位名后点添加",
+    "gui.maid_file_manager.config.bauble_extra_managed": "整合包强制",
     "gui.maid_file_manager.config.bauble_extra_hard": "永久禁止",
     "gui.maid_file_manager.config.bauble_import_strip": "导入时丢弃饰品属性（附魔/耐久/无法破坏等），恢复为全新物品",
     "gui.maid_file_manager.config.bauble_import_blocked_list": "禁用携带的饰品（点击条目勾选/取消）",
