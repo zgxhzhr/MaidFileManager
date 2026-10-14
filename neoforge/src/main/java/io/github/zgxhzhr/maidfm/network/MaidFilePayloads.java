@@ -65,14 +65,14 @@ public final class MaidFilePayloads {
         if (blobs == null) {
             Constants.LOG.error("[maid_file_manager] 导出结果序列化失败，拒绝发送: player={}",
                     sp.getName().getString());
-            feedback(sp, Component.literal("[女仆档案管理] 导出数据序列化失败，请重试；如反复失败请联系服主查看日志"));
+            feedback(sp, Component.translatable("maid_file_manager.server.serialize_failed"));
             return false;
         }
         String reject = MaidFilePackets.checkMaidDataBatchForWire(blobs, MaidFilePackets.MAX_EXPORT_IDS);
         if (reject != null) {
             Constants.LOG.warn("[maid_file_manager] 导出结果预检被拒绝: player={}, count={}, reason={}",
                     sp.getName().getString(), blobs.size(), reject);
-            feedback(sp, Component.literal("[女仆档案管理] " + reject));
+            feedback(sp, Component.translatable("maid_file_manager.server.prefix").append(reject));
             return false;
         }
         PacketDistributor.sendToPlayer(sp, new ExportBatchResultPayload(blobs));
@@ -404,7 +404,7 @@ public final class MaidFilePayloads {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
                         if (!sp.hasPermissions(2)) {
-                            feedback(sp, Component.literal("[女仆档案管理] 统一导出仅 OP 可用"));
+                            feedback(sp, Component.translatable("maid_file_manager.server.bulk_export_op_only"));
                             return;
                         }
                         var groups = io.github.zgxhzhr.maidfm.service.MaidServerCommands
@@ -412,9 +412,7 @@ public final class MaidFilePayloads {
                         // 组数维度预检：接收端 readPlayerMaidGroups 硬上限 128，必须在分配 probe 前拒绝，
                         // 否则数千在线时会先按真实条目分配 GB 级缓冲，且坏包必然在客户端解码端断连
                         if (groups.size() > MaidFilePackets.MAX_PLAYER_GROUPS) {
-                            feedback(sp, Component.literal(String.format(java.util.Locale.ROOT,
-                                    "在线玩家数超过统一导出上限（%d > %d），无法生成列表，请缩小范围后重试",
-                                    groups.size(), MaidFilePackets.MAX_PLAYER_GROUPS)));
+                            feedback(sp, Component.translatable("maid_file_manager.server.too_many_players", groups.size(), MaidFilePackets.MAX_PLAYER_GROUPS));
                             return;
                         }
                         // 发送前按真实线格式预检总字节：全服女仆聚合可能远超单包上限，
@@ -427,9 +425,7 @@ public final class MaidFilePayloads {
                             if (size > MaidFilePackets.MAX_PACKET_BYTES) {
                                 Constants.LOG.warn("[maid_file_manager] 统一导出列表 {} 字节超过单包上限 {}，拒绝发送",
                                         size, MaidFilePackets.MAX_PACKET_BYTES);
-                                feedback(sp, Component.literal(String.format(java.util.Locale.ROOT,
-                                        "全服女仆列表数据过大（%d KB > %d KB），请缩小查询范围后重试",
-                                        size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024)));
+                                feedback(sp, Component.translatable("maid_file_manager.server.list_too_large", size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024));
                                 return;
                             }
                         } finally {
@@ -481,7 +477,7 @@ public final class MaidFilePayloads {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
                         if (!sp.hasPermissions(2)) {
-                            feedback(sp, Component.literal("[女仆档案管理] 统一导出仅 OP 可用"));
+                            feedback(sp, Component.translatable("maid_file_manager.server.bulk_export_op_only"));
                             return;
                         }
                         FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
@@ -523,7 +519,7 @@ public final class MaidFilePayloads {
                         }
                         // 未知键直接回执失败，不得把旧配置向全服重新广播
                         if (!MaidConfigManager.setServerConfig(key, value)) {
-                            feedback(sp, Component.literal("[女仆档案管理] 未知配置项，修改已拒绝"));
+                            feedback(sp, Component.translatable("maid_file_manager.server.unknown_config"));
                             return;
                         }
                         broadcastServerConfig(sp.server);
@@ -674,9 +670,7 @@ public final class MaidFilePayloads {
                         // 发送前按接收端解码维度预检：主人组数、总字节均需在上限内，
                         // 超限只回执提示，绝不发坏包把客户端断连
                         if (owners.size() > MaidFilePackets.MAX_BACKUP_OWNERS) {
-                            feedback(sp, Component.literal(String.format(java.util.Locale.ROOT,
-                                    "[女仆档案管理] 备份主人数量超过上限（%d > %d），无法列出，请清理备份后重试",
-                                    owners.size(), MaidFilePackets.MAX_BACKUP_OWNERS)));
+                            feedback(sp, Component.translatable("maid_file_manager.server.too_many_backup_owners", owners.size(), MaidFilePackets.MAX_BACKUP_OWNERS));
                             return;
                         }
                         FriendlyByteBuf probe = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
@@ -686,9 +680,7 @@ public final class MaidFilePayloads {
                             if (size > MaidFilePackets.MAX_PACKET_BYTES) {
                                 Constants.LOG.warn("[maid_file_manager] 备份列表 {} 字节超过单包上限 {}，拒绝发送",
                                         size, MaidFilePackets.MAX_PACKET_BYTES);
-                                feedback(sp, Component.literal(String.format(java.util.Locale.ROOT,
-                                        "[女仆档案管理] 备份列表数据过大（%d KB > %d KB），请清理备份后重试",
-                                        size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024)));
+                                feedback(sp, Component.translatable("maid_file_manager.server.backup_list_too_large", size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024));
                                 return;
                             }
                         } finally {
@@ -743,7 +735,7 @@ public final class MaidFilePayloads {
                         if (blob == null || blob.length > MaidFilePackets.MAX_SINGLE_FILE_BYTES) {
                             Constants.LOG.warn("[maid_file_manager] 备份导出体积异常，拒绝发送: owner={}, maid={}, size={}",
                                     ownerUuid, maidUuid, blob == null ? -1 : blob.length);
-                            feedback(sp, Component.literal("[女仆档案管理] 该备份体积过大，无法通过服务器导出"));
+                            feedback(sp, Component.translatable("maid_file_manager.server.backup_too_large"));
                             return;
                         }
                         PacketDistributor.sendToPlayer(sp, new BackupExportResultPayload(blob));
@@ -1125,7 +1117,6 @@ public final class MaidFilePayloads {
     private static void handleError(ServerPlayer sp, String packetName, Throwable t) {
         Constants.LOG.error("[maid_file_manager] C2S handler 崩溃: packet={}, player={}, cause={}",
                 packetName, sp.getName().getString(), t.toString(), t);
-        feedback(sp, Component.literal("[女仆档案管理] 服务端处理失败，请联系服主查看日志（错误位置："
-                + packetName + "）"));
+        feedback(sp, Component.translatable("maid_file_manager.server.handler_error", packetName));
     }
 }

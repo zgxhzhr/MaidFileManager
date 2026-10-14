@@ -131,7 +131,7 @@ public class MaidFileModNeoForge {
                         .then(Commands.literal("gui")
                                 .executes(ctx -> {
                                     if (FMLEnvironment.dist != Dist.CLIENT) {
-                                        ctx.getSource().sendFailure(Component.literal("仅客户端可用"));
+                                        ctx.getSource().sendFailure(Component.translatable("maid_file_manager.command.client_only"));
                                         return 0;
                                     }
                                     ClientRegistration.openGui();
