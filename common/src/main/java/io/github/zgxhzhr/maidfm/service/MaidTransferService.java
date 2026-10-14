@@ -709,6 +709,13 @@ public final class MaidTransferService {
             // 用于给玩家一条明确说明，绝不静默丢弃。
             CuriosBaubleFilter.Stats curiosStats = new CuriosBaubleFilter.Stats();
             CompoundTag migrated = NbtMigration.migrate(originalNbt, sourceVersion, targetVersion, curiosStats);
+            if (!keepBaubles) {
+                // 本次导入不允许携带饰品（玩家勾了「不保留饰品」，或服务端禁用了饰品导入）。
+                // Curios 侧必须一并清空：否则该开关只挡住女仆自带饰品栏，
+                // Curios 里"命名空间已声明"的饰品仍会随 load() 恢复。
+                // 这里是玩家/服务端主动不要饰品，不计入"模组未声明"的提示统计。
+                CuriosBaubleFilter.strip(migrated, false, MaidBaubleCarrierRegistry::isCuriosItemCarriable);
+            }
             CompoundTag tlmTag = extractTlmData(migrated);
             loadMaidNbt(maid, migrated, tlmTag, keepBaubles, sourceStruckByLightning, sameVersion,
                     stripAttributes, blockedList, sourceMojangDataVersion, baubleNotes);
