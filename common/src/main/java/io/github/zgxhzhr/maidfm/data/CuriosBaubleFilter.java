@@ -96,6 +96,14 @@ public final class CuriosBaubleFilter {
                     .map(e -> e.getKey() + ":" + e.getValue())
                     .collect(java.util.stream.Collectors.joining(", "));
         }
+        /** 按件数降序的「命名空间 → 件数」映射（供调用方把 modId 换成模组显示名再拼给玩家看） */
+        public Map<String, Integer> sortedNamespaces() {
+            Map<String, Integer> sorted = new LinkedHashMap<>();
+            byNamespace.entrySet().stream()
+                    .sorted((a, b) -> Integer.compare(b.getValue(), a.getValue()))
+                    .forEach(e -> sorted.put(e.getKey(), e.getValue()));
+            return sorted;
+        }
     }
 
     private static final ThreadLocal<Stats> BATCH_STATS = ThreadLocal.withInitial(Stats::new);
