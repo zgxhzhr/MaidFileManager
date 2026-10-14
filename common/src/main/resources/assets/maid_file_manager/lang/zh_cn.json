@@ -203,5 +203,16 @@
     "maid_file_manager.import.check.file_too_large": "第 %s 个女仆文件体积 %s KB 超过单文件上限 %s KB，请精简该女仆（背包/饰品）后重试",
     "maid_file_manager.import.check.total_too_large": "数据总体积过大（%s KB > %s KB），请减少单次数量后分批操作",
     "maid_file_manager.gui.label.colon_value": "：%s",
-    "maid_file_manager.gui.backup.world_row": "%s  (%s 位玩家)"
+    "maid_file_manager.gui.backup.world_row": "%s  (%s 位玩家)",
+    "maid_file_manager.server.prefix": "[女仆档案管理] ",
+    "maid_file_manager.server.handler_error": "[女仆档案管理] 服务端处理失败，请联系服主查看日志（错误位置：%s）",
+    "maid_file_manager.server.serialize_failed": "[女仆档案管理] 导出数据序列化失败，请重试；如反复失败请联系服主查看日志",
+    "maid_file_manager.server.unknown_config": "[女仆档案管理] 未知配置项，修改已拒绝",
+    "maid_file_manager.server.bulk_export_op_only": "[女仆档案管理] 统一导出仅 OP 可用",
+    "maid_file_manager.server.too_many_players": "在线玩家数超过统一导出上限（%s > %s），无法生成列表，请缩小范围后重试",
+    "maid_file_manager.server.list_too_large": "全服女仆列表数据过大（%s KB > %s KB），请缩小查询范围后重试",
+    "maid_file_manager.server.too_many_backup_owners": "[女仆档案管理] 备份主人数量超过上限（%s > %s），无法列出，请清理备份后重试",
+    "maid_file_manager.server.backup_list_too_large": "[女仆档案管理] 备份列表数据过大（%s KB > %s KB），请清理备份后重试",
+    "maid_file_manager.server.backup_too_large": "[女仆档案管理] 该备份体积过大，无法通过服务器导出",
+    "maid_file_manager.command.client_only": "仅客户端可用"
 }
