@@ -143,10 +143,8 @@ public class MaidBaubleImportScreen extends Screen {
             if (key == null) {
                 continue;
             }
-            String ns = key.getNamespace();
-            if (!"touhou_little_maid".equals(ns) && !"touhou_little_maid_spell".equals(ns)) {
-                continue;
-            }
+            // 不限命名空间：任何模组的"可佩戴女仆饰品"都要能被 OP 看到并禁用
+            // （判定仍以 TLM 饰品注册表为准，工具/材料等非饰品不会进列表）
             ItemStack stack = item.getDefaultInstance();
             if (!isBaubleItem(stack)) {
                 continue;
