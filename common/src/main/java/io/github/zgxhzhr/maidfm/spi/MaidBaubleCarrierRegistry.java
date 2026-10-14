@@ -32,8 +32,41 @@ public final class MaidBaubleCarrierRegistry {
      * <p>背包类槽位的物品体积之外还挂着自己的容器数据（背包内容），若允许携带，
      * 等于把整包物品一起搬运/复制，风险远大于单件饰品。因此这里<b>不看声明、一律禁止</b>。
      */
-    private static final Set<String> FORBIDDEN_CURIOS_SLOT_IDENTIFIERS =
-            Set.of("back", "backpack", "satchel", "bag", "curio_back");
+    /**
+     * 硬编码禁止携带的 Curios 槽位名（精确匹配）。
+     *
+     * <p>两类：
+     * <ul>
+     *   <li><b>容器类</b>：背包/袋/箭袋/口袋等——携带会连带其内部物品，属复制风险；</li>
+     *   <li><b>有状态数据容器</b>：物品本身是个"存数据"的壳（存 EMC、训练数据、灵魂等），
+     *       携带等于搬运/复制其内部数据。</li>
+     * </ul>
+     *
+     * <p>这里只放<b>精确名</b>：例如精确禁止 {@code soul_stone}，但 TLM 自家的
+     * {@code maid_soul_stone} 不会被误伤（内置声明的车万本体饰品要保留）。
+     * 万法皆通的 {@code spellbook} / {@code scroll} 有意<b>不</b>禁止（属内置声明要保留的附属）。
+     *
+     * <p>名单依据：TLM 自带的 24 个 Curios 适配文件（69 个槽位名）＋ 两个真实整合包实扫
+     * （494 个 mod jar、110 个槽位名）。
+     */
+    private static final Set<String> FORBIDDEN_CURIOS_SLOT_NAMES = Set.of(
+            // 容器类
+            "back", "curio_back", "backpack", "backpacks", "ionocraft_backpack", "arrow_bag",
+            // 有状态数据容器
+            "klein_star", "deep_learner", "soul", "soul_stone", "soultotem");
+
+    /**
+     * 硬编码禁止携带的槽位名<b>词根</b>（按 {@code _}、{@code -}、{@code .} 分词后逐词比对，含复数形式）。
+     *
+     * <p>TLM 与第三方模组都能给女仆新增槽位，槽位名无法穷举，词根用于拦住
+     * "未来出现、名字里带容器语义"的槽位。
+     *
+     * <p>故意<b>不含</b> {@code soul}/{@code book}/{@code star}/{@code crystal} 等模糊词：
+     * 它们会误伤 TLM 自家槽位（{@code maid_soul_stone}）与万法皆通槽位（{@code spellbook}）。
+     */
+    private static final Set<String> FORBIDDEN_CURIOS_SLOT_WORDS = Set.of(
+            "back", "backpack", "pack", "bag", "pouch", "satchel",
+            "chest", "container", "storage", "inventory", "quiver", "pocket");
 
     private static final List<MaidBaubleCarrier> PROVIDERS = new CopyOnWriteArrayList<>();
     private static final Set<String> DECLARED_NAMESPACES = ConcurrentHashMap.newKeySet();
@@ -123,9 +156,33 @@ public final class MaidBaubleCarrierRegistry {
         return Set.copyOf(DECLARED_NAMESPACES);
     }
 
-    /** 该 Curios 槽位标识是否被硬编码禁止携带（背包类槽位）。 */
+    /**
+     * 该 Curios 槽位标识是否被硬编码禁止携带。
+     *
+     * <p>判定顺序：去掉可能的命名空间前缀 → 精确名单 → 分词后的词根名单（含复数）。
+     * 与"命名空间声明"无关：容器类槽位即使所属模组声明了自己，也一律不携带。
+     */
     public static boolean isCuriosSlotForbidden(String slotIdentifier) {
-        return slotIdentifier != null && FORBIDDEN_CURIOS_SLOT_IDENTIFIERS.contains(slotIdentifier);
+        if (slotIdentifier == null || slotIdentifier.isEmpty()) {
+            return false;
+        }
+        int colon = slotIdentifier.indexOf(':');
+        String name = (colon >= 0 ? slotIdentifier.substring(colon + 1) : slotIdentifier)
+                .toLowerCase(java.util.Locale.ROOT);
+        if (FORBIDDEN_CURIOS_SLOT_NAMES.contains(name)) {
+            return true;
+        }
+        for (String word : name.split("[_\\-.]")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            for (String root : FORBIDDEN_CURIOS_SLOT_WORDS) {
+                if (word.equals(root) || word.equals(root + "s")) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** 当前所有可用的声明（供界面展示"谁声明了什么"）。 */
