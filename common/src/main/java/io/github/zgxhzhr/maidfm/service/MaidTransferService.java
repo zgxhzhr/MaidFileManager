@@ -1431,6 +1431,42 @@ public final class MaidTransferService {
         }
         return List.copyOf(out);
     }
+    /**
+     * 服务端收窄校验：命名空间 / Curios 槽位清单。
+     * <p>C2S 提交可能被篡改，只允许标识符字符集（小写字母、数字、下划线、点、连字符），
+     * 并限制单项长度与总条数；去重后返回不可变清单。
+     */
+    public static List<String> sanitizeIdentifierList(List<String> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>(Math.min(ids.size(), 512));
+        for (String id : ids) {
+            if (id == null) {
+                continue;
+            }
+            String trimmed = id.trim().toLowerCase(java.util.Locale.ROOT);
+            if (trimmed.isEmpty() || trimmed.length() > 64) {
+                continue;
+            }
+            boolean ok = true;
+            for (int i = 0; i < trimmed.length(); i++) {
+                char c = trimmed.charAt(i);
+                if (!(c >= 'a' && c <= 'z') && !(c >= '0' && c <= '9')
+                        && c != '_' && c != '.' && c != '-') {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok && !out.contains(trimmed)) {
+                out.add(trimmed);
+                if (out.size() >= 512) {
+                    break;
+                }
+            }
+        }
+        return List.copyOf(out);
+    }
 
     private static String namespaceOf(String id) {
         int colon = id.indexOf(':');

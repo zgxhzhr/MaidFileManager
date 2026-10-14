@@ -79,7 +79,8 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     boolean value = data.readBoolean();
                     handleSetServerConfig(player, key, value);
                 } else if (MaidFilePackets.ID_SET_SERVER_BAUBLE_BLOCKED_LIST.equals(id)) {
-                    handleSetServerBaubleBlockedList(player, MaidFilePackets.readStringList(data));
+                    String listKey = data.readUtf(MaidFilePackets.MAX_TEXT_LEN);
+                    handleSetServerListConfig(player, listKey, MaidFilePackets.readStringList(data));
                 } else if (MaidFilePackets.ID_REQUEST_SERVER_EXPORT_LIST.equals(id)) {
                     handleRequestServerExportList(player);
                 } else if (MaidFilePackets.ID_SERVER_EXPORT_BATCH.equals(id)) {
@@ -289,17 +290,27 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         broadcastServerConfig(player.server);
     }
 
-    /** OP 修改自己维护的「禁用携带的饰品」清单：权限校验 → 收窄写入 → 广播同步 */
-    private static void handleSetServerBaubleBlockedList(ServerPlayer player, List<String> ids) {
+    /** OP 修改自己维护的禁用清单（物品 / 模组 / Curios 槽位）：权限校验 → 收窄写入 → 广播同步 */
+    private static void handleSetServerListConfig(ServerPlayer player, String key, List<String> ids) {
         if (!player.hasPermissions(2)) {
-            Constants.LOG.warn("[maid_file_manager] SET_SERVER_BAUBLE_BLOCKED_LIST rejected (no OP): player={}",
-                    player.getName().getString());
+            Constants.LOG.warn("[maid_file_manager] SET_SERVER_LIST_CONFIG rejected (no OP): player={}, key={}",
+                    player.getName().getString(), key);
             sendFeedback(player, Component.translatable("maid_file_manager.config.fail.no_permission"));
             return;
         }
-        // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读，不在此写入
-        io.github.zgxhzhr.maidfm.config.MaidConfigManager.setServerBaubleBlockedList(
-                MaidTransferService.sanitizeBaubleBlockedList(ids));
+        List<String> values;
+        if (io.github.zgxhzhr.maidfm.config.MaidConfigManager.KEY_BAUBLE_BLOCKED_LIST.equals(key)) {
+            // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读，不在此写入
+            values = MaidTransferService.sanitizeBaubleBlockedList(ids);
+        } else if (io.github.zgxhzhr.maidfm.config.MaidConfigManager.KEY_BAUBLE_BLOCKED_NAMESPACES.equals(key)
+                || io.github.zgxhzhr.maidfm.config.MaidConfigManager.KEY_BAUBLE_BLOCKED_CURIOS_SLOTS.equals(key)) {
+            // 模组 / 槽位清单：客户端提交可被篡改，服务端按标识符字符集收窄
+            values = MaidTransferService.sanitizeIdentifierList(ids);
+        } else {
+            Constants.LOG.warn("[maid_file_manager] SET_SERVER_LIST_CONFIG rejected (unknown key): {}", key);
+            return;
+        }
+        io.github.zgxhzhr.maidfm.config.MaidConfigManager.setServerListConfig(key, values);
         broadcastServerConfig(player.server);
     }
 
