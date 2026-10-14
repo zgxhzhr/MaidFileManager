@@ -319,7 +319,7 @@ public final class MaidTransferService {
             // 必须在写文件之前裁剪，未声明模组的饰品既不随 .maid 迁移，也无法被复制。
             CuriosBaubleFilter.Result curiosResult = CuriosBaubleFilter.strip(
                     fullNbt, MaidConfigManager.isCarryCurios(),
-                    MaidBaubleCarrierRegistry::isCuriosItemCarriable);
+                    MaidTransferService::allowCuriosItem, false);
             if (curiosResult.hasDrops()) {
                 Constants.LOG.info("[maid_file_manager] 导出裁剪 Curios 饰品: 丢弃 {} 件(按命名空间 {}), "
                                 + "禁止槽位 {} 个(含 {} 件), 保留 {} 件",
@@ -707,13 +707,14 @@ public final class MaidTransferService {
             // 旧版本导出的 .maid 文件可能仍带着不该携带的 Curios 饰品：下面把裁剪统计取出，
             // 用于给玩家一条明确说明，绝不静默丢弃。
             CuriosBaubleFilter.Stats curiosStats = new CuriosBaubleFilter.Stats();
-            CompoundTag migrated = NbtMigration.migrate(originalNbt, sourceVersion, targetVersion, curiosStats);
+            CompoundTag migrated = NbtMigration.migrate(originalNbt, sourceVersion, targetVersion, curiosStats,
+                    MaidTransferService::allowCuriosItem, stripAttributes);
             if (!keepBaubles) {
                 // 本次导入不允许携带饰品（玩家勾了「不保留饰品」，或服务端禁用了饰品导入）。
                 // Curios 侧必须一并清空：否则该开关只挡住女仆自带饰品栏，
                 // Curios 里"命名空间已声明"的饰品仍会随 load() 恢复。
                 // 这里是玩家/服务端主动不要饰品，不计入"模组未声明"的提示统计。
-                CuriosBaubleFilter.strip(migrated, false, MaidBaubleCarrierRegistry::isCuriosItemCarriable);
+                CuriosBaubleFilter.strip(migrated, false, MaidTransferService::allowCuriosItem, false);
             }
             CompoundTag tlmTag = extractTlmData(migrated);
             loadMaidNbt(maid, migrated, tlmTag, keepBaubles, sourceStruckByLightning, sameVersion,
@@ -1740,6 +1741,45 @@ public final class MaidTransferService {
      * 把多条结构化导入结果汇总为一条展示文案。
      * 成功/失败统计只基于 {@link ImportResult.State}，与语言无关。
      */
+    /**
+     * Curios 物品携带策略：与女仆自带饰品栏共用同一套管理配置。
+     * <p>判定顺序：总开关 → 硬禁槽位 → 命名空间声明 + 槽位白名单 → OP 禁用清单（∪ 整合包黑名单）
+     * → 整合包白名单。任一步不通过即不携带。
+     */
+    public static boolean allowCuriosItem(String itemId, String namespace, String slotIdentifier) {
+        if (!MaidConfigManager.isCarryCurios()) {
+            return false;
+        }
+        if (MaidBaubleCarrierRegistry.isCuriosSlotForbidden(slotIdentifier)) {
+            return false;
+        }
+        if (!MaidBaubleCarrierRegistry.isCuriosItemCarriable(namespace, slotIdentifier)) {
+            return false;
+        }
+        Item item = resolveCuriosItem(itemId);
+        if (baubleMatchesList(itemId, item, MaidConfigManager.getBaubleBlockedList())) {
+            return false;
+        }
+        return MaidConfigManager.isBaubleWhitelistPass(itemId, item == null ? null : displayNameOf(item));
+    }
+
+    /** 按 id 取物品实例；不存在或解析失败返回 null（调用方按"未命中清单"处理） */
+    private static Item resolveCuriosItem(String itemId) {
+        if (itemId == null || itemId.isEmpty()) {
+            return null;
+        }
+        try {
+            net.minecraft.resources.ResourceLocation key =
+                    net.minecraft.resources.ResourceLocation.tryParse(itemId);
+            if (key != null && net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(key)) {
+                return net.minecraft.core.registries.BuiltInRegistries.ITEM.get(key);
+            }
+        } catch (Throwable ignored) {
+            // 解析失败按缺失处理
+        }
+        return null;
+    }
+
     /**
      * 取出本批次被裁剪的 Curios 饰品统计，生成一条面向玩家的提示；无丢弃时返回 {@code null}。
      *
