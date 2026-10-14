@@ -7,7 +7,6 @@ import net.minecraft.nbt.Tag;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.function.BiPredicate;
 
 /**
  * Curios 饰品载荷过滤：把"不允许携带"的饰品从女仆实体 NBT 中剔除。
@@ -174,13 +173,13 @@ public final class CuriosBaubleFilter {
      * @return 统计结果；NBT 里没有 Curios 载荷时返回 {@link Result#empty()}
      */
     public static Result strip(CompoundTag entityNbt, boolean allowCarry,
-                               BiPredicate<String, String> itemCarriableIn) {
+                               CuriosItemPolicy policy, boolean stripAttributes) {
         if (entityNbt == null || entityNbt.isEmpty()) {
             return Result.empty();
         }
         // 总开关关闭时一律不允许携带（谓词恒 false）；统计仍然照做，便于给玩家提示"丢了什么"
-        final BiPredicate<String, String> itemCarriable =
-                (allowCarry && itemCarriableIn != null) ? itemCarriableIn : (namespace, slot) -> false;
+        final CuriosItemPolicy itemPolicy =
+                (allowCarry && policy != null) ? policy : (id, namespace, slot) -> false;
         int droppedItems = 0;
         int forbiddenSlots = 0;
         int forbiddenItems = 0;
@@ -225,10 +224,10 @@ public final class CuriosBaubleFilter {
                 }
                 CompoundTag stacksHandler = entry.getCompound(STACKS_HANDLER_KEY);
                 int before = countItems(entry);
-                droppedItems += filterItemsList(stacksHandler, STACKS_KEY, identifier, itemCarriable,
-                        droppedByNamespace, missingCounter);
-                droppedItems += filterItemsList(stacksHandler, COSMETICS_KEY, identifier, itemCarriable,
-                        droppedByNamespace, missingCounter);
+                droppedItems += filterItemsList(stacksHandler, STACKS_KEY, identifier, itemPolicy,
+                        stripAttributes, droppedByNamespace, missingCounter);
+                droppedItems += filterItemsList(stacksHandler, COSMETICS_KEY, identifier, itemPolicy,
+                        stripAttributes, droppedByNamespace, missingCounter);
                 int after = countItems(entry);
                 keptItems += after;
                 if (after != before) {
@@ -254,7 +253,7 @@ public final class CuriosBaubleFilter {
      * @return 被丢弃的件数
      */
     private static int filterItemsList(CompoundTag stacksHandler, String subKey, String slotIdentifier,
-                                       BiPredicate<String, String> itemCarriable,
+                                       CuriosItemPolicy itemPolicy, boolean stripAttributes,
                                        Map<String, Integer> droppedByNamespace,
                                        int[] missingOut) {
         if (!stacksHandler.contains(subKey, Tag.TAG_COMPOUND)) {
@@ -280,7 +279,10 @@ public final class CuriosBaubleFilter {
                 continue;
             }
             String namespace = namespaceOfItemId(itemId);
-            if (namespace != null && itemCarriable.test(namespace, slotIdentifier)) {
+            if (namespace != null && itemPolicy.allow(itemId, namespace, slotIdentifier)) {
+                if (stripAttributes) {
+                    stripEntryAttributes(itemEntry);
+                }
                 kept.add(itemEntry);
                 continue;
             }
@@ -292,6 +294,23 @@ public final class CuriosBaubleFilter {
         }
         return dropped;
     }
+    /**
+     * 属性剥离：把保留的饰品简化为"全新物品"（与女仆自带饰品栏的「丢弃饰品属性」设置语义一致）。
+     * <p>1.20.x 条目属性在 {@code tag} 子标签内；1.21.x 在 {@code Stack.components} 内，两处都清；
+     * 数量不动（饰品本就是 1 件）。
+     */
+    private static void stripEntryAttributes(CompoundTag itemEntry) {
+        if (itemEntry.contains(ITEM_ID_KEY, Tag.TAG_STRING)) {
+            itemEntry.remove("tag");
+            itemEntry.remove("components");
+        }
+        if (itemEntry.contains(ITEM_STACK_KEY, Tag.TAG_COMPOUND)) {
+            CompoundTag stack = itemEntry.getCompound(ITEM_STACK_KEY);
+            stack.remove("components");
+            stack.remove("tag");
+        }
+    }
+
 
     /** 取条目里的完整物品 id（1.20.x 取 {@code id}，1.21.x 取 {@code Stack.id}）；取不到返回 null */
     private static String itemIdOfEntry(CompoundTag itemEntry) {
