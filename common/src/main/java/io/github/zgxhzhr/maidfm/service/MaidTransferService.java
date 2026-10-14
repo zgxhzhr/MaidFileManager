@@ -1401,6 +1401,10 @@ public final class MaidTransferService {
      * 作为内置声明登记在注册表里，行为与旧版写死的白名单一致。
      */
     private static boolean isBaubleAllowed(String namespace) {
+        // OP 按模组禁用：同时管住女仆自带饰品栏与 Curios 槽位（否则放 Curios 槽里即可绕过）
+        if (namespace != null && MaidConfigManager.getBaubleBlockedNamespaces().contains(namespace)) {
+            return false;
+        }
         return MaidBaubleCarrierRegistry.isNamespaceCarriable(namespace);
     }
 
@@ -1754,6 +1758,11 @@ public final class MaidTransferService {
             return false;
         }
         if (!MaidBaubleCarrierRegistry.isCuriosItemCarriable(namespace, slotIdentifier)) {
+            return false;
+        }
+        String slotKey = slotIdentifier == null ? "" : slotIdentifier.toLowerCase(java.util.Locale.ROOT);
+        if (MaidConfigManager.getBaubleBlockedNamespaces().contains(namespace)
+                || MaidConfigManager.getBaubleBlockedCuriosSlots().contains(slotKey)) {
             return false;
         }
         Item item = resolveCuriosItem(itemId);
