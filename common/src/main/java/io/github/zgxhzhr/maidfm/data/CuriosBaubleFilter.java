@@ -55,6 +55,7 @@ public final class CuriosBaubleFilter {
         private int forbiddenSlots;
         private int forbiddenItems;
         private int kept;
+        private int missingItems;
         private final Map<String, Integer> byNamespace = new LinkedHashMap<>();
 
         public void add(Result result) {
@@ -65,13 +66,23 @@ public final class CuriosBaubleFilter {
             forbiddenSlots += result.forbiddenSlots();
             forbiddenItems += result.forbiddenItems();
             kept += result.keptItems();
+            missingItems += result.missingItems();
             result.droppedByNamespace().forEach((ns, count) -> byNamespace.merge(ns, count, Integer::sum));
         }
 
         /** 是否有任何物品被丢弃 */
         public boolean hasDrops() {
-            return dropped > 0 || forbiddenItems > 0;
+            return dropped > 0 || forbiddenItems > 0 || missingItems > 0;
         }
+
+        /** 物品在当前世界不存在而被丢弃的件数 */
+
+        public int missingItems() {
+
+            return missingItems;
+
+        }
+
 
         public int dropped() {
             return dropped;
@@ -134,15 +145,15 @@ public final class CuriosBaubleFilter {
      * @param touched            是否真的动过 Curios 载荷
      */
     public record Result(int droppedItems, Map<String, Integer> droppedByNamespace,
-                         int forbiddenSlots, int forbiddenItems, int keptItems, boolean touched) {
+                         int forbiddenSlots, int forbiddenItems, int missingItems, int keptItems, boolean touched) {
 
         public static Result empty() {
-            return new Result(0, Map.of(), 0, 0, 0, false);
+            return new Result(0, Map.of(), 0, 0, 0, 0, false);
         }
 
         /** 是否有任何物品被丢弃（用于决定要不要给玩家提示） */
         public boolean hasDrops() {
-            return droppedItems > 0 || forbiddenItems > 0;
+            return droppedItems > 0 || forbiddenItems > 0 || missingItems > 0;
         }
 
         /** 丢弃涉及的命名空间（按件数降序，便于拼提示文案） */
@@ -173,6 +184,8 @@ public final class CuriosBaubleFilter {
         int droppedItems = 0;
         int forbiddenSlots = 0;
         int forbiddenItems = 0;
+        int missingItems = 0;
+        int[] missingCounter = new int[1];
         int keptItems = 0;
         boolean touched = false;
         Map<String, Integer> droppedByNamespace = new LinkedHashMap<>();
@@ -213,9 +226,9 @@ public final class CuriosBaubleFilter {
                 CompoundTag stacksHandler = entry.getCompound(STACKS_HANDLER_KEY);
                 int before = countItems(entry);
                 droppedItems += filterItemsList(stacksHandler, STACKS_KEY, identifier, itemCarriable,
-                        droppedByNamespace);
+                        droppedByNamespace, missingCounter);
                 droppedItems += filterItemsList(stacksHandler, COSMETICS_KEY, identifier, itemCarriable,
-                        droppedByNamespace);
+                        droppedByNamespace, missingCounter);
                 int after = countItems(entry);
                 keptItems += after;
                 if (after != before) {
@@ -226,11 +239,13 @@ public final class CuriosBaubleFilter {
             curiosInventory.put(CURIOS_LIST_KEY, keptList);
         }
 
+        missingItems += missingCounter[0];
+
         if (!touched) {
             return Result.empty();
         }
         return new Result(droppedItems, Map.copyOf(droppedByNamespace), forbiddenSlots, forbiddenItems,
-                keptItems, true);
+                    missingItems, keptItems, true);
     }
 
     /**
@@ -240,7 +255,8 @@ public final class CuriosBaubleFilter {
      */
     private static int filterItemsList(CompoundTag stacksHandler, String subKey, String slotIdentifier,
                                        BiPredicate<String, String> itemCarriable,
-                                       Map<String, Integer> droppedByNamespace) {
+                                       Map<String, Integer> droppedByNamespace,
+                                       int[] missingOut) {
         if (!stacksHandler.contains(subKey, Tag.TAG_COMPOUND)) {
             return 0;
         }
@@ -256,7 +272,14 @@ public final class CuriosBaubleFilter {
                 kept.add(element);
                 continue;
             }
-            String namespace = namespaceOfItemEntry(itemEntry);
+            String itemId = itemIdOfEntry(itemEntry);
+            // 物品在当前世界不存在（模组被卸载 / 换了版本 / 物品被移除）：单独统计并提示，
+            // 否则玩家只会看到饰品凭空消失，不知道原因。
+            if (itemId != null && !itemExists(itemId)) {
+                missingOut[0]++;
+                continue;
+            }
+            String namespace = namespaceOfItemId(itemId);
             if (namespace != null && itemCarriable.test(namespace, slotIdentifier)) {
                 kept.add(itemEntry);
                 continue;
@@ -264,10 +287,49 @@ public final class CuriosBaubleFilter {
             dropped++;
             droppedByNamespace.merge(namespace == null ? "unknown" : namespace, 1, Integer::sum);
         }
-        if (dropped > 0) {
+        if (dropped > 0 || missingOut[0] > 0) {
             sub.put(ITEMS_KEY, kept);
         }
         return dropped;
+    }
+
+    /** 取条目里的完整物品 id（1.20.x 取 {@code id}，1.21.x 取 {@code Stack.id}）；取不到返回 null */
+    private static String itemIdOfEntry(CompoundTag itemEntry) {
+        if (itemEntry.contains(ITEM_ID_KEY, Tag.TAG_STRING)) {
+            return itemEntry.getString(ITEM_ID_KEY);
+        }
+        if (itemEntry.contains(ITEM_STACK_KEY, Tag.TAG_COMPOUND)) {
+            CompoundTag stack = itemEntry.getCompound(ITEM_STACK_KEY);
+            if (stack.contains(ITEM_ID_KEY, Tag.TAG_STRING)) {
+                return stack.getString(ITEM_ID_KEY);
+            }
+        }
+        return null;
+    }
+
+    /** 由物品 id 推命名空间；取不到返回 null（调用方按"不允许携带"处理，失败关闭） */
+    private static String namespaceOfItemId(String itemId) {
+        if (itemId == null || itemId.isEmpty()) {
+            return null;
+        }
+        int colon = itemId.indexOf(':');
+        return colon <= 0 ? "minecraft" : itemId.substring(0, colon);
+    }
+
+    /**
+     * 该物品在当前世界是否存在。
+     * <p>写法两代通用（{@code ResourceLocation.tryParse} + {@code Registry.containsKey}）。
+     * <p>解析异常或 id 非法的情形一律视为"存在"：宁可留给上层解析时自行降级，
+     * 也不能因为我们的判断把玩家本来能保留的物品删掉。
+     */
+    private static boolean itemExists(String itemId) {
+        try {
+            net.minecraft.resources.ResourceLocation key =
+                    net.minecraft.resources.ResourceLocation.tryParse(itemId);
+            return key == null || net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(key);
+        } catch (Throwable t) {
+            return true;
+        }
     }
 
     /** 统计某条 Curios 槽位条目里（Stacks + Cosmetics）的物品件数 */
