@@ -8,6 +8,7 @@ import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 
@@ -220,23 +221,20 @@ public final class MaidFilePackets {
      */
     public static String checkMaidDataBatchForWire(List<byte[]> blobs, int maxFiles) {
         if (blobs.size() > maxFiles) {
-            return String.format(java.util.Locale.ROOT,
-                    "单次最多处理 %d 个女仆文件（当前 %d 个），请分批操作", maxFiles, blobs.size());
+            return Component.translatable("maid_file_manager.import.check.too_many_files", maxFiles, blobs.size()).getString();
         }
         long total = varIntSize(blobs.size());
         for (int i = 0; i < blobs.size(); i++) {
             int len = blobs.get(i).length;
             if (len > MAX_SINGLE_FILE_BYTES) {
-                return String.format(java.util.Locale.ROOT,
-                        "第 %d 个女仆文件体积 %d KB 超过单文件上限 %d KB，请精简该女仆（背包/饰品）后重试",
-                        i + 1, len / 1024, MAX_SINGLE_FILE_BYTES / 1024);
+                return Component.translatable("maid_file_manager.import.check.file_too_large",
+                        i + 1, len / 1024, MAX_SINGLE_FILE_BYTES / 1024).getString();
             }
             total += varIntSize(len) + (long) len;
         }
         if (total > MAX_PACKET_BYTES) {
-            return String.format(java.util.Locale.ROOT,
-                    "数据总体积过大（%d KB > %d KB），请减少单次数量后分批操作",
-                    total / 1024, MAX_PACKET_BYTES / 1024);
+            return Component.translatable("maid_file_manager.import.check.total_too_large",
+                    total / 1024, MAX_PACKET_BYTES / 1024).getString();
         }
         return null;
     }
