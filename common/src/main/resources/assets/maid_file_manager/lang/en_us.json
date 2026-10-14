@@ -42,6 +42,7 @@
     "gui.maid_file_manager.config.bauble_extra_by_slot": "Curios slots",
     "gui.maid_file_manager.config.bauble_extra_add": "Add",
     "gui.maid_file_manager.config.bauble_extra_slot_hint": "Enter a slot name, then Add",
+    "gui.maid_file_manager.config.bauble_extra_managed": "modpack enforced",
     "gui.maid_file_manager.config.bauble_extra_hard": "Always blocked",
     "gui.maid_file_manager.config.bauble_import_strip": "Strip bauble attributes on import (enchantments, durability, etc.), restoring fresh items",
     "gui.maid_file_manager.config.bauble_import_blocked_list": "Baubles blocked from carrying (click a row to toggle)",
