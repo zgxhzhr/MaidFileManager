@@ -38,10 +38,10 @@
 
 | Loader | Minecraft 版本 | JAR 文件名 |
 |--------|---------------|-----------|
-| Forge | 1.20 / 1.20.1 | maid_file_manager-forge-1.20.1-1.6.1.jar |
-| NeoForge | 1.21 / 1.21.1 | maid_file_manager-neoforge-1.21.1-1.6.1.jar |
-| Fabric | 1.20 / 1.20.1 | maid_file_manager-fabric-1.20.1-1.6.1.jar |
-| Fabric | 1.21 / 1.21.1 | maid_file_manager-fabric-1.21.1-1.6.1.jar |
+| Forge | 1.20 / 1.20.1 | maid_file_manager-forge-1.20.1-1.6.2.jar |
+| NeoForge | 1.21 / 1.21.1 | maid_file_manager-neoforge-1.21.1-1.6.2.jar |
+| Fabric | 1.20 / 1.20.1 | maid_file_manager-fabric-1.20.1-1.6.2.jar |
+| Fabric | 1.21 / 1.21.1 | maid_file_manager-fabric-1.21.1-1.6.2.jar |
 
 > 注：自 v1.4.0 起同一大版本内的小版本合并为单一 JAR：Forge 版基于 1.20.1 构建、兼容 1.20（Forge Loader 46+）；Fabric 1.20 系与 1.21 系同理单 JAR 通吃两个小版本。NeoForge 版自 v1.4.3 起 Minecraft 依赖范围放宽为 1.21～1.22（不含），1.21 原版与 1.21.1 均可加载，实际兼容性以前置车万女仆本体对相应版本的支持为准。
 
@@ -190,6 +190,14 @@ EntityEvents.spawned('touhou_little_maid:maid', event => {
 > 已经把数据写在女仆实体 NBT（含 `getPersistentData()` 与 Forge Capability 随存档序列化的字段）里的附属**无需接入**——本模组用 `EntityMaid#saveWithoutId` 导出完整女仆 NBT，这部分数据会自动随女仆迁移。
 
 ## 版本历史
+
+### v1.6.2
+
+- **破坏性变更：饰品携带改为「声明制」**。女仆自带饰品栏与 Curios 槽位里的物品，只有主动声明可携带的命名空间才会随 `.maid` 迁移；未声明的一律丢弃并给出提示。车万女仆本体与万法皆通为内置声明（行为不变）；Curios 的背包类槽位（`back` 等）无论声明如何都禁止携带。
+- 新增：饰品携带声明 SPI（`MaidBaubleCarrier` + `MaidBaubleCarrierRegistry`），附属模组注册即可声明自己的命名空间；越权声明会被拒绝并记录 WARN，文件本身不携带授权。
+- 新增：Curios 饰品裁剪（导出写文件前 + 导入读文件后双侧执行，并修复了备份导出路径此前完全未裁剪的问题）。
+- 新增：服务端配置项 `carry_curios_baubles`（默认关＝Curios 饰品一律不迁移），设置界面 OP 可改；导出/导入时会提示哪些饰品因所属模组未声明而未随行。
+- 改进：界面与命令文案全面改用语言键，英文客户端不再出现中文。
 
 ### v1.6.1
 - 新增：导入女仆时在女仆实体写入 `maidfm_imported` 标记。整合包作者可在实体生成事件（如 KubeJS 的 `EntityEvents.spawned`）中读取它，识别刚由本模组导入的女仆并发放补偿；标记写在实体加入世界之前，随实体存档与 `.maid` 文件迁移，反复导入只覆盖同一个键、不会累积。详见上文「整合包作者专用：识别导入的女仆」
