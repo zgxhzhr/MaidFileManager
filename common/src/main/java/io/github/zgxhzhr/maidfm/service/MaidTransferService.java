@@ -721,7 +721,9 @@ public final class MaidTransferService {
                     stripAttributes, blockedList, sourceMojangDataVersion, baubleNotes);
             if (curiosStats.hasDrops()) {
                 baubleNotes.add(Component.translatable("maid_file_manager.import.curios.dropped",
-                        curiosStats.dropped() + curiosStats.forbiddenItems()));
+                        curiosStats.dropped() + curiosStats.forbiddenItems()));                if (curiosStats.dropped() > 0) {
+                    addBaubleNoticeOnce(baubleNotes);
+                }
                 Constants.LOG.info("[maid_file_manager] 导入裁剪 Curios 饰品: 命名空间未声明 {} 件, "
                                 + "硬禁槽位 {} 个(含 {} 件), 保留 {} 件",
                         curiosStats.dropped(), curiosStats.forbiddenSlots(), curiosStats.forbiddenItems(),
@@ -1291,7 +1293,10 @@ public final class MaidTransferService {
             }
             Constants.LOG.info("[maid_file_manager] 饰品恢复完成: 完整恢复={} 全新化={} 禁用清单={} 非TLM命名空间={} 未入整合包白名单={} 目标世界缺失={} 失败={} 非法槽位={} 同版本={}",
                     restoredFull, restoredFresh, droppedBlocked, droppedForeign, droppedWhitelist,
-                    droppedMissing, droppedFailed, oversized, sameVersion);
+                    droppedMissing, droppedFailed, oversized, sameVersion);            // 有"模组尚未适配"类丢弃时统一追加一次说明（逐条说明里不再重复那段括号注）
+            if (droppedForeign > 0) {
+                addBaubleNoticeOnce(baubleNotes);
+            }
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] 饰品整体恢复失败（不影响女仆导入）: {}", t.toString());
         }
@@ -1359,6 +1364,16 @@ public final class MaidTransferService {
     }
 
     /** 追加一条饰品处理说明（translatable，由客户端按自身语言本地化） */
+    /** 追加"模组尚未适配"的统一说明；同一次导入/导出只出现一次（逐条说明里不再重复括号注） */
+    private static void addBaubleNoticeOnce(List<Component> notes) {
+        if (notes == null) {
+            return;
+        }
+        Component notice = Component.translatable("maid_file_manager.bauble.notice");
+        if (!notes.contains(notice)) {
+            notes.add(0, notice);
+        }
+    }
     private static void addBaubleNote(List<Component> notes, String langKey, String id) {
         if (notes == null) {
             return;
@@ -1740,6 +1755,9 @@ public final class MaidTransferService {
             tip.append(Component.translatable("maid_file_manager.export.curios.forbidden",
                     stats.forbiddenSlots(), stats.forbiddenItems()));
         }
+        if (stats.dropped() > 0) {
+            tip.append(Component.translatable("maid_file_manager.bauble.notice"));
+        }
         return tip;
     }
 
@@ -1790,7 +1808,7 @@ public final class MaidTransferService {
             int shown = Math.min(failDetails.size(), 5);
             for (int i = 0; i < shown; i++) {
                 if (i > 0) {
-                    detail.append(Component.translatable("maid_file_manager.list_separator.semicolon"));
+                    detail.append(Component.translatable("maid_file_manager.list_separator.newline"));
                 }
                 detail.append(failDetails.get(i));
             }
@@ -1812,7 +1830,7 @@ public final class MaidTransferService {
             int shown = Math.min(baubleDetails.size(), 5);
             for (int i = 0; i < shown; i++) {
                 if (i > 0) {
-                    detail.append(Component.translatable("maid_file_manager.list_separator.semicolon"));
+                    detail.append(Component.translatable("maid_file_manager.list_separator.newline"));
                 }
                 detail.append(baubleDetails.get(i));
             }
@@ -1839,7 +1857,7 @@ public final class MaidTransferService {
         int shown = Math.min(notes.size(), 5);
         for (int i = 0; i < shown; i++) {
             if (i > 0) {
-                detail.append(Component.translatable("maid_file_manager.list_separator.semicolon"));
+                    detail.append(Component.translatable("maid_file_manager.list_separator.newline"));
             }
             detail.append(notes.get(i));
         }
