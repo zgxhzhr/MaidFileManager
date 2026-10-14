@@ -459,6 +459,10 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         MaidFilePackets.writeStringList(buf,
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleWhitelist());
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleConfigManaged());
+        MaidFilePackets.writeStringList(buf,
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlockedNamespaces());
+        MaidFilePackets.writeStringList(buf,
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlockedCuriosSlots());
         ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_SERVER_CONFIG_SYNC, buf);
     }
 
