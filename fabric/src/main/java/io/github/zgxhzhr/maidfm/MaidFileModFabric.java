@@ -318,6 +318,13 @@ public class MaidFileModFabric implements ModInitializer {
      * @return true=已发送；false=序列化失败或契约预检被拒（调用方不得删除实体）
      */
     private static boolean sendExportResults(ServerPlayer player, List<MaidFileData> results) {
+        // Curios 饰品裁剪提示：未声明模组的饰品不会随女仆迁移，必须明确告知发起导出的人。
+        // curiosDropTip() 取出即清零，同一批次只提示一次。
+        net.minecraft.network.chat.Component curiosTip =
+                io.github.zgxhzhr.maidfm.service.MaidTransferService.curiosDropTip();
+        if (curiosTip != null) {
+            sendFeedback(player, curiosTip);
+        }
         List<byte[]> blobs = MaidFilePackets.serializeMaidDataBatch(results);
         if (blobs == null) {
             Constants.LOG.error("[maid_file_manager] 导出结果序列化失败，拒绝发送: player={}",
@@ -349,6 +356,7 @@ public class MaidFileModFabric implements ModInitializer {
         out.writeBoolean(MaidConfigManager.isAdvancementsAllowed());
         out.writeBoolean(MaidConfigManager.isEffectsAllowed());
         out.writeBoolean(MaidConfigManager.isInvulnerableAllowed());
+        out.writeBoolean(MaidConfigManager.isCarryCurios());
         out.writeBoolean(MaidConfigManager.isBaubleStripAttributes());
         MaidFilePackets.writeStringList(out, MaidConfigManager.getOpBaubleBlockedList());
         // 整合包饰品配置：黑名单 + 白名单 + 是否存在整合包配置（客户端据此把整合包强制的条目显示为只读勾选）
