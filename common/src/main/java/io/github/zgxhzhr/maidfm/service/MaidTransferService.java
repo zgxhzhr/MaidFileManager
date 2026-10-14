@@ -319,7 +319,7 @@ public final class MaidTransferService {
             // 必须在写文件之前裁剪，未声明模组的饰品既不随 .maid 迁移，也无法被复制。
             CuriosBaubleFilter.Result curiosResult = CuriosBaubleFilter.strip(
                     fullNbt, MaidConfigManager.isCarryCurios(),
-                    MaidBaubleCarrierRegistry::isNamespaceCarriable);
+                    MaidBaubleCarrierRegistry::isCuriosItemCarriable);
             if (curiosResult.hasDrops()) {
                 Constants.LOG.info("[maid_file_manager] 导出裁剪 Curios 饰品: 丢弃 {} 件(按命名空间 {}), "
                                 + "禁止槽位 {} 个(含 {} 件), 保留 {} 件",

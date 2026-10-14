@@ -7,7 +7,7 @@ import net.minecraft.nbt.Tag;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.function.Predicate;
+import java.util.function.BiPredicate;
 
 /**
  * Curios 饰品载荷过滤：把"不允许携带"的饰品从女仆实体 NBT 中剔除。
@@ -159,16 +159,17 @@ public final class CuriosBaubleFilter {
      * 从女仆实体 NBT 中剔除不允许携带的 Curios 饰品。
      *
      * @param entityNbt          女仆实体 NBT（原地修改）
-     * @param namespaceCarriable 命名空间是否允许携带（未登记的一律 false）
+     * @param itemCarriable 综合判定（命名空间, Curios 槽位名）-> 是否允许携带；未登记的一律 false
      * @return 统计结果；NBT 里没有 Curios 载荷时返回 {@link Result#empty()}
      */
-    public static Result strip(CompoundTag entityNbt, boolean allowCarry, Predicate<String> namespaceCarriableIn) {
+    public static Result strip(CompoundTag entityNbt, boolean allowCarry,
+                               BiPredicate<String, String> itemCarriableIn) {
         if (entityNbt == null || entityNbt.isEmpty()) {
             return Result.empty();
         }
         // 总开关关闭时一律不允许携带（谓词恒 false）；统计仍然照做，便于给玩家提示"丢了什么"
-        final Predicate<String> namespaceCarriable =
-                (allowCarry && namespaceCarriableIn != null) ? namespaceCarriableIn : namespace -> false;
+        final BiPredicate<String, String> itemCarriable =
+                (allowCarry && itemCarriableIn != null) ? itemCarriableIn : (namespace, slot) -> false;
         int droppedItems = 0;
         int forbiddenSlots = 0;
         int forbiddenItems = 0;
@@ -211,8 +212,10 @@ public final class CuriosBaubleFilter {
                 }
                 CompoundTag stacksHandler = entry.getCompound(STACKS_HANDLER_KEY);
                 int before = countItems(entry);
-                droppedItems += filterItemsList(stacksHandler, STACKS_KEY, namespaceCarriable, droppedByNamespace);
-                droppedItems += filterItemsList(stacksHandler, COSMETICS_KEY, namespaceCarriable, droppedByNamespace);
+                droppedItems += filterItemsList(stacksHandler, STACKS_KEY, identifier, itemCarriable,
+                        droppedByNamespace);
+                droppedItems += filterItemsList(stacksHandler, COSMETICS_KEY, identifier, itemCarriable,
+                        droppedByNamespace);
                 int after = countItems(entry);
                 keptItems += after;
                 if (after != before) {
@@ -235,8 +238,8 @@ public final class CuriosBaubleFilter {
      *
      * @return 被丢弃的件数
      */
-    private static int filterItemsList(CompoundTag stacksHandler, String subKey,
-                                       Predicate<String> namespaceCarriable,
+    private static int filterItemsList(CompoundTag stacksHandler, String subKey, String slotIdentifier,
+                                       BiPredicate<String, String> itemCarriable,
                                        Map<String, Integer> droppedByNamespace) {
         if (!stacksHandler.contains(subKey, Tag.TAG_COMPOUND)) {
             return 0;
@@ -254,7 +257,7 @@ public final class CuriosBaubleFilter {
                 continue;
             }
             String namespace = namespaceOfItemEntry(itemEntry);
-            if (namespace != null && namespaceCarriable.test(namespace)) {
+            if (namespace != null && itemCarriable.test(namespace, slotIdentifier)) {
                 kept.add(itemEntry);
                 continue;
             }
