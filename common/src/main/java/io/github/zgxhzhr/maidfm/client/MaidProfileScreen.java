@@ -668,10 +668,10 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         String shownName = custom != null && !custom.isBlank() ? custom : modelName;
         graphics.drawString(this.font,
                 Component.translatable("gui.maid_file_manager.profile.faction")
-                        .append(Component.literal("：" + faction))
+                        .append(Component.translatable("maid_file_manager.gui.label.colon_value", faction))
                         .getString(),
                 colX, factionY, TEXT_COLOR, false);
-        String nameLine = tr("gui.maid_file_manager.profile.name") + "：" + shownName;
+        String nameLine = tr("gui.maid_file_manager.profile.name") + Component.translatable("maid_file_manager.gui.label.colon_value", shownName).getString();
         graphics.drawString(this.font, nameLine, colX + colW - this.font.width(nameLine),
                 factionY, TEXT_COLOR, false);
 
