@@ -13,6 +13,16 @@ java {
     withJavadocJar()
 }
 
+// 强制使用 UTF-8 编码，避免中文注释在非 UTF-8 系统环境下乱码
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.withType(Javadoc).configureEach {
+    options.encoding = 'UTF-8'
+    options.charSet = 'UTF-8'
+}
+
 repositories {
     mavenCentral()
     // https://docs.gradle.org/current/userguide/declaring_repositories.html#declaring_content_exclusively_found_in_one_repository
@@ -103,9 +113,22 @@ processResources {
             'java_version'                 : java_version
     ]
 
-    filesMatching(['pack.mcmeta', 'fabric.mod.json', 'META-INF/mods.toml', 'META-INF/neoforge.mods.toml', '*.mixins.json']) {
+    var jsonExpandProps = expandProps.collectEntries {
+        key, value -> [(key): value instanceof String ? value.replace("\n", "\\\\n") : value]
+    }
+
+    filesMatching(['META-INF/mods.toml', 'META-INF/neoforge.mods.toml']) {
         expand expandProps
     }
+
+    filesMatching(['pack.mcmeta', 'fabric.mod.json', '*.mixins.json']) {
+        expand jsonExpandProps
+    }
+
+    // expand/filter 默认按平台字符集（Windows 为 GBK）读取源文件，
+    // 导致 mods.toml 等资源里的 UTF-8 中文注释在 jar 内二次编码乱码，统一固定为 UTF-8
+    filteringCharset = 'UTF-8'
+
     inputs.properties(expandProps)
 }
 
