@@ -80,7 +80,7 @@ public final class NbtMigration {
         // 旧版本导出的 .maid 文件可能仍带着 Curios 载荷，未声明的命名空间不得借文件绕过本地注册表。
         CuriosBaubleFilter.strip(out,
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.isCarryCurios(),
-                MaidBaubleCarrierRegistry::isNamespaceCarriable);
+                MaidBaubleCarrierRegistry::isCuriosItemCarriable);
 
         // ---------- 仅在版本明确且真正跨版本时做结构改名/定向迁移 ----------
         boolean versionsKnown = sourceVersion != NbtVersion.UNKNOWN && targetVersion != NbtVersion.UNKNOWN;

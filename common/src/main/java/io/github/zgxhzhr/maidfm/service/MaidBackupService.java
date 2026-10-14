@@ -209,7 +209,7 @@ public final class MaidBackupService {
         CompoundTag exportTag = tag.copy();
         CuriosBaubleFilter.Result backupCurios = CuriosBaubleFilter.strip(exportTag,
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.isCarryCurios(),
-                io.github.zgxhzhr.maidfm.spi.MaidBaubleCarrierRegistry::isNamespaceCarriable);
+                io.github.zgxhzhr.maidfm.spi.MaidBaubleCarrierRegistry::isCuriosItemCarriable);
         if (backupCurios.hasDrops()) {
             Constants.LOG.info("[maid_file_manager] 备份导出裁剪 Curios 饰品: 丢弃 {} 件(按命名空间 {}), "
                             + "禁止槽位 {} 个(含 {} 件), 保留 {} 件",

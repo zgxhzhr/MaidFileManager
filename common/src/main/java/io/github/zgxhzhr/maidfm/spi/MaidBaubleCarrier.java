@@ -54,6 +54,22 @@ public interface MaidBaubleCarrier {
     Set<String> carriedNamespaces();
 
     /**
+     * 声明可携带的 Curios 槽位名（<b>可选</b>）。
+     *
+     * <p>返回<b>空集</b>（默认）表示不限制槽位：只要命名空间被声明，该模组的物品在任何"非硬禁"槽位都可携带；
+     * 返回<b>非空</b>表示<b>只有</b>出现在这些槽位里的物品才随女仆迁移，其它槽位一律丢弃。
+     *
+     * <p>建议关心槽位语义的模组填这个：Curios 槽位名无法穷举（TLM 与第三方模组都能给女仆新增槽位），
+     * 档案管理器只能硬禁已知的容器类/数据容器槽位；如果你的槽位本身也是"有状态容器"，
+     * 请在这里明确列出你允许携带的槽位——未列出的（含将来新增的）默认不会被携带。
+     *
+     * <p>写纯槽位名即可（如 {@code ring}、{@code my_trinket}），带命名空间前缀也会被规范化。
+     */
+    default Set<String> carriedCuriosSlots() {
+        return Set.of();
+    }
+
+    /**
      * 该声明当前是否可用（依赖的模组是否已加载）。默认按 {@link #getDependencyModId()} 检测。
      */
     default boolean isAvailable() {
