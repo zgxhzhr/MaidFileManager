@@ -1344,6 +1344,13 @@ public final class MaidTransferService {
         if (notes == null) {
             return;
         }
+        if ("maid_file_manager.import.bauble.foreign".equals(langKey)) {
+            // 明确责任方与下一步：是"某个模组没声明支持迁移"，不是档案管理器的故障，
+            // 玩家应去找该模组的作者（第二参数给出模组标识，避免玩家不知道是谁）。
+            notes.add(Component.translatable(langKey, baubleItemLabel(id),
+                    Services.PLATFORM.get().getModDisplayName(namespaceOf(id))));
+            return;
+        }
         notes.add(Component.translatable(langKey, baubleItemLabel(id)));
     }
 
@@ -1708,7 +1715,7 @@ public final class MaidTransferService {
         }
         net.minecraft.network.chat.MutableComponent tip =
                 Component.translatable("maid_file_manager.export.curios.dropped",
-                        stats.dropped(), stats.namespacesText());
+                        stats.dropped(), displayNamesText(stats));
         if (stats.forbiddenItems() > 0) {
             tip.append(Component.translatable("maid_file_manager.export.curios.forbidden",
                     stats.forbiddenSlots(), stats.forbiddenItems()));
@@ -1716,6 +1723,12 @@ public final class MaidTransferService {
         return tip;
     }
 
+    /** 把「命名空间:件数」改写成「模组显示名:件数」，让玩家一眼看出是哪个模组（取不到显示名时退化为 modId） */
+    private static String displayNamesText(CuriosBaubleFilter.Stats stats) {
+        return stats.sortedNamespaces().entrySet().stream()
+                .map(e -> Services.PLATFORM.get().getModDisplayName(e.getKey()) + ":" + e.getValue())
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
     public static Component buildBatchSummary(List<ImportResult> results) {
         int ok = 0;
         int untamed = 0;
