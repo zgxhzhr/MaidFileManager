@@ -66,6 +66,19 @@ public class FabricPlatformHelper implements IPlatformHelper {
             return modId;
         }
     }
+    @Override
+    public java.util.Map<String, String> getAllMods() {
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        try {
+            for (net.fabricmc.loader.api.ModContainer container
+                    : net.fabricmc.loader.api.FabricLoader.getInstance().getAllMods()) {
+                out.put(container.getMetadata().getId(), container.getMetadata().getName());
+            }
+        } catch (Throwable t) {
+            // 加载器 API 差异不应让界面崩掉
+        }
+        return out;
+    }
 
     @Override
     public boolean isDevelopmentEnvironment() {
