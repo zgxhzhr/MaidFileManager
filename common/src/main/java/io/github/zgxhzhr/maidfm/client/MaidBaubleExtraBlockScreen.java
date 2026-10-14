@@ -62,9 +62,9 @@ public class MaidBaubleExtraBlockScreen extends Screen {
     /** 面板内固定纵向间距（避免任何重叠） */
     private static final int TITLE_Y = 8;
     private static final int HINT_Y = 22;
-    private static final int TAB_Y = 36;
-    private static final int SEARCH_Y = 58;
-    private static final int LIST_Y = 78;
+    private static final int TAB_Y = 46;
+    private static final int SEARCH_Y = 64;
+    private static final int LIST_Y = 82;
     private static final int PAGER_Y = LIST_Y + LIST_H + 8;
     private static final int PANEL_H = PAGER_Y + 16 + 6 + 24;
 
@@ -119,21 +119,10 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         blockedItems.clear();
         blockedItems.addAll(MaidConfigManager.cachedBaubleBlockedList());
 
-        // 按物品：列出车万本体 / 万法皆通的全部物品（含白黑名单里出现过的），
-        // 其它模组的饰品请在「按模组」标签里禁用
+        // 按物品：遍历全部物品并用 TLM 饰品注册表判定"真正可佩戴的女仆饰品"——
+        // 不限命名空间，任何模组的饰品都会出现（与游戏内饰品槽位校验同源）
         itemEntries.clear();
-        Set<String> itemIds = new LinkedHashSet<>();
-        try {
-            for (net.minecraft.resources.ResourceLocation key
-                    : net.minecraft.core.registries.BuiltInRegistries.ITEM.keySet()) {
-                String ns = key.getNamespace();
-                if ("touhou_little_maid".equals(ns) || "touhou_little_maid_spell".equals(ns)) {
-                    itemIds.add(key.toString());
-                }
-            }
-        } catch (Throwable t) {
-            // 枚举物品失败不影响其它标签
-        }
+        Set<String> itemIds = new LinkedHashSet<>(cachedAllBaubleIds());
         itemIds.addAll(blockedItems);
         itemIds.addAll(MaidConfigManager.cachedBaubleWhitelist());
         itemIds.addAll(MaidConfigManager.cachedBaubleBlacklist());
@@ -311,6 +300,86 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         }
     }
 
+    /** 按宽度折行绘制（最多两行，末行超出用省略号），避免提示文字越界 */
+    private void drawWrapped(GuiGraphics graphics, String text, int x, int y, int maxWidth, int color) {
+        if (this.font.width(text) <= maxWidth) {
+            graphics.drawString(this.font, text, x, y, color, false);
+            return;
+        }
+        String rest = text;
+        for (int line = 0; line < 2 && !rest.isEmpty(); line++) {
+            int cut = rest.length();
+            while (cut > 0 && this.font.width(rest.substring(0, cut)) > maxWidth) {
+                cut--;
+            }
+            if (cut <= 0) {
+                cut = 1;
+            }
+            boolean truncated = cut < rest.length();
+            String piece = rest.substring(0, cut);
+            if (line == 1 && truncated) {
+                int c2 = piece.length();
+                while (c2 > 0 && this.font.width(piece.substring(0, c2) + "...") > maxWidth) {
+                    c2--;
+                }
+                piece = piece.substring(0, Math.max(1, c2)) + "...";
+                truncated = false;
+            }
+            graphics.drawString(this.font, piece, x, y + line * 10, color, false);
+            if (!truncated) {
+                break;
+            }
+            rest = rest.substring(cut);
+        }
+    }
+
+    private static List<String> allBaubleIdsCache;
+
+    /** 全部"可佩戴女仆饰品"的物品 id（含所有模组；反射判定同主列表，静态缓存避免每次重算） */
+    private static List<String> cachedAllBaubleIds() {
+        if (allBaubleIdsCache == null) {
+            List<String> out = new ArrayList<>();
+            try {
+                for (net.minecraft.world.item.Item item
+                        : net.minecraft.core.registries.BuiltInRegistries.ITEM) {
+                    net.minecraft.resources.ResourceLocation key =
+                            net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(item);
+                    if (key != null && isBaubleItem(item.getDefaultInstance())) {
+                        out.add(key.toString());
+                    }
+                }
+            } catch (Throwable t) {
+                // 注册表异常时退化为空列表，不影响其它标签
+            }
+            allBaubleIdsCache = out;
+        }
+        return allBaubleIdsCache;
+    }
+
+    private static java.lang.reflect.Method baubleLookup;
+    private static boolean baubleLookupFailed;
+
+    /** 是否为 TLM 可佩戴饰品（反射查 BaubleManager.getBauble，与游戏内饰品槽位校验同源） */
+    private static boolean isBaubleItem(net.minecraft.world.item.ItemStack stack) {
+        if (baubleLookup == null && !baubleLookupFailed) {
+            try {
+                Class<?> c = Class.forName(
+                        "com.github.tartaricacid.touhoulittlemaid.item.bauble.BaubleManager");
+                baubleLookup = c.getMethod("getBauble", net.minecraft.world.item.ItemStack.class);
+            } catch (Throwable t) {
+                baubleLookupFailed = true;
+            }
+        }
+        if (baubleLookup == null) {
+            return true;
+        }
+        try {
+            return baubleLookup.invoke(null, stack) != null;
+        } catch (Throwable t) {
+            return true;
+        }
+    }
+
     /** 物品显示名（取不到就退化为 id） */
     private String itemLabel(String id) {
         try {
@@ -389,13 +458,12 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         graphics.renderOutline(panelX, panelY, PANEL_W, PANEL_H, PANEL_BORDER);
 
         graphics.drawString(this.font, this.title, listX, panelY + TITLE_Y, HEADER_COLOR, false);
-        graphics.drawString(this.font,
-                Component.translatable(tab == 0
-                        ? "gui.maid_file_manager.config.bauble_extra_hint_item"
-                        : (tab == 1
-                                ? "gui.maid_file_manager.config.bauble_extra_hint_mod"
-                                : "gui.maid_file_manager.config.bauble_extra_hint_slot")),
-                listX, panelY + HINT_Y, HINT_COLOR, false);
+        String hint = Component.translatable(tab == 0
+                ? "gui.maid_file_manager.config.bauble_extra_hint_item"
+                : (tab == 1
+                        ? "gui.maid_file_manager.config.bauble_extra_hint_mod"
+                        : "gui.maid_file_manager.config.bauble_extra_hint_slot")).getString();
+        drawWrapped(graphics, hint, listX, panelY + HINT_Y, listW, HINT_COLOR);
 
         // 列表底
         int top = panelY + LIST_Y;
