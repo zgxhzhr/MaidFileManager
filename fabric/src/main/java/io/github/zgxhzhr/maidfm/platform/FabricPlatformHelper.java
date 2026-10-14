@@ -46,6 +46,23 @@ public class FabricPlatformHelper implements IPlatformHelper {
         return FabricLoader.getInstance().isModLoaded(modId);
     }
 
+    /**
+     * 取模组显示名（玩家语言下的名字）。取不到时退化为 modId —— 提示功能不能因此出错。
+     */
+    @Override
+    public String getModDisplayName(String modId) {
+        if (modId == null || modId.isEmpty()) {
+            return "";
+        }
+        try {
+            return FabricLoader.getInstance().getModContainer(modId)
+                    .map(container -> container.getMetadata().getName())
+                    .orElse(modId);
+        } catch (Throwable t) {
+            return modId;
+        }
+    }
+
     @Override
     public boolean isDevelopmentEnvironment() {
 

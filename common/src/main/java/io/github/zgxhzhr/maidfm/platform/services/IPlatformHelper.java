@@ -26,6 +26,14 @@ public interface IPlatformHelper {
     boolean isModLoaded(String modId);
 
     /**
+     * 取模组的显示名（给玩家看的名字，例如「机械动力」），用于提示里明确告诉玩家"该找哪个模组"。
+     *
+     * @param modId 模组 ID
+     * @return 显示名；模组不存在或任何异常时返回 {@code modId} 本身（永不返回 null）
+     */
+    String getModDisplayName(String modId);
+
+    /**
      * 判断当前是否运行在开发环境。
      *
      * @return 开发环境返回 true，否则 false
