@@ -703,11 +703,22 @@ public final class MaidTransferService {
                     && targetVersion != NbtVersion.UNKNOWN
                     && sourceVersion == targetVersion;
             int sourceMojangDataVersion = NbtVersion.mojangDataVersion(sourceVersion);
-            // migrate 返回清理后的副本，不修改原始 data
-            CompoundTag migrated = NbtMigration.migrate(originalNbt, sourceVersion, targetVersion);
+            // migrate 返回清理后的副本，不修改原始 data。
+            // 旧版本导出的 .maid 文件可能仍带着不该携带的 Curios 饰品：下面把裁剪统计取出，
+            // 用于给玩家一条明确说明，绝不静默丢弃。
+            CuriosBaubleFilter.Stats curiosStats = new CuriosBaubleFilter.Stats();
+            CompoundTag migrated = NbtMigration.migrate(originalNbt, sourceVersion, targetVersion, curiosStats);
             CompoundTag tlmTag = extractTlmData(migrated);
             loadMaidNbt(maid, migrated, tlmTag, keepBaubles, sourceStruckByLightning, sameVersion,
                     stripAttributes, blockedList, sourceMojangDataVersion, baubleNotes);
+            if (curiosStats.hasDrops()) {
+                baubleNotes.add(Component.translatable("maid_file_manager.import.curios.dropped",
+                        curiosStats.dropped() + curiosStats.forbiddenItems()));
+                Constants.LOG.info("[maid_file_manager] 导入裁剪 Curios 饰品: 命名空间未声明 {} 件, "
+                                + "硬禁槽位 {} 个(含 {} 件), 保留 {} 件",
+                        curiosStats.dropped(), curiosStats.forbiddenSlots(), curiosStats.forbiddenItems(),
+                        curiosStats.kept());
+            }
         } catch (Exception e) {
             // 异常原文可能含内部类名/NBT 结构信息，只进日志；回执给通用文案，不把内部信息透传给客户端
             Constants.LOG.error("[maid_file_manager] 加载女仆 NBT 失败", e);
