@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.github.zgxhzhr.maidfm.Constants;
+import io.github.zgxhzhr.maidfm.data.CuriosBaubleFilter;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import io.github.zgxhzhr.maidfm.data.MaidFileIo;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
@@ -203,7 +204,20 @@ public final class MaidBackupService {
     /** 由备份实体 NBT 组装 .maid 文件数据（备份内容与 .maid 的 data 字段同构） */
     private static MaidFileData buildFileData(CompoundTag tag, String ownerUuid, String maidUuid) {
         MaidFileData data = new MaidFileData();
-        data.setData(tag);
+        // Curios 饰品：备份导出的 .maid 同样必须裁剪——备份里存的是实体 NBT，天然带着 Curios 载荷。
+        // 用副本处理，避免污染服务端持有的备份数据本身。
+        CompoundTag exportTag = tag.copy();
+        CuriosBaubleFilter.Result backupCurios = CuriosBaubleFilter.strip(exportTag,
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.isCarryCurios(),
+                io.github.zgxhzhr.maidfm.spi.MaidBaubleCarrierRegistry::isNamespaceCarriable);
+        if (backupCurios.hasDrops()) {
+            Constants.LOG.info("[maid_file_manager] 备份导出裁剪 Curios 饰品: 丢弃 {} 件(按命名空间 {}), "
+                            + "禁止槽位 {} 个(含 {} 件), 保留 {} 件",
+                    backupCurios.droppedItems(), backupCurios.sortedNamespaces(),
+                    backupCurios.forbiddenSlots(), backupCurios.forbiddenItems(), backupCurios.keptItems());
+        }
+        CuriosBaubleFilter.batch().add(backupCurios);
+        data.setData(exportTag);
         // 备份 NBT 已由 TLM 写入 DataVersion，缺失时退回当前版本
         int dataVersion = tag.contains("DataVersion")
                 ? tag.getInt("DataVersion")

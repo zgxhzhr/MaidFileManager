@@ -75,6 +75,13 @@ public final class MaidConfigManager {
     public static final String KEY_ALLOW_INVULNERABLE = "allow_invulnerable";
     /** 服务端配置键：导入时丢弃饰品属性（附魔/耐久/无法破坏/属性修饰符等），恢复为全新物品（默认关=保留） */
     public static final String KEY_BAUBLE_STRIP_ATTRIBUTES = "bauble_strip_attributes";
+    /**
+     * 服务端配置键：是否允许携带 Curios 饰品。
+     * <p>默认关闭 = 女仆 Curios 槽位内的饰品一律不随女仆迁移；
+     * 开启后也只携带<b>被声明允许</b>的命名空间（见 MaidBaubleCarrier），未声明仍丢弃。
+     * <p>背包类槽位（back 等）无论本开关如何都被硬编码禁止携带。
+     */
+    public static final String KEY_CARRY_CURIOS = "carry_curios_baubles";
     /** 服务端配置键：禁用携带的饰品 ID 列表（逗号分隔，仅限车万本体/万法皆通两命名空间，导入时直接丢弃） */
     public static final String KEY_BAUBLE_BLOCKED_LIST = "bauble_blocked_list";
     /** 客户端配置键：允许服务端统一导出你的女仆 */
@@ -90,6 +97,8 @@ public final class MaidConfigManager {
     private static volatile boolean serverAllowInvulnerable = false;
     /** 服务端配置内存值：导入时丢弃饰品属性（默认关=保留） */
     private static volatile boolean serverBaubleStripAttributes = false;
+    /** 服务端配置内存值：是否允许携带 Curios 饰品（默认关=一律不迁移） */
+    private static volatile boolean serverCarryCurios = false;
     /** 服务端配置内存值：OP 在游戏内维护的「禁用携带饰品」清单（不可变，默认空；与整合包黑名单相互独立） */
     private static volatile List<String> serverBaubleBlockedList = List.of();
     /** 整合包黑名单（来自 bauble_import.json；不可变，默认空；游戏内只读，OP 亦不可改） */
@@ -190,6 +199,8 @@ public final class MaidConfigManager {
             serverAllowInvulnerable = value;
         } else if (KEY_BAUBLE_STRIP_ATTRIBUTES.equals(key)) {
             serverBaubleStripAttributes = value;
+        } else if (KEY_CARRY_CURIOS.equals(key)) {
+            serverCarryCurios = value;
         } else {
             Constants.LOG.warn("[女仆档案管理] 收到未知服务端配置键: {}", key);
             return false;
@@ -245,6 +256,14 @@ public final class MaidConfigManager {
     /** 导入时是否丢弃饰品属性（恢复为全新物品）；服务端读配置、客户端读登录同步缓存 */
     public static boolean isBaubleStripAttributes() {
         return serverBaubleStripAttributes;
+    }
+
+    /**
+     * 是否允许携带 Curios 饰品（服务端读配置；默认关 = Curios 饰品一律不随女仆迁移）。
+     * <p>开启时也只携带被声明允许的命名空间；背包类槽位始终禁止。
+     */
+    public static boolean isCarryCurios() {
+        return serverCarryCurios;
     }
 
     /** 导入判定用的禁用清单（OP 清单 ∪ 整合包黑名单，不可变）；服务端读配置、客户端读登录同步缓存 */
@@ -313,7 +332,7 @@ public final class MaidConfigManager {
 
     /** 客户端收到服务端配置同步（S2C 包处理）：更新本地缓存并回发同意状态 */
     public static void handleServerConfigSync(boolean allowImport, boolean allowBaubles, boolean allowAdvancements,
-                                              boolean allowEffects, boolean allowInvulnerable,
+                                              boolean allowEffects, boolean allowInvulnerable, boolean carryCurios,
                                               boolean baubleStripAttributes, List<String> baubleBlockedList,
                                               List<String> baubleBlacklist, List<String> baubleWhitelist,
                                               boolean baubleManaged) {
@@ -322,6 +341,7 @@ public final class MaidConfigManager {
         serverAllowAdvancements = allowAdvancements;
         serverAllowEffects = allowEffects;
         serverAllowInvulnerable = allowInvulnerable;
+        serverCarryCurios = carryCurios;
         serverBaubleStripAttributes = baubleStripAttributes;
         serverBaubleBlockedList = List.copyOf(baubleBlockedList == null ? List.of() : baubleBlockedList);
         baubleImportBlacklist = List.copyOf(baubleBlacklist == null ? List.of() : baubleBlacklist);
@@ -363,6 +383,11 @@ public final class MaidConfigManager {
         return serverBaubleStripAttributes;
     }
 
+    /** 客户端读取服务端同步缓存：是否允许携带 Curios 饰品（设置界面显示用） */
+    public static boolean cachedCarryCurios() {
+        return serverCarryCurios;
+    }
+
     /** 客户端读取服务端同步缓存：OP 维护的禁用清单（饰品导入设置界面读写用） */
     public static List<String> cachedBaubleBlockedList() {
         return serverBaubleBlockedList;
@@ -398,6 +423,7 @@ public final class MaidConfigManager {
         serverAllowEffects = parse(props, KEY_ALLOW_EFFECTS, true);
         serverAllowInvulnerable = parse(props, KEY_ALLOW_INVULNERABLE, false);
         serverBaubleStripAttributes = parse(props, KEY_BAUBLE_STRIP_ATTRIBUTES, false);
+        serverCarryCurios = parse(props, KEY_CARRY_CURIOS, false);
         serverBaubleBlockedList = parseIdList(props, KEY_BAUBLE_BLOCKED_LIST);
     }
 
@@ -429,6 +455,7 @@ public final class MaidConfigManager {
         props.setProperty(KEY_ALLOW_EFFECTS, String.valueOf(serverAllowEffects));
         props.setProperty(KEY_ALLOW_INVULNERABLE, String.valueOf(serverAllowInvulnerable));
         props.setProperty(KEY_BAUBLE_STRIP_ATTRIBUTES, String.valueOf(serverBaubleStripAttributes));
+        props.setProperty(KEY_CARRY_CURIOS, String.valueOf(serverCarryCurios));
         // OP 维护的禁用清单始终写入 properties；整合包黑名单来自 bauble_import.json，不在此持久化
         if (!serverBaubleBlockedList.isEmpty()) {
             props.setProperty(KEY_BAUBLE_BLOCKED_LIST, String.join(",", serverBaubleBlockedList));

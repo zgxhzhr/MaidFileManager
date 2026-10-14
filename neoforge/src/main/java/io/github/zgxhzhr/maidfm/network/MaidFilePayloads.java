@@ -61,6 +61,13 @@ public final class MaidFilePayloads {
      * @return true=已发送；false=序列化失败或契约预检被拒（已回执原因，调用方不得删除实体）
      */
     private static boolean sendExportResults(ServerPlayer sp, List<MaidFileData> results) {
+        // Curios 饰品裁剪提示：未声明模组的饰品不会随女仆迁移，必须明确告知发起导出的人。
+        // curiosDropTip() 取出即清零，同一批次只提示一次。
+        net.minecraft.network.chat.Component curiosTip =
+                io.github.zgxhzhr.maidfm.service.MaidTransferService.curiosDropTip();
+        if (curiosTip != null) {
+            feedback(sp, curiosTip);
+        }
         List<byte[]> blobs = MaidFilePackets.serializeMaidDataBatch(results);
         if (blobs == null) {
             Constants.LOG.error("[maid_file_manager] 导出结果序列化失败，拒绝发送: player={}",
@@ -759,7 +766,7 @@ public final class MaidFilePayloads {
 
     /** 服务端配置同步（登录时单播 + 修改后全服同步）；客户端收到后更新缓存并回发同意状态 */
     public record ServerConfigSyncPayload(boolean allowImport, boolean allowBaubles, boolean allowAdvancements,
-                                          boolean allowEffects, boolean allowInvulnerable,
+                                          boolean allowEffects, boolean allowInvulnerable, boolean carryCurios,
                                           boolean baubleStripAttributes, List<String> baubleBlockedList,
                                           List<String> baubleBlacklist, List<String> baubleWhitelist,
                                           boolean baubleManaged)
@@ -775,6 +782,7 @@ public final class MaidFilePayloads {
                             fbb.writeBoolean(p.allowAdvancements);
                             fbb.writeBoolean(p.allowEffects);
                             fbb.writeBoolean(p.allowInvulnerable);
+                            fbb.writeBoolean(p.carryCurios);
                             fbb.writeBoolean(p.baubleStripAttributes);
                             writeStringList(fbb, p.baubleBlockedList);
                             // 整合包饰品配置：黑名单 + 白名单 + 是否托管（客户端据此把整合包强制的条目显示为只读勾选）
@@ -789,13 +797,14 @@ public final class MaidFilePayloads {
                             boolean allowAdvancements = fbb.readBoolean();
                             boolean allowEffects = fbb.readBoolean();
                             boolean allowInvulnerable = fbb.readBoolean();
+                            boolean carryCurios = fbb.readBoolean();
                             boolean baubleStripAttributes = fbb.readBoolean();
                             List<String> baubleBlockedList = readStringList(fbb);
                             List<String> baubleBlacklist = readStringList(fbb);
                             List<String> baubleWhitelist = readStringList(fbb);
                             boolean baubleManaged = fbb.readBoolean();
                             return new ServerConfigSyncPayload(allowImport, allowBaubles, allowAdvancements,
-                                    allowEffects, allowInvulnerable, baubleStripAttributes, baubleBlockedList,
+                                    allowEffects, allowInvulnerable, carryCurios, baubleStripAttributes, baubleBlockedList,
                                     baubleBlacklist, baubleWhitelist, baubleManaged);
                         }
                 );
@@ -807,7 +816,7 @@ public final class MaidFilePayloads {
 
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> MaidConfigManager.handleServerConfigSync(
-                    allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable,
+                    allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable, carryCurios,
                     baubleStripAttributes, baubleBlockedList, baubleBlacklist, baubleWhitelist, baubleManaged));
         }
     }
@@ -821,6 +830,7 @@ public final class MaidFilePayloads {
                     MaidConfigManager.isAdvancementsAllowed(),
                     MaidConfigManager.isEffectsAllowed(),
                     MaidConfigManager.isInvulnerableAllowed(),
+                    MaidConfigManager.isCarryCurios(),
                     MaidConfigManager.isBaubleStripAttributes(),
                     MaidConfigManager.getOpBaubleBlockedList(),
                     MaidConfigManager.getBaubleBlacklist(),
