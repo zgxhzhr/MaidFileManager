@@ -203,5 +203,16 @@
     "maid_file_manager.import.check.file_too_large": "Maid file #%s is %s KB, over the %s KB per-file limit; trim that maid (inventory/baubles) and retry",
     "maid_file_manager.import.check.total_too_large": "Total data too large (%s KB > %s KB); reduce the count and split into batches",
     "maid_file_manager.gui.label.colon_value": ": %s",
-    "maid_file_manager.gui.backup.world_row": "%s  (%s players)"
+    "maid_file_manager.gui.backup.world_row": "%s  (%s players)",
+    "maid_file_manager.server.prefix": "[Maid File Manager] ",
+    "maid_file_manager.server.handler_error": "[Maid File Manager] Server-side handling failed; check the server log (at: %s)",
+    "maid_file_manager.server.serialize_failed": "[Maid File Manager] Failed to serialize export data; please retry. If it keeps failing, ask the server owner to check the log.",
+    "maid_file_manager.server.unknown_config": "[Maid File Manager] Unknown config key; the change was rejected",
+    "maid_file_manager.server.bulk_export_op_only": "[Maid File Manager] Bulk export is available to OPs only",
+    "maid_file_manager.server.too_many_players": "Too many online players for bulk export (%s > %s); cannot build the list. Narrow the scope and retry.",
+    "maid_file_manager.server.list_too_large": "The all-server maid list is too large (%s KB > %s KB); narrow the scope and retry.",
+    "maid_file_manager.server.too_many_backup_owners": "[Maid File Manager] Too many backup owners (%s > %s); cannot list. Clean up backups and retry.",
+    "maid_file_manager.server.backup_list_too_large": "[Maid File Manager] The backup list is too large (%s KB > %s KB); clean up backups and retry.",
+    "maid_file_manager.server.backup_too_large": "[Maid File Manager] This backup is too large to export through the server",
+    "maid_file_manager.command.client_only": "Client-side only"
 }
