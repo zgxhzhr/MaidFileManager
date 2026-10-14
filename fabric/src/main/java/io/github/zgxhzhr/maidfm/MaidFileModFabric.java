@@ -167,15 +167,27 @@ public class MaidFileModFabric implements ModInitializer {
             broadcastServerConfig(server);
         });
 
-        // OP 修改自己维护的「禁用携带的饰品」清单：权限校验 → 收窄写入 → 广播同步
+        // OP 修改自己维护的禁用清单（物品 / 模组 / Curios 槽位）：权限校验 → 收窄写入 → 广播同步
         registerC2SReceiver(MaidFilePackets.ID_SET_SERVER_BAUBLE_BLOCKED_LIST, (server, player, buf) -> {
+            String listKey = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
             List<String> ids = MaidFilePackets.readStringList(buf);
             if (!player.hasPermissions(2)) {
                 sendFeedback(player, Component.translatable("maid_file_manager.config.fail.no_permission"));
                 return;
             }
-            // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读，不在此写入
-            MaidConfigManager.setServerBaubleBlockedList(MaidTransferService.sanitizeBaubleBlockedList(ids));
+            List<String> values;
+            if (MaidConfigManager.KEY_BAUBLE_BLOCKED_LIST.equals(listKey)) {
+                // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读
+                values = MaidTransferService.sanitizeBaubleBlockedList(ids);
+            } else if (MaidConfigManager.KEY_BAUBLE_BLOCKED_NAMESPACES.equals(listKey)
+                    || MaidConfigManager.KEY_BAUBLE_BLOCKED_CURIOS_SLOTS.equals(listKey)) {
+                // 模组 / 槽位清单：客户端提交可被篡改，服务端按标识符字符集收窄
+                values = MaidTransferService.sanitizeIdentifierList(ids);
+            } else {
+                Constants.LOG.warn("[maid_file_manager] SET_SERVER_LIST_CONFIG rejected (unknown key): {}", listKey);
+                return;
+            }
+            MaidConfigManager.setServerListConfig(listKey, values);
             broadcastServerConfig(server);
         });
 
