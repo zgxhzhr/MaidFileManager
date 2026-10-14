@@ -29,6 +29,8 @@
     "gui.maid_file_manager.config.bauble_extra_block": "按模组 / 槽位禁用…",
     "gui.maid_file_manager.config.bauble_extra_hint": "左侧按模组批量禁用；右侧按 Curios 槽位禁用（硬禁槽位不可取消）",
     "gui.maid_file_manager.config.bauble_extra_search": "搜索模组名称或 ID",
+    "gui.maid_file_manager.config.bauble_extra_by_item": "按物品（只读）",
+    "gui.maid_file_manager.config.bauble_extra_hint_item": "此处只读展示已被禁用的物品；勾选/取消请在上一屏的饰品列表中操作（其它模组的物品请用「按模组」标签）",
     "gui.maid_file_manager.config.bauble_extra_prev": "上一页",
     "gui.maid_file_manager.config.bauble_extra_next": "下一页",
     "gui.maid_file_manager.config.bauble_extra_back": "返回",
