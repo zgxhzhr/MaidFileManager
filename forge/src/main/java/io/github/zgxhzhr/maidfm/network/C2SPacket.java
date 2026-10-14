@@ -246,6 +246,13 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
      * @return true=已发送；false=序列化失败或契约预检被拒（调用方不得删除实体）
      */
     private static boolean sendExportResults(ServerPlayer player, List<MaidFileData> results) {
+        // Curios 饰品裁剪提示：未声明模组的饰品不会随女仆迁移，必须明确告知发起导出的人。
+        // curiosDropTip() 取出即清零，同一批次只提示一次。
+        net.minecraft.network.chat.Component curiosTip =
+                io.github.zgxhzhr.maidfm.service.MaidTransferService.curiosDropTip();
+        if (curiosTip != null) {
+            sendFeedback(player, curiosTip);
+        }
         List<byte[]> blobs = MaidFilePackets.serializeMaidDataBatch(results);
         if (blobs == null) {
             Constants.LOG.error("[maid_file_manager] 导出结果序列化失败，拒绝发送: player={}",
@@ -442,6 +449,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isAdvancementsAllowed());
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isEffectsAllowed());
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isInvulnerableAllowed());
+        buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isCarryCurios());
         buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleStripAttributes());
         MaidFilePackets.writeStringList(buf,
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.getOpBaubleBlockedList());

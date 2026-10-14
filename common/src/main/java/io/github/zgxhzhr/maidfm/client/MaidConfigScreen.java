@@ -73,7 +73,7 @@ public class MaidConfigScreen extends Screen {
 
         // 先按内容结构算出面板高度，再垂直居中
         panelH = 8 + 16 + 4   // 标题
-                + 14 + ROW_H * 6   // 服务端区块标题 + 5 开关行 + 饰品导入设置入口行
+                + 14 + ROW_H * 7   // 服务端区块标题 + 6 开关行 + 饰品导入设置入口行
                 + (hasServerPerm ? 0 : 14)   // 无权限提示行（仅无权限时）
                 + 16 + ROW_H * 2   // 客户端区块标题 + 2 行（统一导出同意 / 移除二次确认）
                 + 12 + 20 + 10;   // 完成按钮 + 底部边距
@@ -103,6 +103,9 @@ public class MaidConfigScreen extends Screen {
         y = addRow(labelX, switchX, y, Component.translatable("gui.maid_file_manager.config.allow_invulnerable"),
                 MaidConfigManager.cachedInvulnerableAllowed(), true,
                 MaidConfigManager.KEY_ALLOW_INVULNERABLE, hasServerPerm);
+        y = addRow(labelX, switchX, y, Component.translatable("gui.maid_file_manager.config.carry_curios"),
+                MaidConfigManager.cachedCarryCurios(), true,
+                MaidConfigManager.KEY_CARRY_CURIOS, hasServerPerm);
         // 饰品导入设置入口：跳转次级界面（丢弃属性开关 + 禁用携带列表，均为服务端配置，仅 OP 可改）
         addRenderableWidget(Button.builder(
                         Component.translatable("gui.maid_file_manager.config.bauble_import_settings"),

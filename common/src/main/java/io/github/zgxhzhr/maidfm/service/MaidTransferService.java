@@ -8,6 +8,8 @@ import io.github.zgxhzhr.maidfm.data.MaidInfo;
 import io.github.zgxhzhr.maidfm.data.NbtMigration;
 import io.github.zgxhzhr.maidfm.data.NbtVersion;
 import io.github.zgxhzhr.maidfm.platform.Services;
+import io.github.zgxhzhr.maidfm.data.CuriosBaubleFilter;
+import io.github.zgxhzhr.maidfm.spi.MaidBaubleCarrierRegistry;
 import io.github.zgxhzhr.maidfm.spi.MaidMigrationProvider;
 import io.github.zgxhzhr.maidfm.spi.MaidMigrationRegistry;
 import com.github.tartaricacid.touhoulittlemaid.entity.favorability.FavorabilityManager;
@@ -313,6 +315,18 @@ public final class MaidTransferService {
             fullNbt.remove("HandDropChances");
             fullNbt.remove("ArmorDropChances");
             fullNbt.remove("MaidBackpackData");
+            // Curios 饰品：默认丢弃——只保留被声明的命名空间；背包类槽位（back 等）硬编码禁止携带。
+            // 必须在写文件之前裁剪，未声明模组的饰品既不随 .maid 迁移，也无法被复制。
+            CuriosBaubleFilter.Result curiosResult = CuriosBaubleFilter.strip(
+                    fullNbt, MaidConfigManager.isCarryCurios(),
+                    MaidBaubleCarrierRegistry::isNamespaceCarriable);
+            if (curiosResult.hasDrops()) {
+                Constants.LOG.info("[maid_file_manager] 导出裁剪 Curios 饰品: 丢弃 {} 件(按命名空间 {}), "
+                                + "禁止槽位 {} 个(含 {} 件), 保留 {} 件",
+                        curiosResult.droppedItems(), curiosResult.sortedNamespaces(),
+                        curiosResult.forbiddenSlots(), curiosResult.forbiddenItems(), curiosResult.keptItems());
+            }
+            CuriosBaubleFilter.batch().add(curiosResult);
             // 药水效果：提取到 MaidFileData.effects 字段，始终序列化（不受配置影响）
             // 同时生成 normalized 标准化数据用于跨版本兼容。
             // 键名双兼容：1.20.x 为 "ActiveEffects"，1.21 起 LivingEntity 改存 "active_effects"，
@@ -1333,10 +1347,16 @@ public final class MaidTransferService {
         notes.add(Component.translatable(langKey, baubleItemLabel(id)));
     }
 
-    /** 饰品白名单：仅允许 TLM 本体与 TLM 法术附属的物品进入饰品栏（防第三方物品经伪造文件刷入） */
+    /**
+     * 饰品命名空间判定：改由 {@link MaidBaubleCarrierRegistry} 决定——只有<b>主动声明</b>可携带的
+     * 命名空间才放行，未声明的一律丢弃。
+     *
+     * <p>这样既防止第三方物品经伪造文件刷入饰品栏，也避免"某个模组的饰品被悄悄搬走/复制"。
+     * 车万女仆本体（{@code touhou_little_maid}）与万法皆通（{@code touhou_little_maid_spell}）
+     * 作为内置声明登记在注册表里，行为与旧版写死的白名单一致。
+     */
     private static boolean isBaubleAllowed(String namespace) {
-        return "touhou_little_maid".equals(namespace)
-                || "touhou_little_maid_spell".equals(namespace);
+        return MaidBaubleCarrierRegistry.isNamespaceCarriable(namespace);
     }
 
     /**
@@ -1675,6 +1695,27 @@ public final class MaidTransferService {
      * 把多条结构化导入结果汇总为一条展示文案。
      * 成功/失败统计只基于 {@link ImportResult.State}，与语言无关。
      */
+    /**
+     * 取出本批次被裁剪的 Curios 饰品统计，生成一条面向玩家的提示；无丢弃时返回 {@code null}。
+     *
+     * <p>调用即清零（见 {@link CuriosBaubleFilter#takeBatch()}），因此每个导出/导入流程结束点
+     * 只需调用一次，不会跨批次重复提示。
+     */
+    public static Component curiosDropTip() {
+        CuriosBaubleFilter.Stats stats = CuriosBaubleFilter.takeBatch();
+        if (!stats.hasDrops()) {
+            return null;
+        }
+        net.minecraft.network.chat.MutableComponent tip =
+                Component.translatable("maid_file_manager.export.curios.dropped",
+                        stats.dropped(), stats.namespacesText());
+        if (stats.forbiddenItems() > 0) {
+            tip.append(Component.translatable("maid_file_manager.export.curios.forbidden",
+                    stats.forbiddenSlots(), stats.forbiddenItems()));
+        }
+        return tip;
+    }
+
     public static Component buildBatchSummary(List<ImportResult> results) {
         int ok = 0;
         int untamed = 0;

@@ -1,6 +1,7 @@
 package io.github.zgxhzhr.maidfm.data;
 
 import io.github.zgxhzhr.maidfm.Constants;
+import io.github.zgxhzhr.maidfm.spi.MaidBaubleCarrierRegistry;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 
@@ -74,6 +75,12 @@ public final class NbtMigration {
         for (String tag : SCHEDULE_TAGS_TO_REMOVE) {
             out.remove(tag);
         }
+
+        // Curios 饰品：导入侧按同一规则再裁剪一次（防御纵深）。
+        // 旧版本导出的 .maid 文件可能仍带着 Curios 载荷，未声明的命名空间不得借文件绕过本地注册表。
+        CuriosBaubleFilter.strip(out,
+                io.github.zgxhzhr.maidfm.config.MaidConfigManager.isCarryCurios(),
+                MaidBaubleCarrierRegistry::isNamespaceCarriable);
 
         // ---------- 仅在版本明确且真正跨版本时做结构改名/定向迁移 ----------
         boolean versionsKnown = sourceVersion != NbtVersion.UNKNOWN && targetVersion != NbtVersion.UNKNOWN;
