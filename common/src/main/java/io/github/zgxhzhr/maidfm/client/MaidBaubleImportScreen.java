@@ -235,6 +235,16 @@ public class MaidBaubleImportScreen extends Screen {
         listY = y;
         scrollOffset = 0;
 
+        // ===== 按模组 / 按 Curios 槽位禁用入口（独立界面，避免打乱本屏既有布局） =====
+        addRenderableWidget(new WoodButton(panelX + PANEL_W - 150, panelY + 6, 138, 18,
+                Component.translatable("gui.maid_file_manager.config.bauble_extra_block"),
+                () -> {
+                    if (MaidBaubleImportScreen.this.minecraft != null) {
+                        MaidBaubleImportScreen.this.minecraft.setScreen(
+                                new MaidBaubleExtraBlockScreen(MaidBaubleImportScreen.this));
+                    }
+                }));
+
         // ===== 完成（保存并返回设置界面） =====
         y += listH + 12;
         int doneW = 140;
