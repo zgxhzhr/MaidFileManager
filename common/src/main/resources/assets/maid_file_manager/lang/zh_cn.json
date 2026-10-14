@@ -74,6 +74,7 @@
     "maid_file_manager.import.bauble.unparseable": "你的饰品 %s 因数据无法解析被还原为全新物品。",
     "maid_file_manager.import.bauble.more": "（另有 %s 条说明）",
     "maid_file_manager.bauble.notice": "（注：这是档案管理器的正常机制，非游戏故障。如您希望使用此功能，请向饰品对应模组作者反馈。）",
+    "maid_file_manager.curios.missing": "另有 %s 件 Curios 饰品在当前世界不存在对应物品，已被丢弃。",
     "maid_file_manager.list_separator.newline": "\n",
     "maid_file_manager.export.curios.dropped": "Curios 饰品未随行：共 %s 件（%s）所属模组尚未适配随女仆迁移功能，相关数据已被安全丢弃。",
     "maid_file_manager.export.curios.forbidden": "另有 %s 个背包类 Curios 槽位（如 back）由档案管理器主动禁止携带，其中 %s 件物品未随行（此类槽位会连带内部物品一起被搬运，属安全限制）。",
