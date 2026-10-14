@@ -113,6 +113,10 @@ public final class MaidConfigManager {
     private static volatile List<String> serverBaubleBlockedList = List.of();
     /** 整合包黑名单（来自 bauble_import.json；不可变，默认空；游戏内只读，OP 亦不可改） */
     private static volatile List<String> baubleImportBlacklist = List.of();
+    /** 整合包按模组禁用清单（bauble_import.json 的 {@code blocked_namespaces}；不可变，默认空） */
+    private static volatile List<String> baubleImportBlockedNamespaces = List.of();
+    /** 整合包按 Curios 槽位禁用清单（bauble_import.json 的 {@code blocked_curios_slots}；不可变，默认空） */
+    private static volatile List<String> baubleImportBlockedCuriosSlots = List.of();
     /** 整合包白名单（来自 bauble_import.json；不可变，默认空） */
     private static volatile List<String> serverBaubleWhitelist = List.of();
     /** 是否存在整合包配置（bauble_import.json 存在即 true；用于界面提示与判定来源，不代表整张列表只读） */
@@ -278,12 +282,36 @@ public final class MaidConfigManager {
 
     /** OP 维护的「按模组禁用携带」清单（不可变；同时作用于女仆自带饰品栏与 Curios 槽位） */
     public static List<String> getBaubleBlockedNamespaces() {
-        return serverBaubleBlockedNamespaces;
+        return mergeLists(serverBaubleBlockedNamespaces, baubleImportBlockedNamespaces);
+    }
+
+    /** 整合包按模组禁用清单（只读；用于界面把整合包强制的条目显示为不可取消） */
+    public static List<String> getBaubleImportBlockedNamespaces() {
+        return baubleImportBlockedNamespaces;
     }
 
     /** OP 维护的「按 Curios 槽位禁用携带」清单（不可变） */
     public static List<String> getBaubleBlockedCuriosSlots() {
-        return serverBaubleBlockedCuriosSlots;
+        return mergeLists(serverBaubleBlockedCuriosSlots, baubleImportBlockedCuriosSlots);
+    }
+
+    /** 整合包按 Curios 槽位禁用清单（只读；用于界面把整合包强制的条目显示为不可取消） */
+    public static List<String> getBaubleImportBlockedCuriosSlots() {
+        return baubleImportBlockedCuriosSlots;
+    }
+
+    /** 合并两张清单（保持顺序、去重、返回不可变） */
+    private static List<String> mergeLists(List<String> first, List<String> second) {
+        if (second == null || second.isEmpty()) {
+            return first == null ? List.of() : first;
+        }
+        List<String> merged = new ArrayList<>(first == null ? List.of() : first);
+        for (String value : second) {
+            if (value != null && !merged.contains(value)) {
+                merged.add(value);
+            }
+        }
+        return List.copyOf(merged);
     }
 
     /**
@@ -566,6 +594,8 @@ public final class MaidConfigManager {
             baubleWhitelistEnforced = false;
             serverBaubleWhitelist = List.of();
             baubleImportBlacklist = List.of();
+            baubleImportBlockedNamespaces = List.of();
+            baubleImportBlockedCuriosSlots = List.of();
             return;
         }
         try (Reader reader = Files.newBufferedReader(baubleImportConfigFile, StandardCharsets.UTF_8)) {
@@ -574,13 +604,19 @@ public final class MaidConfigManager {
             List<String> blacklist = readStringArray(root, "blacklist");
             serverBaubleWhitelist = whitelist;
             baubleImportBlacklist = blacklist;
+            baubleImportBlockedNamespaces = sanitizeList(readStringArray(root, "blocked_namespaces"));
+            baubleImportBlockedCuriosSlots = sanitizeList(readStringArray(root, "blocked_curios_slots"));
             baubleConfigManaged = true;
             baubleWhitelistEnforced = !whitelist.isEmpty();
-            Constants.LOG.info("[女仆档案管理] 已加载整合包饰品导入配置：白名单 {} 项，黑名单 {} 项",
-                    whitelist.size(), blacklist.size());
+            Constants.LOG.info("[女仆档案管理] 已加载整合包饰品导入配置：白名单 {} 项，黑名单 {} 项，"
+                            + "按模组禁用 {} 项，按 Curios 槽位禁用 {} 项",
+                    whitelist.size(), blacklist.size(),
+                    baubleImportBlockedNamespaces.size(), baubleImportBlockedCuriosSlots.size());
         } catch (Throwable t) {
             serverBaubleWhitelist = List.of();
             baubleImportBlacklist = List.of();
+            baubleImportBlockedNamespaces = List.of();
+            baubleImportBlockedCuriosSlots = List.of();
             baubleConfigManaged = true;
             baubleWhitelistEnforced = true;
             Constants.LOG.error("[女仆档案管理] 整合包饰品导入配置解析失败，已按「拒绝导入全部饰品」的失败关闭策略处理，"
