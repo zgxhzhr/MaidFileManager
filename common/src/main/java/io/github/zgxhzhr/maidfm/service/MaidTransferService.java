@@ -721,7 +721,11 @@ public final class MaidTransferService {
                     stripAttributes, blockedList, sourceMojangDataVersion, baubleNotes);
             if (curiosStats.hasDrops()) {
                 baubleNotes.add(Component.translatable("maid_file_manager.import.curios.dropped",
-                        curiosStats.dropped() + curiosStats.forbiddenItems()));                if (curiosStats.dropped() > 0) {
+                        curiosStats.dropped() + curiosStats.forbiddenItems()));                if (curiosStats.missingItems() > 0) {
+                    baubleNotes.add(Component.translatable("maid_file_manager.curios.missing",
+                            curiosStats.missingItems()));
+                }
+                if (curiosStats.dropped() > 0) {
                     addBaubleNoticeOnce(baubleNotes);
                 }
                 Constants.LOG.info("[maid_file_manager] 导入裁剪 Curios 饰品: 命名空间未声明 {} 件, "
@@ -1754,6 +1758,9 @@ public final class MaidTransferService {
         if (stats.forbiddenItems() > 0) {
             tip.append(Component.translatable("maid_file_manager.export.curios.forbidden",
                     stats.forbiddenSlots(), stats.forbiddenItems()));
+        }
+        if (stats.missingItems() > 0) {
+            tip.append(Component.translatable("maid_file_manager.curios.missing", stats.missingItems()));
         }
         if (stats.dropped() > 0) {
             tip.append(Component.translatable("maid_file_manager.bauble.notice"));
