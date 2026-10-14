@@ -31,6 +31,23 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
         return ModList.get().isLoaded(modId);
     }
 
+    /**
+     * 取模组显示名（玩家语言下的名字）。取不到时退化为 modId —— 提示功能不能因此出错。
+     */
+    @Override
+    public String getModDisplayName(String modId) {
+        if (modId == null || modId.isEmpty()) {
+            return "";
+        }
+        try {
+            return ModList.get().getModContainerById(modId)
+                    .map(container -> container.getModInfo().getDisplayName())
+                    .orElse(modId);
+        } catch (Throwable t) {
+            return modId;
+        }
+    }
+
     @Override
     public boolean isDevelopmentEnvironment() {
         return !FMLLoader.isProduction();
