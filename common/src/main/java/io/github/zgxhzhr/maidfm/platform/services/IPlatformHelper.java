@@ -1,5 +1,6 @@
 package io.github.zgxhzhr.maidfm.platform.services;
 
+import java.util.Map;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
@@ -32,6 +33,13 @@ public interface IPlatformHelper {
      * @return 显示名；模组不存在或任何异常时返回 {@code modId} 本身（永不返回 null）
      */
     String getModDisplayName(String modId);
+
+    /**
+     * 列出当前已加载的全部模组（modId → 显示名）。
+     * <p>供 OP 在界面里看到并禁用"任何模组"的女仆饰品：不依赖对方是否接入声明接口。
+     * <p>实现必须容错：任何加载器 API 差异都不应让界面崩掉。
+     */
+    Map<String, String> getAllMods();
 
     /**
      * 判断当前是否运行在开发环境。

@@ -54,6 +54,18 @@ public class ForgePlatformHelper implements IPlatformHelper {
             return modId;
         }
     }
+    @Override
+    public java.util.Map<String, String> getAllMods() {
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        try {
+            for (var info : net.minecraftforge.fml.ModList.get().getMods()) {
+                out.put(info.getModId(), info.getDisplayName());
+            }
+        } catch (Throwable t) {
+            // 加载器 API 差异不应让界面崩掉
+        }
+        return out;
+    }
 
     @Override
     public boolean isDevelopmentEnvironment() {
