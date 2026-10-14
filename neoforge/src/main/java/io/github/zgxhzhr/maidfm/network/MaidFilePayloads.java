@@ -539,13 +539,21 @@ public final class MaidFilePayloads {
     }
 
     /** C2S：OP 修改自己维护的「禁用携带的饰品」清单：权限校验 → 收窄写入 → 广播同步 */
-    public record SetServerBaubleBlockedListPayload(List<String> ids) implements CustomPacketPayload {
+    public record SetServerBaubleBlockedListPayload(String key, List<String> ids) implements CustomPacketPayload {
         public static final Type<SetServerBaubleBlockedListPayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_server_bauble_blocked_list"));
         public static final StreamCodec<ByteBuf, SetServerBaubleBlockedListPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
-                        (p, buf) -> writeStringList(new FriendlyByteBuf(buf), p.ids),
-                        buf -> new SetServerBaubleBlockedListPayload(readStringList(new FriendlyByteBuf(buf)))
+                                                (p, buf) -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            fbb.writeUtf(p.key == null ? "" : p.key, MaidFilePackets.MAX_TEXT_LEN);
+                            writeStringList(fbb, p.ids);
+                        },
+                        buf -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            String key = fbb.readUtf(MaidFilePackets.MAX_TEXT_LEN);
+                            return new SetServerBaubleBlockedListPayload(key, readStringList(fbb));
+                        }
                 );
 
         @Override
@@ -562,9 +570,21 @@ public final class MaidFilePayloads {
                             feedback(sp, Component.translatable("maid_file_manager.config.fail.no_permission"));
                             return;
                         }
-                        // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读，不在此写入
-                        MaidConfigManager.setServerBaubleBlockedList(
-                                MaidTransferService.sanitizeBaubleBlockedList(ids));
+                                                // 键名区分三类清单：物品 / 模组（命名空间）/ Curios 槽位
+                        java.util.List<String> values;
+                        if (MaidConfigManager.KEY_BAUBLE_BLOCKED_LIST.equals(key)) {
+                            // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读
+                            values = MaidTransferService.sanitizeBaubleBlockedList(ids);
+                        } else if (MaidConfigManager.KEY_BAUBLE_BLOCKED_NAMESPACES.equals(key)
+                                || MaidConfigManager.KEY_BAUBLE_BLOCKED_CURIOS_SLOTS.equals(key)) {
+                            // 模组 / 槽位清单：客户端提交可被篡改，服务端按标识符字符集收窄
+                            values = MaidTransferService.sanitizeIdentifierList(ids);
+                        } else {
+                            Constants.LOG.warn("[maid_file_manager] SET_SERVER_LIST_CONFIG rejected (unknown key): {}",
+                                    key);
+                            return;
+                        }
+                        MaidConfigManager.setServerListConfig(key, values);
                         broadcastServerConfig(sp.server);
                     } catch (Throwable t) {
                         handleError(sp, "SET_SERVER_BAUBLE_BLOCKED_LIST", t);

@@ -37,8 +37,9 @@ public class NeoForgeNetwork implements IMaidFileNetwork {
     }
 
     @Override
-    public void sendSetServerBaubleBlockedList(List<String> ids) {
-        PacketDistributor.sendToServer(new MaidFilePayloads.SetServerBaubleBlockedListPayload(ids));
+    public void sendSetServerListConfig(String key, List<String> ids) {
+        PacketDistributor.sendToServer(new MaidFilePayloads.SetServerBaubleBlockedListPayload(
+                key == null ? "" : key, ids == null ? java.util.List.of() : ids));
     }
 
     @Override
