@@ -179,7 +179,7 @@ public class MaidBaubleImportScreen extends Screen {
             if (!wl.isEmpty()) {
                 managedHints.add(Component.translatable(
                         "gui.maid_file_manager.config.bauble_import_whitelist_summary",
-                        wl.size(), String.join("、", wl)).getString());
+                        wl.size(), String.join(Component.translatable("maid_file_manager.command.list_separator").getString(), wl)).getString());
             }
         }
         int managedRowH = managedHints.size() * 11;
