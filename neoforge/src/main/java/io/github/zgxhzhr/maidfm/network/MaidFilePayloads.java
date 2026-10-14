@@ -790,7 +790,9 @@ public final class MaidFilePayloads {
                                           boolean baubleStripAttributes, List<String> baubleBlockedList,
                                           List<String> baubleBlacklist, List<String> baubleWhitelist,
                                           boolean baubleManaged, List<String> baubleBlockedNamespaces,
-                                          List<String> baubleBlockedCuriosSlots)
+                                          List<String> baubleBlockedCuriosSlots,
+                                          List<String> baubleImportBlockedNamespaces,
+                                          List<String> baubleImportBlockedCuriosSlots)
             implements CustomPacketPayload {
         public static final Type<ServerConfigSyncPayload> TYPE =
                 new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "server_config_sync"));
@@ -812,6 +814,8 @@ public final class MaidFilePayloads {
                             fbb.writeBoolean(p.baubleManaged);
                             writeStringList(fbb, p.baubleBlockedNamespaces);
                             writeStringList(fbb, p.baubleBlockedCuriosSlots);
+                            writeStringList(fbb, p.baubleImportBlockedNamespaces);
+                            writeStringList(fbb, p.baubleImportBlockedCuriosSlots);
                         },
                         buf -> {
                             FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
@@ -828,10 +832,13 @@ public final class MaidFilePayloads {
                             boolean baubleManaged = fbb.readBoolean();
                             List<String> baubleBlockedNamespaces = readStringList(fbb);
                             List<String> baubleBlockedCuriosSlots = readStringList(fbb);
+                            List<String> baubleImportBlockedNamespaces = readStringList(fbb);
+                            List<String> baubleImportBlockedCuriosSlots = readStringList(fbb);
                             return new ServerConfigSyncPayload(allowImport, allowBaubles, allowAdvancements,
                                     allowEffects, allowInvulnerable, carryCurios, baubleStripAttributes, baubleBlockedList,
                                     baubleBlacklist, baubleWhitelist, baubleManaged,
-                                    baubleBlockedNamespaces, baubleBlockedCuriosSlots);
+                                    baubleBlockedNamespaces, baubleBlockedCuriosSlots,
+                                    baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots);
                         }
                 );
 
@@ -844,7 +851,8 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> MaidConfigManager.handleServerConfigSync(
                     allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable, carryCurios,
                     baubleStripAttributes, baubleBlockedList, baubleBlacklist, baubleWhitelist, baubleManaged,
-                    baubleBlockedNamespaces, baubleBlockedCuriosSlots));
+                    baubleBlockedNamespaces, baubleBlockedCuriosSlots,
+                    baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots));
         }
     }
 
@@ -863,8 +871,10 @@ public final class MaidFilePayloads {
                     MaidConfigManager.getBaubleBlacklist(),
                     MaidConfigManager.getBaubleWhitelist(),
                     MaidConfigManager.isBaubleConfigManaged(),
-                    MaidConfigManager.getBaubleBlockedNamespaces(),
-                    MaidConfigManager.getBaubleBlockedCuriosSlots()));
+                                        MaidConfigManager.getOpBaubleBlockedNamespaces(),
+                    MaidConfigManager.getOpBaubleBlockedCuriosSlots(),
+                    MaidConfigManager.getBaubleImportBlockedNamespaces(),
+                    MaidConfigManager.getBaubleImportBlockedCuriosSlots()));
         }
     }
 
