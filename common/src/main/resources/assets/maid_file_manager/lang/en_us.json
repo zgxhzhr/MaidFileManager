@@ -136,5 +136,18 @@
     "gui.maid_file_manager.backup.not_matched": "No matching player found: %s",
     "gui.maid_file_manager.backup.need_name": "Enter an offline player name",
     "gui.maid_file_manager.backup.loading": "Loading backups from the server...",
-    "gui.maid_file_manager.backup.exporting": "Exporting backup..."
+    "gui.maid_file_manager.backup.exporting": "Exporting backup...",
+    "maid_file_manager.command.no_server": "[Maid File Manager] Cannot access the server",
+    "maid_file_manager.command.none": "none",
+    "maid_file_manager.command.list_separator": ", ",
+    "maid_file_manager.command.exportall.done": "[Maid File Manager] Bulk export finished: %s player(s) (skipped %s without consent: %s), %s file(s) -> %s",
+    "maid_file_manager.command.export.done": "[Maid File Manager] Bulk export finished: %s succeeded",
+    "maid_file_manager.command.export.done_fail": ", %s failed",
+    "maid_file_manager.command.export.dir_hint": " (saved to the server's maid_exports/<player name>/)",
+    "maid_file_manager.command.export.details": ". Details: ",
+    "maid_file_manager.command.export.skipped": ". Skipped: ",
+    "maid_file_manager.command.export.player_offline": "%s: offline",
+    "maid_file_manager.command.export.no_consent": "%s: has not allowed server-side bulk export of their maids",
+    "maid_file_manager.command.export.player_detail": "%s: %s",
+    "maid_file_manager.command.export.player_detail_fail": " (%s failed)"
 }

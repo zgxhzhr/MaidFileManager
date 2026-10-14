@@ -47,7 +47,7 @@ public final class MaidServerCommands {
     private static int executeExportAll(CommandSourceStack source) {
         MinecraftServer server = source.getServer();
         if (server == null) {
-            source.sendFailure(Component.literal("[女仆档案管理] 无法获取服务端"));
+            source.sendFailure(Component.translatable("maid_file_manager.command.no_server"));
             return 0;
         }
         Path exportRoot = Services.PLATFORM.get().getGameDir().toAbsolutePath().resolve(Constants.MAID_EXPORTS_DIR);
@@ -91,10 +91,12 @@ public final class MaidServerCommands {
         final int fExported = exportedPlayers;
         final int fSkipped = skippedPlayers;
         final int fFiles = exportedFiles;
-        final String skippedDesc = skippedNames.isEmpty() ? "无" : String.join(", ", skippedNames);
-        final String summary = String.format("[女仆档案管理] 统一导出完成：玩家 %d 人（跳过未同意 %d 人: %s），共 %d 个文件 → %s",
-                fExported, fSkipped, skippedDesc, fFiles, exportRoot);
-        source.sendSuccess(() -> Component.literal(summary), false);
+        // 文案走 lang 键：英文客户端不应看到硬编码中文
+        final Component skippedDesc = skippedNames.isEmpty()
+                ? Component.translatable("maid_file_manager.command.none")
+                : Component.literal(String.join(", ", skippedNames));
+        source.sendSuccess(() -> Component.translatable("maid_file_manager.command.exportall.done",
+                fExported, fSkipped, skippedDesc, fFiles, exportRoot.toString()), false);
         return 1;
     }
 
@@ -128,25 +130,25 @@ public final class MaidServerCommands {
     public static Component exportForPlayers(MinecraftServer server,
                                              List<IMaidFileNetwork.PlayerExportRequest> requests) {
         if (server == null) {
-            return Component.literal("[女仆档案管理] 无法获取服务端");
+            return Component.translatable("maid_file_manager.command.no_server");
         }
         Path exportRoot = Services.PLATFORM.get().getGameDir().toAbsolutePath().resolve(Constants.MAID_EXPORTS_DIR);
         int totalOk = 0;
         int totalFail = 0;
-        List<String> details = new ArrayList<>();
-        List<String> skipped = new ArrayList<>();
+        List<Component> details = new ArrayList<>();
+        List<Component> skipped = new ArrayList<>();
 
         for (IMaidFileNetwork.PlayerExportRequest req : requests) {
             String name = req.playerName();
             ServerPlayer owner = server.getPlayerList().getPlayerByName(name);
             if (owner == null) {
-                skipped.add(name + "：不在线");
+                skipped.add(Component.translatable("maid_file_manager.command.export.player_offline", name));
                 Constants.LOG.warn("[maid_file_manager] 统一导出跳过：玩家不在线 player={}, 请求实体数={}",
                         name, req.entityIds() == null ? 0 : req.entityIds().size());
                 continue;
             }
             if (!MaidConfigManager.getClientConsent(owner.getUUID())) {
-                skipped.add(name + "：未同意「允许服务端统一导出你的女仆」");
+                skipped.add(Component.translatable("maid_file_manager.command.export.no_consent", name));
                 Constants.LOG.warn("[maid_file_manager] 统一导出跳过：玩家未开启同意 player={}, uuid={}",
                         name, owner.getUUID());
                 continue;
@@ -177,23 +179,43 @@ public final class MaidServerCommands {
             }
             totalOk += ok;
             totalFail += fail;
-            details.add(name + "：" + ok + " 个" + (fail > 0 ? "（失败 " + fail + " 个）" : ""));
+            net.minecraft.network.chat.MutableComponent detail =
+                    Component.translatable("maid_file_manager.command.export.player_detail", name, ok);
+            if (fail > 0) {
+                detail.append(Component.translatable("maid_file_manager.command.export.player_detail_fail", fail));
+            }
+            details.add(detail);
             // 正常完成路径用 INFO：即使个别失败（已在上方 error 记录），整批完成本身不是警告，避免污染告警筛选
             Constants.LOG.info("[maid_file_manager] 统一导出玩家完成：player={}, 成功={}, 失败={}, 保存目录={}",
                     name, ok, fail, playerDir);
         }
 
-        StringBuilder sb = new StringBuilder("[女仆档案管理] 统一导出完成：共成功 ").append(totalOk).append(" 个");
+        net.minecraft.network.chat.MutableComponent out =
+                Component.translatable("maid_file_manager.command.export.done", totalOk);
         if (totalFail > 0) {
-            sb.append("，失败 ").append(totalFail).append(" 个");
+            out.append(Component.translatable("maid_file_manager.command.export.done_fail", totalFail));
         }
-        sb.append("（保存到服务端 maid_exports/<玩家名>/）");
+        out.append(Component.translatable("maid_file_manager.command.export.dir_hint"));
         if (!details.isEmpty()) {
-            sb.append("。明细：").append(String.join("、", details));
+            out.append(Component.translatable("maid_file_manager.command.export.details"));
+            out.append(joinWithSeparator(details));
         }
         if (!skipped.isEmpty()) {
-            sb.append("。跳过：").append(String.join("、", skipped));
+            out.append(Component.translatable("maid_file_manager.command.export.skipped"));
+            out.append(joinWithSeparator(skipped));
         }
-        return Component.literal(sb.toString());
+        return out;
+    }
+
+    /** 用语言文件里的分隔符连接若干 Component（明细 / 跳过列表展示用；中文「、」英文「, 」） */
+    private static Component joinWithSeparator(List<Component> parts) {
+        net.minecraft.network.chat.MutableComponent out = Component.empty();
+        for (int i = 0; i < parts.size(); i++) {
+            if (i > 0) {
+                out.append(Component.translatable("maid_file_manager.command.list_separator"));
+            }
+            out.append(parts.get(i));
+        }
+        return out;
     }
 }
