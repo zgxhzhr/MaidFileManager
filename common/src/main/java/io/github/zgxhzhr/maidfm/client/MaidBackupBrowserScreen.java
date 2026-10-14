@@ -666,7 +666,7 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     private void renderRow(GuiGraphics graphics, Row row, int top) {
         if (row.type == 0) {
             String arrow = row.world.expanded ? "▼ " : "▶ ";
-            String text = arrow + row.world.name + "  (" + row.world.owners.size() + " 位玩家)";
+            String text = arrow + Component.translatable("maid_file_manager.gui.backup.world_row", row.world.name, row.world.owners.size()).getString();
             graphics.drawString(this.font, Component.literal(text), listX + 4, top + 3, HEADER_COLOR, false);
         } else if (row.type == 1) {
             String name = row.owner.displayName != null ? row.owner.displayName : shortId(row.owner.uuid);

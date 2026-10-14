@@ -208,7 +208,7 @@ public final class MaidTransferService {
 
     public static String getDisplayName(String modelId) {
         if (modelId == null || modelId.isEmpty()) {
-            return "未知模型";
+            return Component.translatable("maid_file_manager.maid_model.unknown").getString();
         }
         try {
             Optional<?> infoOpt = ServerCustomPackLoader.SERVER_MAID_MODELS.getInfo(modelId);
@@ -1690,16 +1690,16 @@ public final class MaidTransferService {
             }
             baublesStripped |= r.baublesStripped();
         }
-        StringBuilder sb = new StringBuilder(String.format(java.util.Locale.ROOT,
-                "批量导入完成：成功 %d 个，失败 %d 个", ok + untamed, blocked + failed));
+        net.minecraft.network.chat.MutableComponent summary =
+                Component.translatable("maid_file_manager.import.batch.done", ok + untamed, blocked + failed);
         if (untamed > 0) {
-            sb.append(String.format(java.util.Locale.ROOT, "（其中 %d 个未匹配到主人，已生成为野生女仆）", untamed));
+            summary.append(Component.translatable("maid_file_manager.import.batch.untamed", untamed));
         }
         if (blocked > 0) {
-            sb.append("。失败原因：服务器已禁止导入女仆（管理员可在服务端设置中开启「允许客户端导入女仆」）");
+            summary.append(Component.translatable("maid_file_manager.import.batch.blocked"));
         }
         if (baublesStripped) {
-            sb.append("。服务端未开启饰品导入，本次导入的女仆均未携带饰品");
+            summary.append(Component.translatable("maid_file_manager.import.batch.baubles_stripped"));
         }
         // 逐项失败详情：最多展示前 5 条（每条均保留 translatable，由客户端本地化为对应语言），
         // 超出部分只报数量。绝不能只给"失败 N 个"的统计而吞掉具体原因
@@ -1710,18 +1710,18 @@ public final class MaidTransferService {
                 failDetails.add(r.message());
             }
         }
-        net.minecraft.network.chat.MutableComponent summary = Component.literal(sb.toString());
+
         if (!failDetails.isEmpty()) {
-            net.minecraft.network.chat.MutableComponent detail = Component.literal("。失败详情：");
+            net.minecraft.network.chat.MutableComponent detail = Component.translatable("maid_file_manager.import.fail_details");
             int shown = Math.min(failDetails.size(), 5);
             for (int i = 0; i < shown; i++) {
                 if (i > 0) {
-                    detail.append("；");
+                    detail.append(Component.translatable("maid_file_manager.list_separator.semicolon"));
                 }
                 detail.append(failDetails.get(i));
             }
             if (failDetails.size() > shown) {
-                detail.append(String.format(java.util.Locale.ROOT, "等共 %d 个失败", failDetails.size()));
+                detail.append(Component.translatable("maid_file_manager.import.batch.more_failures", failDetails.size()));
             }
             summary.append(detail);
         }
@@ -1733,11 +1733,11 @@ public final class MaidTransferService {
             }
         }
         if (!baubleDetails.isEmpty()) {
-            net.minecraft.network.chat.MutableComponent detail = Component.literal("。饰品说明：");
+            net.minecraft.network.chat.MutableComponent detail = Component.translatable("maid_file_manager.import.bauble_details");
             int shown = Math.min(baubleDetails.size(), 5);
             for (int i = 0; i < shown; i++) {
                 if (i > 0) {
-                    detail.append("；");
+                    detail.append(Component.translatable("maid_file_manager.list_separator.semicolon"));
                 }
                 detail.append(baubleDetails.get(i));
             }
@@ -1761,11 +1761,11 @@ public final class MaidTransferService {
         }
         net.minecraft.network.chat.MutableComponent out =
                 result.message().copy();
-        net.minecraft.network.chat.MutableComponent detail = Component.literal("。饰品说明：");
+        net.minecraft.network.chat.MutableComponent detail = Component.translatable("maid_file_manager.import.bauble_details");
         int shown = Math.min(notes.size(), 5);
         for (int i = 0; i < shown; i++) {
             if (i > 0) {
-                detail.append("；");
+                detail.append(Component.translatable("maid_file_manager.list_separator.semicolon"));
             }
             detail.append(notes.get(i));
         }

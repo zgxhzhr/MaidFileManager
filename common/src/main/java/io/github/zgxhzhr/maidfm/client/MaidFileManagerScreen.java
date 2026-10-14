@@ -250,7 +250,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         deleteImportFileBtn.active = false;
 
         // 行 2/3：打开导出文件夹 → 行 3；打开导入文件夹 → 行 2（与导出 Tab 的保留女仆同槽，Tab 切换 visible）
-        openExportDirBtn = Button.builder(Component.literal("打开导出文件夹"),
+        openExportDirBtn = Button.builder(Component.translatable("maid_file_manager.gui.button.open_export_dir"),
                         b -> onOpenExportDir())
                 .bounds(sideX, sideY3, sideBtnW, toolBtnH).build();
         openImportDirBtn = Button.builder(
@@ -260,7 +260,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
         // 【v4-3Fix 截图3：Tab行左侧大按钮 → 模式动态切换：单独导出→开独立确认界面；统一导出→直接返回单独导出】
         //   与导出/导入 Tab 同高(tabH=20)同Y(tabY)，视觉一体对齐；宽 SERVER_EXPORT_BTN_W=122，左边界 panelX+10
-        serverExportTriggerBtn = Button.builder(Component.literal("统一导出"),
+        serverExportTriggerBtn = Button.builder(Component.translatable("maid_file_manager.gui.button.server_export"),
                         b -> onServerExportButtonClick())
                 .bounds(serverExportBtnX, tabY, SERVER_EXPORT_BTN_W, tabH).build();
 
@@ -427,8 +427,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         updateTabSpecificControlsVisibility();
         // 【v4-3Fix 双重保险：直接 setMessage 防止 updateTabSpecificControlsVisibility 因 isOp/时序被跳过】
         if (serverExportTriggerBtn != null && serverExportTriggerBtn.visible) {
-            serverExportTriggerBtn.setMessage(Component.literal(
-                    serverExportMode ? "返回单独导出" : "统一导出"));
+            serverExportTriggerBtn.setMessage(serverExportMode
+                    ? Component.translatable("maid_file_manager.gui.button.back_to_single_export")
+                    : Component.translatable("maid_file_manager.gui.button.server_export"));
         }
         refreshCurrentTab();
     }
@@ -455,13 +456,13 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     // ---------- Button 模拟复选框的 label 生成与刷新 ----------
     // 注意：MC 默认字体不含 ☐/☑ 字形（渲染成空方框），复选框由 drawCheckBox 手绘，消息文本不带前缀
     private static Component selectAllLabel(boolean selected) {
-        return Component.literal("全选");
+        return Component.translatable("maid_file_manager.gui.button.select_all");
     }
     /** 保留女仆按钮：默认开启=保留原女仆在世界（友好默认）。 */
     private static Component keepMaidsLabel(boolean keep) {
-        String txt = "保留原女仆在世界";
         // 金色系：与 UI 木色/标题金色协调，醒目但不刺眼
-        return Component.literal(txt).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
+        return Component.translatable("maid_file_manager.gui.label.keep_maids")
+                .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
     }
     private void refreshSelectAllLabel() {
         if (selectAllBtn != null) selectAllBtn.setMessage(selectAllLabel(selectAllState));
@@ -474,10 +475,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
     /** 导入后删除源文件按钮：默认关闭；开启时红色提示危险 */
     private static Component deleteImportFileLabel(boolean delete) {
-        String txt = delete ? "导入后删除文件（已开启）" : "导入后删除文件（默认关闭）";
         return delete
-                ? Component.literal(txt).withStyle(ChatFormatting.RED, ChatFormatting.BOLD)
-                : Component.literal(txt).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
+                ? Component.translatable("maid_file_manager.gui.label.delete_import_file.on")
+                        .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)
+                : Component.translatable("maid_file_manager.gui.label.delete_import_file.off")
+                        .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
     }
     private void refreshDeleteImportFileLabel() {
         if (deleteImportFileBtn != null) deleteImportFileBtn.setMessage(deleteImportFileLabel(deleteImportFileState));
@@ -512,9 +514,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         // 模式动态文字：单独导出→统一导出入口；统一导出→返回单独导出
         if (showExport && isOp) {
             if (serverExportMode) {
-                serverExportTriggerBtn.setMessage(Component.literal("返回单独导出"));
+                serverExportTriggerBtn.setMessage(Component.translatable("maid_file_manager.gui.button.back_to_single_export"));
             } else {
-                serverExportTriggerBtn.setMessage(Component.literal("统一导出"));
+                serverExportTriggerBtn.setMessage(Component.translatable("maid_file_manager.gui.button.server_export"));
             }
         }
     }
@@ -643,7 +645,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         if (actionBtn == null) return;
         if (currentTab == Tab.EXPORT) {
             if (serverExportMode) {
-                actionBtn.setMessage(Component.literal("通过服务端导出选中女仆（存到服务端）"));
+                actionBtn.setMessage(Component.translatable("maid_file_manager.gui.button.export_selected_via_server"));
             } else {
                 actionBtn.setMessage(Component.translatable("maid_file_manager.gui.button.export_selected"));
             }
@@ -661,7 +663,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             }
             if (serverExportMode) {
                 // 统一导出浏览：服务端收集所有在线玩家（以各玩家为中心）的女仆列表
-                setFeedback(Component.literal("正在从服务端获取所有玩家的女仆列表…"));
+                setFeedback(Component.translatable("maid_file_manager.gui.server_export.fetching"));
                 net.sendRequestServerExportList();
                 return;
             }
@@ -729,7 +731,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 for (Map.Entry<String, List<Integer>> e : byOwner.entrySet()) {
                     reqs.add(new IMaidFileNetwork.PlayerExportRequest(e.getKey(), e.getValue()));
                 }
-                setFeedback(Component.literal("正在通过服务端导出 " + selectedMaidIds.size() + " 个女仆…"));
+                setFeedback(Component.translatable("maid_file_manager.gui.server_export.exporting", selectedMaidIds.size()));
                 net.sendServerExportBatch(reqs);
                 return;
             }
@@ -791,8 +793,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 setFeedback(Component.literal(importReject));
                 return;
             }
-            setFeedback(Component.literal(String.format(Locale.ROOT,
-                    "正在批量导入 %d 个女仆（已跳过 %d 个无效文件）...", dataList.size(), skipped)));
+            setFeedback(Component.translatable("maid_file_manager.gui.import.batch_start",
+                    dataList.size(), skipped));
             // 饰品是否随行统一由「设置 → 服务端设置 → 导入时允许携带饰品」控制：
             // 此处恒上传 true，实际是否恢复由服务端双闸门（配置 + 导入端命名空间白名单）决定，杜绝非 OP 绕过
             Constants.LOG.info("[maid_file_manager] BATCH IMPORT START: count={}, skipped={}, deleteAfter={}",
@@ -1115,12 +1117,13 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                         .withStyle(ChatFormatting.GOLD));
                 lines.add(Component.literal("Model ID: " + info.modelId())
                         .withStyle(ChatFormatting.GRAY));
-                lines.add(Component.literal(String.format(Locale.ROOT,
-                        "好感度: %d   血量: %.0f / %.0f",
-                        info.favorability(), info.health(), info.maxHealth()))
+                lines.add(Component.translatable("maid_file_manager.gui.tooltip.favorability_health",
+                        info.favorability(),
+                        String.format(Locale.ROOT, "%.0f", info.health()),
+                        String.format(Locale.ROOT, "%.0f", info.maxHealth()))
                         .withStyle(ChatFormatting.WHITE));
                 if (info.ownerName() != null) {
-                    lines.add(Component.literal("主人: " + info.ownerName())
+                    lines.add(Component.translatable("maid_file_manager.gui.label.owner", info.ownerName())
                             .withStyle(ChatFormatting.AQUA));
                 }
                 g.renderTooltip(this.font, lines, Optional.empty(), mouseX, mouseY);
@@ -1133,11 +1136,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 lines.add(Component.literal(fileName).withStyle(ChatFormatting.GOLD));
                 long ts = MaidFileIo.parseTimestampFromFileName(fileName);
                 if (ts > 0) {
-                    lines.add(Component.literal("时间: "
-                                    + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(ts)))
+                    lines.add(Component.translatable("maid_file_manager.gui.label.time",
+                                    new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(ts)))
                             .withStyle(ChatFormatting.GRAY));
                 }
-                lines.add(Component.literal("位于 maid_imports/ 目录")
+                lines.add(Component.translatable("maid_file_manager.gui.import.located_in")
                         .withStyle(ChatFormatting.DARK_GRAY));
                 g.renderTooltip(this.font, lines, Optional.empty(), mouseX, mouseY);
             }
@@ -1191,9 +1194,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         for (IMaidFileNetwork.PlayerMaidGroup g : this.serverGroups) {
             if (!g.consented()) denied++;
         }
-        setFeedback(Component.literal(String.format(Locale.ROOT,
-                "统一导出列表已加载：%d 名玩家、共 %d 只女仆（%d 人未同意导出，选中其女仆将被服务端拒绝）。点击玩家行展开/收起。",
-                this.serverGroups.size(), maidList.size(), denied)));
+        setFeedback(Component.translatable("maid_file_manager.gui.server_export.list_loaded",
+                this.serverGroups.size(), maidList.size(), denied));
     }
 
     @Override
@@ -1239,14 +1241,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         if (failed == 0) {
             String playerDirName = MaidFileIo.sanitizePlayerName(
                     this.minecraft.player != null ? this.minecraft.player.getName().getString() : "");
-            String msg = String.format(Locale.ROOT,
-                    "成功导出 %d 个女仆！文件已保存到 maid_exports/%s/%s",
+            fb = Component.translatable("maid_file_manager.gui.export.success_files",
                     success, playerDirName, (success == 1 ? (lastFileName != null ? lastFileName : "") : "…"));
-            fb = Component.literal(msg);
             Constants.LOG.info("[maid_file_manager] Batch export SUCCESS: count={}, keep={}", success, keepMaidsInWorldState);
         } else {
-            fb = Component.literal(String.format(Locale.ROOT,
-                    "导出完成：成功 %d，失败 %d。详见 maid_exports/", success, failed));
+            fb = Component.translatable("maid_file_manager.gui.export.partial", success, failed);
             Constants.LOG.warn("[maid_file_manager] Batch export PARTIAL: ok={} fail={}", success, failed);
         }
         setFeedback(fb);
@@ -1526,15 +1525,15 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 }
                 net.minecraft.client.gui.Font font = MaidFileManagerScreen.this.font;
                 if (group == null) {
-                    graphics.drawString(font, Component.literal("（服务端没有在线玩家或没有可显示的女仆）"),
+                    graphics.drawString(font, Component.translatable("maid_file_manager.gui.server_export.empty"),
                             rowX + 28, top + 6, SUBTEXT_COLOR, false);
                     return;
                 }
                 boolean collapsed = collapsedPlayers.contains(group.playerName());
                 String arrow = collapsed ? "▶" : "▼";
-                String consentTag = group.consented() ? "" : " [未同意导出]";
-                String line = String.format(Locale.ROOT, "%s %s（%d 只女仆）%s",
-                        arrow, group.playerName(), group.maids().size(), consentTag);
+                String consentTag = group.consented() ? "" : Component.translatable("maid_file_manager.gui.server_export.no_consent_tag").getString();
+                String line = Component.translatable("maid_file_manager.gui.server_export.player_row",
+                        arrow, group.playerName(), group.maids().size(), consentTag).getString();
                 int color = group.consented() ? ACCENT : SUBTEXT_COLOR;
                 graphics.fill(rowX, top, rowX + rowW, top + height, 0x30FFFFFF);
                 graphics.drawString(font, Component.literal(line), rowX + 28, top + 6, color, false);
@@ -1565,7 +1564,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
             @Override
             public Component getNarration() {
-                return group == null ? Component.literal("空")
+                return group == null ? Component.translatable("maid_file_manager.gui.server_export.empty_group")
                         : Component.literal(group.playerName() + " " + group.maids().size());
             }
         }
@@ -1613,9 +1612,13 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 }
                 graphics.drawString(font, Component.literal(drawName), textLeft, top + 2, TEXT_COLOR, false);
                 // 第二行：detail 超长 → 左右自动跑马灯（1.2s头停→向左滚60px/s→1.2s尾停→400ms快速回卷）
-                String detail = String.format(Locale.ROOT, "%s  |  好感:%d  HP:%.0f/%.0f  %s",
-                        info.modelId(), info.favorability(), info.health(), info.maxHealth(),
-                        info.tamed() ? "已驯服" : "未驯服");
+                String detail = Component.translatable("maid_file_manager.gui.maid_row.detail",
+                        info.modelId(), info.favorability(),
+                        String.format(Locale.ROOT, "%.0f", info.health()),
+                        String.format(Locale.ROOT, "%.0f", info.maxHealth()),
+                        info.tamed()
+                                ? Component.translatable("maid_file_manager.gui.label.tamed")
+                                : Component.translatable("maid_file_manager.gui.label.untamed")).getString();
                 int detailW = font.width(detail);
                 if (detailW <= contentW) {
                     graphics.drawString(font, Component.literal(detail), textLeft, top + 12, SUBTEXT_COLOR, false);
@@ -1704,7 +1707,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 String name = info.customName() != null
                         ? info.customName() + " · " + info.displayName()
                         : info.displayName();
-                return Component.literal((sel ? "（已选）" : "（未选）") + name);
+                return Component.translatable(sel
+                        ? "maid_file_manager.gui.label.selected"
+                        : "maid_file_manager.gui.label.not_selected").append(name);
             }
         }
     }
@@ -1894,7 +1899,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 // 第二行：时间超长 → 截断+省略号…（时间格式固定，不滚）
                 long ts = MaidFileIo.parseTimestampFromFileName(fileName);
                 String time = ts > 0 ? new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(ts)) : "?";
-                String timeLine = "时间: " + time;
+                String timeLine = Component.translatable("maid_file_manager.gui.label.time", time).getString();
                 String drawTime;
                 if (font.width(timeLine) > contentW) {
                     drawTime = font.plainSubstrByWidth(timeLine, contentW - font.width("…")) + "…";
@@ -1983,7 +1988,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             @Override
             public Component getNarration() {
                 boolean sel = selectedImportFileNames.contains(fileName);
-                return Component.literal((sel ? "（已选）" : "（未选）") + fileName);
+                return Component.translatable(sel
+                        ? "maid_file_manager.gui.label.selected"
+                        : "maid_file_manager.gui.label.not_selected").append(fileName);
             }
         }
     }
@@ -2013,7 +2020,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         private final boolean hasPermission;
 
         public MaidServerExportScreen(MaidFileManagerScreen parent) {
-            super(Component.literal("统一导出全员确认"));
+            super(Component.translatable("maid_file_manager.gui.server_export.confirm_title"));
             this.parent = parent;
             this.hasPermission = parent.minecraft != null && parent.minecraft.player != null
                     && parent.minecraft.player.hasPermissions(2);
@@ -2029,12 +2036,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             int gap = 20;
             int baseX = this.width / 2 - btnW - gap / 2;
             // 确认按钮（仅 OP 可用）
-            Button confirmBtn = Button.builder(Component.literal("确认导出"), b -> onConfirm())
+            Button confirmBtn = Button.builder(Component.translatable("maid_file_manager.gui.export.confirm_ok"), b -> onConfirm())
                     .bounds(baseX, centerY, btnW, btnH).build();
             confirmBtn.active = hasPermission;
             addRenderableWidget(confirmBtn);
             // 取消按钮（所有人都可用）
-            addRenderableWidget(Button.builder(Component.literal("取消返回"), b -> {
+            addRenderableWidget(Button.builder(Component.translatable("maid_file_manager.gui.button.cancel_back"), b -> {
                 if (this.minecraft != null) this.minecraft.setScreen(parent);
             }).bounds(baseX + btnW + gap, centerY, btnW, btnH).build());
         }
@@ -2053,7 +2060,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             // 直接调用主动作按钮（= 导出选中女仆 → 统一导出模式即为全员）
             parent.onActionButtonClick(parent.actionBtn);
             // 【Fix：消去多余"共成功 0 个"提示】统一导出为服务端异步，结果走聊天栏显示，主界面黄字强制覆盖为"请求已发送"提示
-            parent.setFeedback(Component.literal("统一导出请求已发送（服务端异步处理），结果请查看聊天栏 / 服务器日志。"));
+            parent.setFeedback(Component.translatable("maid_file_manager.gui.server_export.request_sent"));
         }
 
         /** 留空打断默认泥土背景 + 背景模糊（与主界面同一硬约束：不透明、无模糊）；1.20.x 为单参签名 */
@@ -2090,28 +2097,30 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         /** 绘制标题与说明文字（纯文本，无副作用） */
         private void drawTextBlock(GuiGraphics graphics, int cx, int py) {
             int y = py + 20;
-            drawCenteredNoShadow(graphics, "【统一导出全员 确认】", cx, y, HEADER_COLOR);
+            drawCenteredNoShadow(graphics,
+                    Component.translatable("maid_file_manager.gui.server_export.confirm_header").getString(),
+                    cx, y, HEADER_COLOR);
             y += 26;
             String[] lines;
             if (!hasPermission) {
                 lines = new String[] {
-                    "权限不足：仅 OP（权限等级 2+）可使用此功能",
+                    Component.translatable("maid_file_manager.gui.server_export.no_perm_line1").getString(),
                     "",
-                    "你当前不是服务器 OP，无法统一导出所有玩家的女仆。",
+                    Component.translatable("maid_file_manager.gui.server_export.no_perm_line2").getString(),
                     "",
-                    "请点击「取消返回」回到主界面，或联系服务器管理员。"
+                    Component.translatable("maid_file_manager.gui.server_export.no_perm_line3").getString()
                 };
             } else {
                 lines = new String[] {
-                    "将导出「所有在线且已同意」玩家的女仆（按玩家分组）。",
+                    Component.translatable("maid_file_manager.gui.server_export.rule_intro").getString(),
                     "",
-                    "规则一：仅导出在设置中同意「允许服务端统一导出」的玩家。",
-                    "规则二：统一导出不会移除世界中的女仆（强制全部保留）。",
-                    "规则三：文件保存到服务端 maid_exports/<玩家名>/ 目录。",
+                    Component.translatable("maid_file_manager.gui.server_export.rule1").getString(),
+                    Component.translatable("maid_file_manager.gui.server_export.rule2").getString(),
+                    Component.translatable("maid_file_manager.gui.server_export.rule3").getString(),
                     "",
-                    "注意：每个女仆单独生成一个 .maid 文件，文件名含玩家名与女仆名。",
+                    Component.translatable("maid_file_manager.gui.server_export.rule_note").getString(),
                     "",
-                    "点击「确认导出」开始处理，结果将显示在聊天栏 / 服务器日志中。"
+                    Component.translatable("maid_file_manager.gui.server_export.rule_footer").getString()
                 };
             }
             for (String line : lines) {
