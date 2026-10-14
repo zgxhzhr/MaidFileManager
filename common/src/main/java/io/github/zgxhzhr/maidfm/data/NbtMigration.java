@@ -58,7 +58,8 @@ public final class NbtMigration {
 
     private NbtMigration() {}
 
-    public static CompoundTag migrate(CompoundTag data, int sourceVersion, int targetVersion) {
+    public static CompoundTag migrate(CompoundTag data, int sourceVersion, int targetVersion,
+                                      CuriosBaubleFilter.Stats curiosStatsOut) {
         if (data == null) {
             return null;
         }
@@ -78,9 +79,12 @@ public final class NbtMigration {
 
         // Curios 饰品：导入侧按同一规则再裁剪一次（防御纵深）。
         // 旧版本导出的 .maid 文件可能仍带着 Curios 载荷，未声明的命名空间不得借文件绕过本地注册表。
-        CuriosBaubleFilter.strip(out,
+        CuriosBaubleFilter.Result curiosResult = CuriosBaubleFilter.strip(out,
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.isCarryCurios(),
                 MaidBaubleCarrierRegistry::isCuriosItemCarriable);
+        if (curiosStatsOut != null) {
+            curiosStatsOut.add(curiosResult);
+        }
 
         // ---------- 仅在版本明确且真正跨版本时做结构改名/定向迁移 ----------
         boolean versionsKnown = sourceVersion != NbtVersion.UNKNOWN && targetVersion != NbtVersion.UNKNOWN;
