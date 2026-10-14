@@ -76,9 +76,11 @@ public class MaidBaubleExtraBlockScreen extends Screen {
     private final Screen parent;
     private boolean canEdit;
 
-    /** 0 = 按模组，1 = 按 Curios 槽位 */
+    /** 0 = 按物品（只读展示，实际勾选在主列表），1 = 按模组，2 = 按 Curios 槽位 */
     private int tab;
 
+    private final List<String> itemEntries = new ArrayList<>();
+    private final Set<String> blockedItems = new LinkedHashSet<>();
     private final List<String> modIds = new ArrayList<>();
     private final Map<String, String> modNames = new HashMap<>();
     private final Set<String> declared = new LinkedHashSet<>();
@@ -113,6 +115,30 @@ public class MaidBaubleExtraBlockScreen extends Screen {
 
         declared.clear();
         declared.addAll(MaidBaubleCarrierRegistry.declaredNamespaces());
+
+        blockedItems.clear();
+        blockedItems.addAll(MaidConfigManager.cachedBaubleBlockedList());
+
+        // 按物品：列出车万本体 / 万法皆通的全部物品（含白黑名单里出现过的），
+        // 其它模组的饰品请在「按模组」标签里禁用
+        itemEntries.clear();
+        Set<String> itemIds = new LinkedHashSet<>();
+        try {
+            for (net.minecraft.resources.ResourceLocation key
+                    : net.minecraft.core.registries.BuiltInRegistries.ITEM.keySet()) {
+                String ns = key.getNamespace();
+                if ("touhou_little_maid".equals(ns) || "touhou_little_maid_spell".equals(ns)) {
+                    itemIds.add(key.toString());
+                }
+            }
+        } catch (Throwable t) {
+            // 枚举物品失败不影响其它标签
+        }
+        itemIds.addAll(blockedItems);
+        itemIds.addAll(MaidConfigManager.cachedBaubleWhitelist());
+        itemIds.addAll(MaidConfigManager.cachedBaubleBlacklist());
+        itemEntries.addAll(itemIds);
+        itemEntries.sort(String::compareTo);
 
         modIds.clear();
         modNames.clear();
@@ -161,14 +187,17 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         listX = panelX + 20;
         listW = PANEL_W - 40;
 
-        // 标签按钮（按模组 / 按 Curios 槽位）
-        int tabW = (PANEL_W - 40 - 6) / 2;
-        addRenderableWidget(Button.builder(Component.translatable("gui.maid_file_manager.config.bauble_extra_by_mod"),
+        // 三个标签：按物品 / 按模组 / 按 Curios 槽位
+        int tabW = (listW - 12) / 3;
+        addRenderableWidget(Button.builder(Component.translatable("gui.maid_file_manager.config.bauble_extra_by_item"),
                         b -> switchTab(0))
                 .bounds(listX, panelY + TAB_Y, tabW, 16).build());
-        addRenderableWidget(Button.builder(Component.translatable("gui.maid_file_manager.config.bauble_extra_by_slot"),
+        addRenderableWidget(Button.builder(Component.translatable("gui.maid_file_manager.config.bauble_extra_by_mod"),
                         b -> switchTab(1))
                 .bounds(listX + tabW + 6, panelY + TAB_Y, tabW, 16).build());
+        addRenderableWidget(Button.builder(Component.translatable("gui.maid_file_manager.config.bauble_extra_by_slot"),
+                        b -> switchTab(2))
+                .bounds(listX + (tabW + 6) * 2, panelY + TAB_Y, tabW, 16).build());
 
         // 搜索框（两个标签都用它过滤：模组按 id/显示名，槽位按名字）
         filterField = new EditBox(this.font, listX, panelY + SEARCH_Y, listW - 60, 14,
@@ -183,7 +212,7 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         addButton = Button.builder(Component.translatable("gui.maid_file_manager.config.bauble_extra_add"),
                         b -> addSlotFromFilter())
                 .bounds(listX + listW - 56, panelY + SEARCH_Y, 56, 14).build();
-        addButton.active = canEdit && tab == 1;
+        addButton.active = canEdit && tab == 2;
         addRenderableWidget(addButton);
 
         // 翻页
@@ -244,7 +273,7 @@ public class MaidBaubleExtraBlockScreen extends Screen {
                 filterField.setValue("");
             }
             if (addButton != null) {
-                addButton.active = canEdit && tab == 1;
+                addButton.active = canEdit && tab == 2;
             }
             rebuildShown();
         }
@@ -255,6 +284,12 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         shown.clear();
         String q = filterField == null ? "" : filterField.getValue().trim().toLowerCase(Locale.ROOT);
         if (tab == 0) {
+            for (String id : itemEntries) {
+                if (q.isEmpty() || id.toLowerCase(Locale.ROOT).contains(q)) {
+                    shown.add(id);
+                }
+            }
+        } else if (tab == 1) {
             for (String modId : modIds) {
                 String name = modNames.getOrDefault(modId, modId);
                 if (q.isEmpty() || modId.toLowerCase(Locale.ROOT).contains(q)
@@ -262,7 +297,6 @@ public class MaidBaubleExtraBlockScreen extends Screen {
                     shown.add(modId);
                 }
             }
-            // 已勾选的排到前面，方便确认
             shown.sort((a, b) -> Boolean.compare(blockedNamespaces.contains(b), blockedNamespaces.contains(a)));
         } else {
             for (String slot : slotEntries) {
@@ -275,6 +309,20 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         if (page > max) {
             page = max;
         }
+    }
+
+    /** 物品显示名（取不到就退化为 id） */
+    private String itemLabel(String id) {
+        try {
+            net.minecraft.resources.ResourceLocation key = net.minecraft.resources.ResourceLocation.tryParse(id);
+            if (key != null && net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(key)) {
+                return new net.minecraft.world.item.ItemStack(
+                        net.minecraft.core.registries.BuiltInRegistries.ITEM.get(key)).getHoverName().getString();
+            }
+        } catch (Throwable t) {
+            // 忽略：显示 id 即可
+        }
+        return id;
     }
 
     private void toggleMod(String modId) {
@@ -322,9 +370,9 @@ public class MaidBaubleExtraBlockScreen extends Screen {
                 int row = (int) ((mouseY - top) / ROW_H);
                 int index = page * ROWS_PER_PAGE + row;
                 if (index >= 0 && index < shown.size()) {
-                    if (tab == 0) {
+                    if (tab == 1) {
                         toggleMod(shown.get(index));
-                    } else {
+                    } else if (tab == 2) {
                         toggleSlot(shown.get(index));
                     }
                     return true;
@@ -343,8 +391,10 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         graphics.drawString(this.font, this.title, listX, panelY + TITLE_Y, HEADER_COLOR, false);
         graphics.drawString(this.font,
                 Component.translatable(tab == 0
-                        ? "gui.maid_file_manager.config.bauble_extra_hint_mod"
-                        : "gui.maid_file_manager.config.bauble_extra_hint_slot"),
+                        ? "gui.maid_file_manager.config.bauble_extra_hint_item"
+                        : (tab == 1
+                                ? "gui.maid_file_manager.config.bauble_extra_hint_mod"
+                                : "gui.maid_file_manager.config.bauble_extra_hint_slot")),
                 listX, panelY + HINT_Y, HINT_COLOR, false);
 
         // 列表底
@@ -359,9 +409,10 @@ public class MaidBaubleExtraBlockScreen extends Screen {
             }
             String value = shown.get(index);
             int rowY = top + i * ROW_H;
-            boolean hardBlocked = tab == 1 && HARD_BLOCKED_SLOTS.contains(value);
+            boolean hardBlocked = tab == 2 && HARD_BLOCKED_SLOTS.contains(value);
             boolean checked = hardBlocked
-                    || (tab == 0 ? blockedNamespaces.contains(value) : blockedSlots.contains(value));
+                    || (tab == 0 ? blockedItems.contains(value)
+                            : (tab == 1 ? blockedNamespaces.contains(value) : blockedSlots.contains(value)));
             boolean hovered = !hardBlocked && mouseX >= listX && mouseX <= listX + listW
                     && mouseY >= rowY && mouseY < rowY + ROW_H;
             if (checked || hovered) {
@@ -375,6 +426,13 @@ public class MaidBaubleExtraBlockScreen extends Screen {
             }
 
             if (tab == 0) {
+                String label = itemLabel(value);
+                graphics.drawString(this.font, label, listX + 16, rowY + 3, TEXT_COLOR, false);
+                int idW = this.font.width(value);
+                if (listX + listW - 12 - idW > listX + 16 + this.font.width(label) + 8) {
+                    graphics.drawString(this.font, value, listX + listW - idW - 4, rowY + 3, SUBTEXT_COLOR, false);
+                }
+            } else if (tab == 1) {
                 String name = modNames.getOrDefault(value, value);
                 graphics.drawString(this.font, name, listX + 16, rowY + 3, TEXT_COLOR, false);
                 String status = declared.contains(value)
