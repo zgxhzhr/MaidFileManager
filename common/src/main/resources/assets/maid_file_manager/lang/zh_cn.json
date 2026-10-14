@@ -136,5 +136,18 @@
     "gui.maid_file_manager.backup.not_matched": "未找到匹配的玩家：%s",
     "gui.maid_file_manager.backup.need_name": "请输入离线玩家名",
     "gui.maid_file_manager.backup.loading": "正在从服务器读取备份…",
-    "gui.maid_file_manager.backup.exporting": "正在导出备份…"
+    "gui.maid_file_manager.backup.exporting": "正在导出备份…",
+    "maid_file_manager.command.no_server": "[女仆档案管理] 无法获取服务端",
+    "maid_file_manager.command.none": "无",
+    "maid_file_manager.command.list_separator": "、",
+    "maid_file_manager.command.exportall.done": "[女仆档案管理] 统一导出完成：玩家 %s 人（跳过未同意 %s 人: %s），共 %s 个文件 → %s",
+    "maid_file_manager.command.export.done": "[女仆档案管理] 统一导出完成：共成功 %s 个",
+    "maid_file_manager.command.export.done_fail": "，失败 %s 个",
+    "maid_file_manager.command.export.dir_hint": "（保存到服务端 maid_exports/<玩家名>/）",
+    "maid_file_manager.command.export.details": "。明细：",
+    "maid_file_manager.command.export.skipped": "。跳过：",
+    "maid_file_manager.command.export.player_offline": "%s：不在线",
+    "maid_file_manager.command.export.no_consent": "%s：未同意「允许服务端统一导出你的女仆」",
+    "maid_file_manager.command.export.player_detail": "%s：%s 个",
+    "maid_file_manager.command.export.player_detail_fail": "（失败 %s 个）"
 }
