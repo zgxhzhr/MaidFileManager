@@ -270,8 +270,8 @@ public final class MaidTransferService {
      * 只负责序列化，永不移除世界实体。
      *
      * <p>这是**所有权约束的硬边界**：与 {@link #exportMaidToData} 的 {@code isOwnedBy(player)}
-     * 一起，保证任何导出路径都只能产出自己的女仆档案。导入侧的 {@link #matchOwner} 之所以能保持
-     * 宽容（匹配不到就落成未驯服而非拒绝导入），前提正是这里不会把别人的档案交出去。
+     * 一起，保证任何导出路径都只能产出自己的女仆档案。导入侧实际同样要求 owner UUID 与导入者
+     * 一致（不一致会失败，见 {@link #matchOwner} 的说明），这里与那里是同一件事的两半。
      */
     public static MaidFileData exportMaidOwnedBy(ServerPlayer expectedOwner, int entityId) {
         if (expectedOwner == null) {
@@ -1743,13 +1743,13 @@ public final class MaidTransferService {
     /**
      * 主人绑定：按「原主人 UUID → 在线玩家名 → 未驯服」三级匹配，把导入的女仆绑给某个玩家。
      *
-     * <p>这里刻意做得宽容：导入侧不因「不是本人」而拒绝，匹配不到就落成未驯服（可再用蛋糕驯服），
-     * 以免跨存档转移、原号改名等情形直接丢档。真正的所有权约束在**导出侧**——
-     * 普通导出走 {@code isOwnedBy(player)}、统一导出走 ownerUUID 精确匹配
-     * （见 {@link #exportMaidToData} / {@link #exportMaidOwnedBy}），只能导出自己的女仆。
+     * <p><b>当前实际行为只接受本人导出的档案</b>（owner UUID 与导入者一致），不一致时导入会失败。
+     * 这源于一处既有的实现缺陷（不是本方法内的判断所致），但该行为本身是想要的——防止把别人的
+     * 女仆搬进自己的世界，因此<b>保留现状，不在本处改动逻辑</b>。三级匹配的分支保留原样，作为
+     * 将来修好该缺陷后的既有路径。
      *
-     * <p>两条合起来的效果是：虽然这条路径理论上能导入他人的档案，但实际能拿到手的只会是自己的
-     * 女仆文件，因此实践中「不是你的女仆就导入不进去」是**有意设计**，不是缺陷，代码保持现状。
+     * <p>所有权约束的另一半在**导出侧**：普通导出走 {@code isOwnedBy(player)}、统一导出走 ownerUUID
+     * 精确匹配（见 {@link #exportMaidToData} / {@link #exportMaidOwnedBy}），只能导出自己的女仆。
      *
      * <p>成就合并另有一道本人校验（{@code isSelfImport}），防止伪造 .maid 给他人刷成就。
      * <p>1.20.x 的 setTame 为单参签名（仅是否驯服）。
