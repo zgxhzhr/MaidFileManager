@@ -77,20 +77,6 @@ public final class MaidTransferService {
      * 无论 modifier 何时附加都能把满血女仆的血量追上来。20 tick ≈ 1 秒。
      */
     private static final int POST_IMPORT_HEAL_RETRY_TICKS = 20;
-    /**
-     * 万法皆通特殊女仆身上的永久常驻药水效果固定为这 11 种 ResourceLocation
-     * （来自万法皆通结构模板 .nbt 预置，duration=-1）。
-     * 判定依据：duration=-1 AND 效果 ID 命中此白名单。不依赖女仆实体身份，
-     * 即普通女仆被施加白名单内的无限时长效果时同样适用此保护。
-     */
-    private static final java.util.Set<String> SPELL_PERMANENT_EFFECT_IDS = java.util.Set.of(
-            "minecraft:regeneration", "minecraft:strength", "minecraft:resistance", "minecraft:speed",
-            "irons_spellbooks:vigor", "irons_spellbooks:blight",
-            "irons_spellbooks:true_invisibility", "irons_spellbooks:abyssal_shroud",
-            "goety:save_effects", "goety:leeching",
-            "youkaishomecoming:native_god_bless"
-    );
-
     private MaidTransferService() {
     }
 
@@ -472,61 +458,6 @@ public final class MaidTransferService {
     }
 
     /**
-     * 从效果数据中过滤出万法皆通常驻效果：duration=-1 AND 效果 ID 命中白名单。
-     * 用于禁药水服务器只保留万法皆通特殊女仆的常驻 buff，其他效果（含普通女仆被施加的非常驻效果、
-     * 万法皆通结构女仆身上的短时情境效果如 nourishment/sober/caffeinated、超长时长效果如虚弱 V）
-     * 一律丢弃。同步过滤 active_effects 与 normalized 两个列表并保持索引对齐
-     * （导入恢复时按相同索引配对原始 NBT 与标准化数据）。
-     *
-     * @return 仅含白名单常驻效果的新 CompoundTag；无任何白名单常驻效果时返回 null
-     */
-    private static CompoundTag extractSpellPermanentEffects(CompoundTag effectsData) {
-        if (effectsData == null || !effectsData.contains("active_effects", Tag.TAG_LIST)) {
-            return null;
-        }
-        ListTag raw = effectsData.getList("active_effects", Tag.TAG_COMPOUND);
-        ListTag norm = effectsData.contains("normalized", Tag.TAG_LIST)
-                ? effectsData.getList("normalized", Tag.TAG_COMPOUND) : new ListTag();
-        ListTag outRaw = new ListTag();
-        ListTag outNorm = new ListTag();
-        for (int i = 0; i < raw.size(); i++) {
-            CompoundTag e = raw.getCompound(i);
-            int dur;
-            if (e.contains("Duration", Tag.TAG_INT)) {
-                dur = e.getInt("Duration");
-            } else if (i < norm.size()) {
-                dur = norm.getCompound(i).getInt("duration");
-            } else {
-                dur = 0;
-            }
-            if (dur != -1) {
-                continue;
-            }
-            // 效果 ID 命中白名单才保留（不依赖女仆身份判定）
-            String effectId = e.contains("forge:id", Tag.TAG_STRING)
-                    ? e.getString("forge:id")
-                    : e.getString("id");
-            if (effectId.isEmpty() && i < norm.size()) {
-                effectId = norm.getCompound(i).getString("id");
-            }
-            if (effectId.isEmpty() || !SPELL_PERMANENT_EFFECT_IDS.contains(effectId)) {
-                continue;
-            }
-            outRaw.add(e.copy());
-            if (i < norm.size()) {
-                outNorm.add(norm.getCompound(i).copy());
-            }
-        }
-        if (outRaw.isEmpty()) {
-            return null;
-        }
-        CompoundTag out = new CompoundTag();
-        out.put("active_effects", outRaw);
-        out.put("normalized", outNorm);
-        return out;
-    }
-
-    /**
      * 构建标准化效果数据列表，用于跨 MC 版本重建 MobEffectInstance。
      * <p>跨版本差异点（1.20.x ↔ 1.21+）：
      * <ul>
@@ -820,14 +751,10 @@ public final class MaidTransferService {
                     Constants.LOG.debug("[maid_file_manager] 药水效果恢复: 成功 {} 个，其中跨版本重建 {} 个",
                             restored, rebuildCount);
                 } else {
-                    // 配置不允许药水效果：仅万法皆通特殊女仆的常驻效果（duration=-1 AND ID 命中白名单）
-                    // 写入持久化标签保留，防止禁药水服务器再导出时常驻 buff 永久丢失；
-                    // 普通女仆效果、特殊女仆的临时效果、超长时长效果（非 -1）一律丢弃
-                    CompoundTag permanentOnly = extractSpellPermanentEffects(effectsData);
-                    if (permanentOnly != null) {
-                        Services.PLATFORM.get().storeEffects(maid, permanentOnly);
-                        Constants.LOG.debug("[maid_file_manager] 禁药水：已保留万法皆通常驻效果到持久化标签");
-                    }
+                    // 配置不允许药水效果：一律不恢复、也不保留。
+                    // 结构女仆身上的常驻效果由其所属模组自行维护（本模组不再按效果 ID 做特殊适配，
+                    // 原先那份硬编码白名单已移除）。
+                    Constants.LOG.debug("[maid_file_manager] 禁药水：效果一律不保留（交由具体模组自行维护）");
                 }
             }
         } catch (Throwable t) {
@@ -925,6 +852,8 @@ public final class MaidTransferService {
         schedulePostImportHealthSync(level, maid, sourceHealth);
         Constants.LOG.info("[maid_file_manager] 导入完成 modelId={} ownerMatched={} pos={}",
                 maid.getModelId(), ownerMatched, safePos);
+        // 万法皆通（MaidSpell）隐世女仆认领通知（可选集成，反射调用，未安装时静默跳过）
+        notifyHiddenRetreatClaim(player, maid, data);
 
         Component message = ownerMatched
                 ? Component.translatable("maid_file_manager.import.success")
@@ -941,6 +870,38 @@ public final class MaidTransferService {
             result = result.withBaubleNotes(baubleNotes);
         }
         return result;
+    }
+
+    /**
+     * 万法皆通（MaidSpell）「隐世女仆」认领通知。
+     *
+     * <p>对方模组在 EntityJoinLevelEvent 里会自己识别并登记认领，但「导入为物品、尚未释放」
+     * 的场景实体事件看不见其中的女仆；按其协议，导入成功后（服务器主线程上）再显式通知一次。
+     * 对方保证重复调用安全，因此这里不做判重。
+     *
+     * <p>未驯服（无主人）时不调用 —— 对方不会为「没有主人的等待者」登记认领。
+     * 未安装万法皆通时静默跳过：这是可选集成，不构成硬依赖。
+     */
+    private static void notifyHiddenRetreatClaim(ServerPlayer player, EntityMaid maid, MaidFileData data) {
+        if (player == null || player.getServer() == null || maid == null || data == null) {
+            return;
+        }
+        UUID owner = maid.getOwnerUUID();
+        if (owner == null) {
+            return;
+        }
+        try {
+            Class<?> registry = Class.forName(
+                    "com.github.yimeng261.maidspell.compat.touhou_little_maid.HiddenRetreatMaidRegistry");
+            java.lang.reflect.Method register = registry.getMethod("registerImportedMaid",
+                    net.minecraft.server.MinecraftServer.class, UUID.class, CompoundTag.class);
+            Object added = register.invoke(null, player.getServer(), owner, data.getData());
+            Constants.LOG.debug("[maid_file_manager] 隐世女仆认领通知已发送 owner={} 新增={}", owner, added);
+        } catch (ClassNotFoundException e) {
+            // 未安装万法皆通：静默跳过
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 隐世女仆认领通知失败（已忽略）: {}", t.toString());
+        }
     }
 
     private static int readSourceFavorability(CompoundTag originalNbt) {
