@@ -107,7 +107,22 @@ public class MaidBaubleExtraBlockScreen extends Screen {
     }
 
     @Override
+    public void removed() {
+        // 界面背景音乐（试验性功能）：离开界面时释放，全部界面关闭后延迟停止
+        UiMusicManager.leave(this);
+        super.removed();
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        // 界面期间每帧压住原版背景音乐（其 MusicManager 会自动重播，单次停止无效）
+        UiMusicManager.tick();
+    }
+
+    @Override
     protected void init() {
+        UiMusicManager.enter(this);
         this.canEdit = this.minecraft != null && this.minecraft.player != null
                 && this.minecraft.player.hasPermissions(2);
 
