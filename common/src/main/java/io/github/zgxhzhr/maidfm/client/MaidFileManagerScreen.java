@@ -146,7 +146,15 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
 
     @Override
+    public void removed() {
+        // 界面背景音乐（试验性功能）：离开界面时释放，全部界面关闭后延迟停止
+        UiMusicManager.leave(this);
+        super.removed();
+    }
+
+    @Override
     protected void init() {
+        UiMusicManager.enter(this);
         super.init();
         panelW = Math.min(PANEL_MAX_W, this.width - MARGIN * 2);
         panelH = this.height - MARGIN * 2;

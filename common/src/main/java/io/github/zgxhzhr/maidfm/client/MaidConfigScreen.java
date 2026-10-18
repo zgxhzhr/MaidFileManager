@@ -66,7 +66,15 @@ public class MaidConfigScreen extends Screen {
     }
 
     @Override
+    public void removed() {
+        // 界面背景音乐（试验性功能）：离开界面时释放，全部界面关闭后延迟停止
+        UiMusicManager.leave(this);
+        super.removed();
+    }
+
+    @Override
     protected void init() {
+        UiMusicManager.enter(this);
         rowLabels.clear();
         boolean hasServerPerm = this.minecraft != null && this.minecraft.player != null
                 && this.minecraft.player.hasPermissions(2);

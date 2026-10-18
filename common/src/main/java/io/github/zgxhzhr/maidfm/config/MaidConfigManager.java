@@ -92,6 +92,10 @@ public final class MaidConfigManager {
     public static final String KEY_BAUBLE_BLOCKED_LIST = "bauble_blocked_list";
     /** 客户端配置键：允许服务端统一导出你的女仆 */
     public static final String KEY_ALLOW_SERVER_EXPORT = "allow_server_export";
+    /** 客户端配置键：界面背景音乐开关（试验性功能，默认开启） */
+    public static final String KEY_UI_MUSIC = "ui_music";
+    /** 客户端配置键：界面背景音乐音量（0.0 - 1.0，默认 0.15） */
+    public static final String KEY_UI_MUSIC_VOLUME = "ui_music_volume";
     /** 客户端配置键：导出并移除女仆时跳过"背包物品将丢失"二次确认的键前缀，完整键为 前缀+存档标识 */
     public static final String SKIP_REMOVE_CONFIRM_PREFIX = "skip_remove_confirm.";
 
@@ -128,6 +132,9 @@ public final class MaidConfigManager {
     private static volatile boolean baubleWhitelistEnforced = false;
     /** 客户端配置内存值 */
     private static volatile boolean clientAllowServerExport = false;
+    /** 客户端：界面背景音乐开关（试验性功能）与音量 */
+    private static volatile boolean clientUiMusic = true;
+    private static volatile float clientUiMusicVolume = 0.15F;
     /** 客户端配置内存值：各存档/服务器是否跳过移除二次确认（key=存档标识，见 client 包存档标识工具） */
     private static final Map<String, Boolean> clientSkipRemoveConfirmByWorld = new ConcurrentHashMap<>();
     /** 服务端侧记录的各客户端同意状态（UUID → allowServerExport），登录默认 false */
@@ -237,6 +244,39 @@ public final class MaidConfigManager {
     // ==================== 客户端配置 ====================
 
     /** 本客户端是否允许服务端统一导出 */
+    /** 界面背景音乐是否开启（客户端配置） */
+    public static boolean isClientUiMusic() {
+        return clientUiMusic;
+    }
+
+    /** 界面背景音乐音量（0.0 - 1.0，已钳制） */
+    public static float getClientUiMusicVolume() {
+        return clientUiMusicVolume;
+    }
+
+    /** 设置界面背景音乐开关并落盘（供设置界面/调试使用） */
+    public static synchronized void setClientUiMusic(boolean value) {
+        clientUiMusic = value;
+        saveClient();
+    }
+
+    /** 读取浮点配置并按 0..1 钳制 */
+    private static float parseVolume(Properties props, String key, float defaultValue) {
+        try {
+            String raw = props.getProperty(key);
+            if (raw == null || raw.isBlank()) {
+                return defaultValue;
+            }
+            float value = Float.parseFloat(raw.trim());
+            if (Float.isNaN(value) || value < 0F) {
+                return 0F;
+            }
+            return Math.min(value, 1F);
+        } catch (Throwable t) {
+            return defaultValue;
+        }
+    }
+
     public static boolean isClientAllowServerExport() {
         return clientAllowServerExport;
     }
@@ -571,6 +611,8 @@ public final class MaidConfigManager {
             // 首次运行配置文件尚不存在属正常情况：props 保持为空，下方 parse 全部走默认值（默认拒绝），无需告警
         }
         clientAllowServerExport = parse(props, KEY_ALLOW_SERVER_EXPORT, false);
+        clientUiMusic = parse(props, KEY_UI_MUSIC, true);
+        clientUiMusicVolume = parseVolume(props, KEY_UI_MUSIC_VOLUME, 0.15F);
         // 按存档记录的跳过确认：遍历 skip_remove_confirm.<存档标识> 全部装入内存
         clientSkipRemoveConfirmByWorld.clear();
         for (String name : props.stringPropertyNames()) {
@@ -676,6 +718,8 @@ public final class MaidConfigManager {
     private static void saveClient() {
         Properties props = new Properties();
         props.setProperty(KEY_ALLOW_SERVER_EXPORT, String.valueOf(clientAllowServerExport));
+        props.setProperty(KEY_UI_MUSIC, String.valueOf(clientUiMusic));
+        props.setProperty(KEY_UI_MUSIC_VOLUME, String.valueOf(clientUiMusicVolume));
         // 每个勾选过"不再提示"的存档各写一行（只存 true；false=默认值不落盘）
         for (String worldKey : clientSkipRemoveConfirmByWorld.keySet()) {
             props.setProperty(SKIP_REMOVE_CONFIRM_PREFIX + worldKey, String.valueOf(true));
