@@ -7,6 +7,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.client.resources.sounds.SoundInstance;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.RandomSource;
 import net.minecraft.sounds.SoundEvent;
 
 import java.util.Set;
@@ -67,12 +69,20 @@ public final class UiMusicManager {
             if (id == null) {
                 return;
             }
-            SoundEvent event = SoundEvent.createVariableRangeEvent(id);
             float volume = MaidConfigManager.getClientUiMusicVolume();
             if (volume <= 0F) {
                 return;
             }
-            SimpleSoundInstance instance = SimpleSoundInstance.forUI(event, volume);
+            // 用 MUSIC 类别：跟随玩家「音乐」音量滑块（而不是主音量），与其它音乐同处一个音量组
+            SimpleSoundInstance instance = new SimpleSoundInstance(
+                    id, SoundSource.MUSIC, volume, 1.0F, RandomSource.create(),
+                    false, 0, SoundInstance.Attenuation.NONE, 0.0D, 0.0D, 0.0D, true);
+            // 让原版背景音乐让位，避免两首曲子同时响（原版会自行在后续 tick 重新判断是否播放）
+            try {
+                Minecraft.getInstance().getMusicManager().stopPlaying();
+            } catch (Throwable ignored) {
+                // 该 API 在个别版本缺失时忽略：仅退化为「不暂停原版音乐」
+            }
             Minecraft.getInstance().getSoundManager().play(instance);
             current = instance;
         } catch (Throwable t) {
