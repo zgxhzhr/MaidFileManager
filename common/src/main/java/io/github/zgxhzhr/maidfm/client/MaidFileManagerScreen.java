@@ -151,6 +151,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         UiMusicManager.leave(this);
         super.removed();
     }
+    @Override
+    public void tick() {
+        super.tick();
+        // 界面期间每帧压住原版背景音乐（其 MusicManager 会自动重播，单次停止无效）
+        UiMusicManager.tick();
+    }
 
     @Override
     protected void init() {
