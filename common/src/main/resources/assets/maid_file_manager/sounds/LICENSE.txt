@@ -1,0 +1,7 @@
+ui_music.ogg (MaidFileManager_v18) - Copyright (c) 2026 逐光星火_执火人. All Rights Reserved.
+
+This audio file is NOT covered by the project's MIT license.
+Permitted: redistribution as part of this mod, unmodified; normal in-game listening.
+Not permitted: extracting, redistributing separately, remixing/sampling, using in other
+mods or works, commercial use, or removing this notice.
+For any other use, ask the author (逐光星火_执火人) for permission.
