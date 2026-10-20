@@ -566,6 +566,18 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 
+    /**
+     * 打断 Screen 默认背景绘制。
+     *
+     * <p>本屏在 {@code render()} 开头自绘全屏底色与面板，且 {@code super.render()} 在**最后**才调用；
+     * 若不覆写本方法，{@code Screen.render} 首行会把默认背景（暗色 + 背景模糊）画在自绘内容**之上**，
+     * 导致列表 / 勾选 / 文字全被糊掉，只剩按钮清晰。与同目录其它屏保持一致地空实现。
+     */
+    @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        // 什么都不做 —— 全屏底色 + 面板统一在 render() 开头绘制
+    }
+
     @Override
     public boolean isPauseScreen() {
         return false;
