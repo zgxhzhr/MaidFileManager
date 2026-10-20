@@ -84,6 +84,8 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     private boolean available;
     /** 专业服务端：已发出列表请求、正在等待服务端回传 */
     private boolean loading;
+    /** 是否已完成首次扫描（init 会因 resize 被重复调用，避免反复全量扫描） */
+    private boolean initialScanDone;
     private int scrollOffset;
 
     private final List<WorldNode> worlds = new ArrayList<>();
@@ -226,7 +228,12 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
                 Component.translatable("gui.maid_file_manager.backup.back"), this::onClose));
 
         PlayerNameResolver.loadCache(this.minecraft.gameDirectory.toPath());
-        scanBackups();
+        // init() 在窗口 resize 时也会被调用，而扫描要遍历全部存档并逐个读 index.dat。
+        // 已扫描过就不再重复扫（列表内容不随窗口尺寸变化），避免拉窗口时反复卡主线程。
+        if (!initialScanDone) {
+            initialScanDone = true;
+            scanBackups();
+        }
         rebuildRows();
         // 扫描可能已把 available 置为 true，此处刷新一次按钮状态，避免「打开导出文件夹」按钮停在初始的禁用态
         refreshButtons();
