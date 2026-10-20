@@ -197,15 +197,19 @@ public class MaidBaubleImportScreen extends Screen {
         }
         int managedRowH = managedHints.size() * 11;
 
-        // 先按内容结构算出面板高度，再垂直居中
-        panelH = 8 + 16 + 4     // 标题
+        // 除列表区以外的固定高度
+        int fixedH = 8 + 16 + 4     // 标题
                 + stripRowH     // 丢弃属性区块：说明文字行 + 开关
                 + hintRowH      // 无权限提示行（仅非 OP）
                 + 14            // 禁用列表区块标题
                 + managedRowH   // 整合包托管提示 / 白名单摘要（仅托管时）
                 + SEARCH_H + 6  // 搜索框行
-                + LIST_H        // 列表区
                 + 12 + DONE_H + 12;   // 完成按钮 + 底部边距
+        // 列表区高度按屏幕可用高度压缩：面板高度原为定值（LIST_H=190），
+        // 1080p + GUI scale=4 时逻辑分辨率仅 480×270，面板会超出屏幕、底部「完成」按钮越界，
+        // 而本屏没有滚动，导致设置无法保存。至少留 40 像素给列表，避免压缩到不可用。
+        listH = Math.max(40, Math.min(LIST_H, this.height - 20 - fixedH));
+        panelH = fixedH + listH;
         panelY = Math.max(10, (this.height - panelH) / 2);
 
         int y = panelY + 8 + 16 + 4;
@@ -244,7 +248,7 @@ public class MaidBaubleImportScreen extends Screen {
         y += SEARCH_H + 6;
         listX = labelX;
         listW = PANEL_W - 40 - SCROLL_W - 4;
-        listH = LIST_H;
+        // listH 已在上方按屏幕高度算好，这里不再覆盖为定值
         listY = y;
         scrollOffset = 0;
 
