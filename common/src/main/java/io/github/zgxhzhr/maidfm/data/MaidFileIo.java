@@ -229,7 +229,34 @@ public final class MaidFileIo {
         // 去除首尾下划线
         while (cleaned.startsWith(SEP)) cleaned = cleaned.substring(1);
         while (cleaned.endsWith(SEP)) cleaned = cleaned.substring(0, cleaned.length() - 1);
-        return cleaned.isEmpty() ? "unknown" : cleaned;
+        return cleaned.isEmpty() ? "unknown" : truncateForFilename(cleaned);
+    }
+
+    /** 文件名主体的字节上限：多数文件系统单个文件名上限 255 字节，留出扩展名与去重后缀余量 */
+    private static final int FILENAME_BODY_MAX_BYTES = 180;
+
+    /** 按 UTF-8 字节数截断（不截半个字符），用于文件名主体 */
+    static String truncateForFilename(String s) {
+        if (s == null) {
+            return "unknown";
+        }
+        byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (bytes.length <= FILENAME_BODY_MAX_BYTES) {
+            return s;
+        }
+        int end = 0;
+        int i = 0;
+        while (i < s.length()) {
+            int cp = s.codePointAt(i);
+            int len = new String(Character.toChars(cp)).getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+            if (end + len > FILENAME_BODY_MAX_BYTES) {
+                break;
+            }
+            end += len;
+            i += Character.charCount(cp);
+        }
+        String cut = s.substring(0, i);
+        return cut.isEmpty() ? "unknown" : cut;
     }
 
     /**
@@ -240,7 +267,12 @@ public final class MaidFileIo {
         if (s == null || s.isEmpty()) {
             return "unknown";
         }
-        String cleaned = s.replaceAll(INVALID_CHAR_REGEX, SEP);
+        // trim：玩家名带前后空白时会生成「 xxx」这种目录，肉眼几乎看不出但和期望的不同；
+        // 尾随点（"name."）在 Windows 上会被静默丢弃，造成同名目录被合并，也一并去掉。
+        String cleaned = s.replaceAll(INVALID_CHAR_REGEX, SEP).trim();
+        while (cleaned.endsWith(".")) {
+            cleaned = cleaned.substring(0, cleaned.length() - 1).trim();
+        }
         // "." 与 ".." 是文件系统特殊目录项：正版在线模式玩家名不会出现，但离线认证/自定义启动器允许，
         // 若放行会令 exportRoot.resolve("..") 越出导出根目录，必须回退为 unknown
         if (".".equals(cleaned) || "..".equals(cleaned)) {
@@ -252,7 +284,7 @@ public final class MaidFileIo {
         if (upper.matches("^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\\..*)?$")) {
             return "unknown";
         }
-        return cleaned.isEmpty() ? "unknown" : cleaned;
+        return cleaned.isEmpty() ? "unknown" : truncateForFilename(cleaned);
     }
 
     /**
@@ -288,7 +320,11 @@ public final class MaidFileIo {
         String baseName = buildExportFileName(displayName, modelId, ownerUuid, time);
         Path target = resolveUniqueTarget(dir, baseName);
         CompoundTag root = data.writeToNbt();
-        Path tmp = dir.resolve(target.getFileName().toString() + TMP_SUFFIX);
+        // 临时文件名必须唯一：此前固定为「目标名 + .tmp」，两个线程同时导出同名女仆时
+        // 会抢同一个 tmp，先完成的 deleteIfExists 会删掉后完成的那个临时文件。
+        Path tmp = dir.resolve(target.getFileName().toString() + TMP_SUFFIX
+                + "-" + Long.toHexString(System.nanoTime())
+                + "-" + Integer.toHexString(java.util.concurrent.ThreadLocalRandom.current().nextInt(0x10000)));
         try {
             // 1.20.x 的 NbtIo 压缩读写接收 File 而非 Path
             NbtIo.writeCompressed(root, tmp.toFile());
