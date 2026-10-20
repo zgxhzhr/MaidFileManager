@@ -157,4 +157,11 @@ public final class FabricNetwork implements IMaidFileNetwork {
         buf.writeByteArray(chunk);
         sendC2S(MaidFilePackets.ID_CHUNKED_UPLOAD, buf);
     }
+
+    @Override
+    public void sendExportWriteAck(boolean success) {
+        FriendlyByteBuf buf = io.github.zgxhzhr.maidfm.network.MaidPayload.buffer();
+        buf.writeBoolean(success);
+        sendC2S(MaidFilePackets.ID_EXPORT_WRITE_ACK, buf);
+    }
 }
