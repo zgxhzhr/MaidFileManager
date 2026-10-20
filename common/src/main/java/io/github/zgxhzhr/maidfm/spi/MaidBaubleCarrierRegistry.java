@@ -191,7 +191,9 @@ public final class MaidBaubleCarrierRegistry {
      */
     public static boolean isCuriosSlotForbidden(String slotIdentifier) {
         if (slotIdentifier == null || slotIdentifier.isEmpty()) {
-            return false;
+            // 空/未知槽位默认**拒绝**：容器类槽位（背包、盒子等）本就该被硬禁，
+            // 此前返回 false 属 fail-open —— 条目缺 Identifier 时会跳过硬禁判定。
+            return true;
         }
         String name = normalizeIdentifier(slotIdentifier);
         if (FORBIDDEN_CURIOS_SLOT_NAMES.contains(name)) {

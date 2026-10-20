@@ -41,14 +41,18 @@ public final class MaidMigrationRegistry {
     public static List<MaidMigrationProvider> getAvailable() {
         // 逐项 try：第三方 provider 的 isAvailable() 若抛异常，不能让整个遍历崩掉（此前在 stream 里裸调用）
         List<MaidMigrationProvider> out = new ArrayList<>();
-        for (MaidMigrationProvider provider : PROVIDERS) {
+        for (int i = 0; i < PROVIDERS.size(); i++) {
+            MaidMigrationProvider provider = PROVIDERS.get(i);
             try {
                 if (provider.isAvailable()) {
                     out.add(provider);
                 }
             } catch (Throwable t) {
-                io.github.zgxhzhr.maidfm.Constants.LOG.warn("[maid_file_manager] 迁移 provider 可用性检查抛异常，已跳过: {} ({})",
-                        provider == null ? "null" : provider.getId(), t.toString());
+                // 不在 catch 里调 provider.getId()：若正是 getId() 抛的异常，这里会二次抛出，
+                // 把整个遍历（乃至导出主流程）打断。改用序号定位。
+                io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                        "[maid_file_manager] 迁移 provider 可用性检查抛异常，已跳过第 {} 个: {}",
+                        i, t.toString());
             }
         }
         return out;
