@@ -240,10 +240,12 @@ public final class MaidConfigManager {
         } else if (KEY_CARRY_CURIOS.equals(key)) {
             serverCarryCurios = value;
         } else {
-            Constants.LOG.warn("[女仆档案管理] 收到未知服务端配置键: {}", key);
+            Constants.LOG.warn("[maid_file_manager] 收到未知服务端配置键: {}", key);
             return false;
         }
-        saveServer();
+        if (!saveServer()) {
+            return false;
+        }
         return true;
     }
 
@@ -253,9 +255,12 @@ public final class MaidConfigManager {
      * <p>该清单与整合包黑名单相互独立：整合包黑名单由 bauble_import.json 托管、游戏内只读，
      * OP 仍可在此清单上追加/取消自己的禁用项，两者在导入判定时取并集。
      */
-    public static synchronized void setServerBaubleBlockedList(List<String> ids) {
+    public static synchronized boolean setServerBaubleBlockedList(List<String> ids) {
         serverBaubleBlockedList = List.copyOf(ids == null ? List.of() : ids);
-        saveServer();
+        if (!saveServer()) {
+            return false;
+        }
+        return true;
     }
 
     // ==================== 客户端配置 ====================
@@ -396,10 +401,12 @@ public final class MaidConfigManager {
         } else if (KEY_BAUBLE_BLOCKED_CURIOS_SLOTS.equals(key)) {
             serverBaubleBlockedCuriosSlots = cleaned;
         } else {
-            Constants.LOG.warn("[女仆档案管理] 收到未知清单配置键: {}", key);
+            Constants.LOG.warn("[maid_file_manager] 收到未知清单配置键: {}", key);
             return false;
         }
-        saveServer();
+        if (!saveServer()) {
+            return false;
+        }
         return true;
     }
 
@@ -662,7 +669,7 @@ public final class MaidConfigManager {
         // 下次 saveClient 时该键自然从文件消失，无需专门迁移。
     }
 
-    private static void saveServer() {
+    private static boolean saveServer() {
         Properties props = new Properties();
         props.setProperty(KEY_ALLOW_CLIENT_IMPORT, String.valueOf(serverAllowClientImport));
         props.setProperty(KEY_ALLOW_BAUBLES, String.valueOf(serverAllowBaubles));
@@ -681,7 +688,7 @@ public final class MaidConfigManager {
         if (!serverBaubleBlockedList.isEmpty()) {
             props.setProperty(KEY_BAUBLE_BLOCKED_LIST, String.join(",", serverBaubleBlockedList));
         }
-        store(props, serverConfigFile, "Maid File Manager server config (edited via in-game settings, OP only)");
+        return store(props, serverConfigFile, "Maid File Manager server config (edited via in-game settings, OP only)");
     }
 
     /**
@@ -714,7 +721,7 @@ public final class MaidConfigManager {
             baubleImportBlockedCuriosSlots = sanitizeList(readStringArray(root, "blocked_curios_slots"));
             baubleConfigManaged = true;
             baubleWhitelistEnforced = !whitelist.isEmpty();
-            Constants.LOG.info("[女仆档案管理] 已加载整合包饰品导入配置：白名单 {} 项，黑名单 {} 项，"
+            Constants.LOG.info("[maid_file_manager] 已加载整合包饰品导入配置：白名单 {} 项，黑名单 {} 项，"
                             + "按模组禁用 {} 项，按 Curios 槽位禁用 {} 项",
                     whitelist.size(), blacklist.size(),
                     baubleImportBlockedNamespaces.size(), baubleImportBlockedCuriosSlots.size());
@@ -725,7 +732,7 @@ public final class MaidConfigManager {
             baubleImportBlockedCuriosSlots = List.of();
             baubleConfigManaged = true;
             baubleWhitelistEnforced = true;
-            Constants.LOG.error("[女仆档案管理] 整合包饰品导入配置解析失败，已按「拒绝导入全部饰品」的失败关闭策略处理，"
+            Constants.LOG.error("[maid_file_manager] 整合包饰品导入配置解析失败，已按「拒绝导入全部饰品」的失败关闭策略处理，"
                     + "请检查 {}: {}", baubleImportConfigFile, t.toString());
         }
     }
@@ -767,7 +774,7 @@ public final class MaidConfigManager {
     }
 
     /** 原子写：先写 .tmp 再移动替换，避免写一半崩溃导致配置文件损坏丢失全部设置 */
-    private static void store(Properties props, Path file, String comment) {
+    private static boolean store(Properties props, Path file, String comment) {
         try {
             if (file.getParent() != null) {
                 Files.createDirectories(file.getParent());
@@ -781,8 +788,10 @@ public final class MaidConfigManager {
             } catch (java.nio.file.AtomicMoveNotSupportedException e) {
                 Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             }
+            return true;
         } catch (IOException e) {
-            Constants.LOG.error("[女仆档案管理] 保存配置文件失败: {}", file, e);
+            Constants.LOG.error("[maid_file_manager] 保存配置文件失败: {}", file, e);
+            return false;
         }
     }
 
