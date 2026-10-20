@@ -273,9 +273,11 @@ public final class MaidFilePackets {
 
     /** 序列化 MaidInfo 列表到 buf */
     public static void writeMaidInfoList(FriendlyByteBuf buf, List<MaidInfo> list) {
-        buf.writeVarInt(list.size());
-        for (MaidInfo info : list) {
-            writeMaidInfo(buf, info);
+        // 与读端 checkSize(MAX_MAID_LIST_ENTRIES) 对齐：超限截断，否则读端拒包直接断连
+        int size = Math.min(list.size(), MAX_MAID_LIST_ENTRIES);
+        buf.writeVarInt(size);
+        for (int i = 0; i < size; i++) {
+            writeMaidInfo(buf, list.get(i));
         }
     }
 
@@ -347,8 +349,10 @@ public final class MaidFilePackets {
 
     /** 写统一导出分组列表：每项 = 玩家名 + 同意状态 + 该玩家为中心的女仆列表 */
     public static void writePlayerMaidGroups(FriendlyByteBuf buf, List<IMaidFileNetwork.PlayerMaidGroup> groups) {
-        buf.writeVarInt(groups.size());
-        for (IMaidFileNetwork.PlayerMaidGroup g : groups) {
+        int size = Math.min(groups.size(), MAX_PLAYER_GROUPS);
+        buf.writeVarInt(size);
+        for (int i = 0; i < size; i++) {
+            IMaidFileNetwork.PlayerMaidGroup g = groups.get(i);
             buf.writeUtf(g.playerName(), MAX_TEXT_LEN);
             buf.writeBoolean(g.consented());
             writeMaidInfoList(buf, g.maids());
@@ -487,8 +491,12 @@ public final class MaidFilePackets {
     /** 写字符串列表（数量上限 256，单串上限 256 字符，防畸形包 OOM） */
     public static void writeStringList(FriendlyByteBuf buf, List<String> list) {
         List<String> safe = list == null ? List.of() : list;
-        buf.writeVarInt(Math.min(safe.size(), 256));
-        for (String s : safe) {
+        // 写端必须与 readStringList 的上限（256）完全一致：
+        // 原先只写 min(size,256) 却遍历全部元素，超过 256 条时整包错位。
+        int size = Math.min(safe.size(), 256);
+        buf.writeVarInt(size);
+        for (int i = 0; i < size; i++) {
+            String s = safe.get(i);
             buf.writeUtf(s == null ? "" : s, MAX_TEXT_LEN);
         }
     }
