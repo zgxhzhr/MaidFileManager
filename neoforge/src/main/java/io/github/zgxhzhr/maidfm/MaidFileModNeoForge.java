@@ -154,5 +154,7 @@ public class MaidFileModNeoForge {
     /** 玩家退出：清理服务端侧记录的同意状态 */
     private void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         MaidConfigManager.removeClientConsent(event.getEntity().getUUID());
+        // 清掉该玩家未完成的分片会话：否则中途断线的分片累积器会一直留在内存里
+        io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.onPlayerDisconnect(event.getEntity().getUUID());
     }
 }
