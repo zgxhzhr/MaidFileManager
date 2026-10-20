@@ -94,6 +94,11 @@ public class ForgePlatformHelper implements IPlatformHelper {
         if (baubleMethodsResolved) {
             return mGetSlots != null && mSetSize != null && mSetStack != null;
         }
+        // 必须先判空再置位：否则 handler 为 null 时 getClass() 抛 NPE 被 catch 吞掉，
+        // 而 baubleMethodsResolved 已被置 true，会导致本进程后续所有饰品恢复永久失效。
+        if (handler == null) {
+            return false;
+        }
         baubleMethodsResolved = true;
         try {
             Class<?> c = handler.getClass();
