@@ -816,6 +816,8 @@ public final class MaidFilePayloads {
                             writeStringList(fbb, p.baubleBlockedCuriosSlots);
                             writeStringList(fbb, p.baubleImportBlockedNamespaces);
                             writeStringList(fbb, p.baubleImportBlockedCuriosSlots);
+                            // 白名单强制状态：解码端 :837 会读它，此前漏写导致每次登录解码越界断连
+                            fbb.writeBoolean(p.baubleWhitelistEnforced);
                         },
                         buf -> {
                             FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
