@@ -65,6 +65,9 @@ public class MaidFileModNeoForge {
         registrar.playToServer(MaidFilePayloads.ImportFilePayload.TYPE,
                 MaidFilePayloads.ImportFilePayload.STREAM_CODEC,
                 MaidFilePayloads.ImportFilePayload::handle);
+        registrar.playToServer(MaidFilePayloads.ExportWriteAckPayload.TYPE,
+                MaidFilePayloads.ExportWriteAckPayload.STREAM_CODEC,
+                MaidFilePayloads.ExportWriteAckPayload::handle);
         registrar.playToServer(MaidFilePayloads.ChunkedUploadPayload.TYPE,
                 MaidFilePayloads.ChunkedUploadPayload.STREAM_CODEC,
                 MaidFilePayloads.ChunkedUploadPayload::handle);

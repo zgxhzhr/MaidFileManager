@@ -270,19 +270,11 @@ public final class MaidFilePayloads {
                         if (sendExportResults(sp, results)) {
                             int removed = 0;
                             if (removeAfter) {
-                                for (Integer entityId : exportedIds) {
-                                    var e = sp.level().getEntity(entityId);
-                                    if (e != null) {
-                                        // 必须在 discard 前清除 MaidWorldData 存活登记：discard 时
-                                        // isAlive=false，TLM 不会清理既有记录，残留登记会被双胞胎
-                                        // 拦截误判为女仆仍存活，导致"导出并移除后再导入"被拒。
-                                        MaidTransferService.unregisterMaidWorldData(e);
-                                        java.util.UUID maidfmPhotoUuid = e.getUUID();
-                                        e.discard();
-                                        try { io.github.zgxhzhr.maidfm.data.MaidPhotoStore.delete(io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getGameDir(), maidfmPhotoUuid); } catch (Throwable ignored) { }
-                                        removed++;
-                                    }
-                                }
+                                // 【P2-10】不再立刻 discard：服务端无法确认客户端写盘成功。
+                                // 登记待删，等客户端回执 ID_EXPORT_WRITE_ACK 再删；不回执则永不删除。
+                                PENDING_REMOVAL.put(sp.getUUID(), new ArrayList<>(exportedIds));
+                                Constants.LOG.info("[maid_file_manager] 导出并移除：登记待删 {} 个实体，等待客户端写盘回执 player={}",
+                                        exportedIds.size(), sp.getName().getString());
                             }
                             Constants.LOG.debug("[maid_file_manager] EXPORT_BATCH: player={} sent={} removed={}",
                                     sp.getName().getString(), results.size(), removed);
@@ -1374,5 +1366,68 @@ public final class MaidFilePayloads {
                 return new java.util.UUID(0L, 0L);
             }
         }
+    }
+
+    /** C2S：客户端导出写盘回执（true=写入成功） */
+    public record ExportWriteAckPayload(boolean success) implements CustomPacketPayload {
+        public static final Type<ExportWriteAckPayload> TYPE =
+                new Type<>(MaidFilePackets.ID_EXPORT_WRITE_ACK);
+        public static final StreamCodec<ByteBuf, ExportWriteAckPayload> STREAM_CODEC =
+                StreamCodec.ofMember(
+                        (p, buf) -> new FriendlyByteBuf(buf).writeBoolean(p.success),
+                        buf -> new ExportWriteAckPayload(new FriendlyByteBuf(buf).readBoolean())
+                );
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                if (ctx.player() instanceof ServerPlayer sp) {
+                    handleExportWriteAck(sp, success);
+                }
+            });
+        }
+    }
+
+    /** 待删除实体：玩家 UUID → 实体 ID 列表（等客户端写盘回执后才删） */
+    private static final java.util.Map<java.util.UUID, java.util.List<Integer>> PENDING_REMOVAL =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 客户端写盘回执：false 则放弃删除，女仆留在世界里 */
+    private static void handleExportWriteAck(ServerPlayer sp, boolean success) {
+        java.util.List<Integer> ids = PENDING_REMOVAL.remove(sp.getUUID());
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        if (!success) {
+            Constants.LOG.warn("[maid_file_manager] 客户端写盘失败，已放弃删除女仆（{} 个），player={}",
+                    ids.size(), sp.getName().getString());
+            return;
+        }
+        int removed = 0;
+        for (Integer entityId : ids) {
+            var e = sp.level().getEntity(entityId);
+            if (e == null) {
+                continue;
+            }
+            try {
+                MaidTransferService.unregisterMaidWorldData(e);
+                java.util.UUID photoUuid = e.getUUID();
+                e.discard();
+                try {
+                    io.github.zgxhzhr.maidfm.data.MaidPhotoStore.delete(
+                            io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getGameDir(), photoUuid);
+                } catch (Throwable ignored) {
+                }
+                removed++;
+            } catch (Throwable t) {
+                Constants.LOG.warn("[maid_file_manager] 删除实体失败: entityId={} err={}", entityId, t.toString());
+            }
+        }
+        Constants.LOG.info("[maid_file_manager] 导出写盘已确认，删除女仆 {} 个 player={}",
+                removed, sp.getName().getString());
     }
 }

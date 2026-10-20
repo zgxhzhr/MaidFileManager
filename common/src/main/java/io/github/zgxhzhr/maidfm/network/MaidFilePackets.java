@@ -67,6 +67,8 @@ public final class MaidFilePackets {
     public static final ResourceLocation ID_CHUNKED_UPLOAD = id("chunked_upload");
     /** S2C：分片下载（服务端 → 客户端，导出结果等大负载的反向通道） */
     public static final ResourceLocation ID_CHUNKED_DOWNLOAD = id("chunked_download");
+    /** C2S：客户端已把导出结果写盘的回执（true=写入成功）。用于「导出并移除」延迟删除实体。 */
+    public static final ResourceLocation ID_EXPORT_WRITE_ACK = id("export_write_ack");
 
     /** OP 统一导出：请求服务端收集所有在线玩家（以各玩家为中心）的女仆列表 */
     public static final ResourceLocation ID_REQUEST_SERVER_EXPORT_LIST = id("request_server_export_list");

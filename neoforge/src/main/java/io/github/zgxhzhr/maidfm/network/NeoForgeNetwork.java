@@ -119,4 +119,10 @@ public class NeoForgeNetwork implements IMaidFileNetwork {
         net.neoforged.neoforge.network.PacketDistributor.sendToServer(
                 new MaidFilePayloads.ChunkedUploadPayload(kind, sessionId, total, index, chunk));
     }
+
+    @Override
+    public void sendExportWriteAck(boolean success) {
+        net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                new MaidFilePayloads.ExportWriteAckPayload(success));
+    }
 }
