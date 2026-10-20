@@ -118,7 +118,11 @@ public final class MaidFilePackets {
      * 高压缩比合法女仆文件（压缩后不足 512 KiB、解压后超过 512 KiB）不应被误判为坏数据；
      * 16 MiB 仍足以封死 GZIP 炸弹（放大倍率被压到约 32 倍以内）。
      */
-    public static final int MAX_NBT_DECOMPRESSED_BYTES = 16 * 1024 * 1024;
+    // 单个 .maid 解压后的 NBT 树体积上限。
+    // 原为 16 MiB —— 与 MAX_IMPORT_BATCH_FILES(64) 相乘最坏可达 1 GiB 常驻内存。
+    // 实际档案 NBT 通常只有几十 KB 到数 MB，4 MiB 对正常档案绰绰有余，
+    // 整批最坏降到 64×4 MiB = 256 MiB，且这是「逐文件串行解压」的瞬时峰值上限而非同时驻留。
+    public static final int MAX_NBT_DECOMPRESSED_BYTES = 4 * 1024 * 1024;
     /**
      * 整个自定义负载的自定字节上限（1 MiB）——仅适用于 1.21+（其 C2S 载荷上限为 1 MiB）。
      * 发送端必须预检，超限一律回执明确失败，绝不靠帧解码断连来兜底。

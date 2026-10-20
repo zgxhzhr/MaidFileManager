@@ -240,6 +240,9 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         if (IMaidFileNetwork.ClientHandlerHolder.get() == this) {
             IMaidFileNetwork.ClientHandlerHolder.set(prevHandler);
         }
+        // 释放照片动态纹理：此前不释放，靠下次用同一个 ResourceLocation 注册时被动顶掉，
+        // 期间显存一直占着一份没人用的贴图（纹理管理器不主动回收）。
+        releasePhotoTexture();
         super.removed();
     }
 

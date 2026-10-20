@@ -67,9 +67,15 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
 
     @Override
     public String getModVersion(String modId) {
-        return ModList.get().getModContainerById(modId)
-                .map(c -> c.getModInfo().getVersion().toString())
-                .orElse("");
+        try {
+            return ModList.get().getModContainerById(modId)
+                    .map(c -> c.getModInfo().getVersion().toString())
+                    .orElse("");
+        } catch (Throwable t) {
+            // 与同类方法保持一致：查不到版本不该把调用方拖崩
+            io.github.zgxhzhr.maidfm.Constants.LOG.debug("[maid_file_manager] getModVersion 查询失败: {}", t.toString());
+            return "";
+        }
     }
 
     @Override
