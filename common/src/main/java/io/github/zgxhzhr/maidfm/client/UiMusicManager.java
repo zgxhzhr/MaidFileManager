@@ -122,12 +122,7 @@ public final class UiMusicManager {
         }
     }
 
-    /** 立即停止（配置项关闭、或需要强制静音时调用）。 */
-    public static void stopNow() {
-        cancelPendingStop();
-        stop();
-    }
-
+    /** 安排延迟停止（跨界面切换时避免音乐重播）；到点后回主线程执行 stop() */
     private static void scheduleStop() {
         cancelPendingStop();
         try {

@@ -29,7 +29,20 @@ public final class FabricNetwork implements IMaidFileNetwork {
 
     @Override
     public void sendImportFiles(List<MaidFileData> dataList, boolean keepBaubles, boolean deleteAfterImport) {
-        // 饰品导入策略由服务端配置决定，客户端不上传（杜绝非 OP 绕过）
+        // 编码成与 ImportBatchPayload 相同的字节：writeMaidFileDataList + 2 个布尔。
+        // 超过单片上限就改走分片上传——1.20.x 真联机的 32767 单包上限会直接断连，
+        // 1.21 的 1 MiB 也可能被多文件批量撑破，两条路都靠分片兜底。
+        net.minecraft.network.FriendlyByteBuf probe =
+                new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        MaidFilePackets.writeMaidFileDataList(probe, dataList);
+        probe.writeBoolean(keepBaubles);
+        probe.writeBoolean(deleteAfterImport);
+        byte[] encodedImport = new byte[probe.readableBytes()];
+        probe.getBytes(0, encodedImport);
+        if (encodedImport.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
+            sendChunkedUpload(io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_IMPORT_BATCH, encodedImport);
+            return;
+        }        // 饰品导入策略由服务端配置决定，客户端不上传（杜绝非 OP 绕过）
         FriendlyByteBuf buf = PacketByteBufs.create();
         MaidFilePackets.writeMaidFileDataList(buf, dataList);
         buf.writeBoolean(keepBaubles);
@@ -81,10 +94,19 @@ public final class FabricNetwork implements IMaidFileNetwork {
 
     @Override
     public void sendSaveMaidProfile(int entityId, MaidProfile profile) {
-        FriendlyByteBuf buf = PacketByteBufs.create();
-        buf.writeVarInt(entityId);
-        MaidFilePackets.writeMaidProfile(buf, profile);
-        sendC2S(MaidFilePackets.ID_SAVE_MAID_PROFILE, buf);
+        // 先把负载编码成「VarInt entityId + 档案 NBT」字节：分片路径与普通包共用这一格式。
+        FriendlyByteBuf probe = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        probe.writeVarInt(entityId);
+        MaidFilePackets.writeMaidProfile(probe, profile);
+        byte[] encoded = new byte[probe.readableBytes()];
+        probe.getBytes(0, encoded);
+        if (MaidFilePackets.isLegacyPayloadLimit()
+                && encoded.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
+            // 1.20.x 真联机：单包 32767 上限，带照片的档案必然超限 —— 改走分片上传。
+            // 单人/局域网主机不走这里（isLegacyPayloadLimit 会返回 false）。
+            sendChunkedUpload(io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_SAVE_PROFILE, encoded);
+            return;
+        }        sendC2S(MaidFilePackets.ID_SAVE_MAID_PROFILE, probe);
     }
 
     @Override
@@ -102,6 +124,37 @@ public final class FabricNetwork implements IMaidFileNetwork {
     }
 
     private static void sendC2S(ResourceLocation id, FriendlyByteBuf buf) {
-        ClientPlayNetworking.send(id, buf);
+        try {
+            ClientPlayNetworking.send(id, buf);
+        } finally {
+            // Fabric API 不会替调用方释放 FriendlyByteBuf：发送完成后必须手动释放，否则每次发包泄漏一块池化内存
+            buf.release();
+        }
+    }
+
+    @Override
+    public void sendChunkedUpload(String kind, byte[] payload) {
+        if (payload == null || payload.length == 0) {
+            return;
+        }
+        int chunkBytes = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES;
+        int total = (payload.length + chunkBytes - 1) / chunkBytes;
+        int sessionId = java.util.concurrent.ThreadLocalRandom.current().nextInt();
+        for (int i = 0; i < total; i++) {
+            int off = i * chunkBytes;
+            int len = Math.min(chunkBytes, payload.length - off);
+            byte[] chunk = java.util.Arrays.copyOfRange(payload, off, off + len);
+            sendChunkedPacket(kind, sessionId, total, i, chunk);
+        }
+    }
+    /** 发送一片分片上传包（Fabric：走 sendC2S，缓冲由本端 API 创建） */
+    private static void sendChunkedPacket(String kind, int sessionId, int total, int index, byte[] chunk) {
+        FriendlyByteBuf buf = net.fabricmc.fabric.api.networking.v1.PacketByteBufs.create();
+        buf.writeUtf(kind == null ? "" : kind, MaidFilePackets.MAX_TEXT_LEN);
+        buf.writeVarInt(sessionId);
+        buf.writeVarInt(total);
+        buf.writeVarInt(index);
+        buf.writeByteArray(chunk);
+        sendC2S(MaidFilePackets.ID_CHUNKED_UPLOAD, buf);
     }
 }

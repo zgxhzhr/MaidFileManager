@@ -151,6 +151,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     public void removed() {
         // 界面背景音乐（试验性功能）：离开界面时释放，全部界面关闭后延迟停止
         UiMusicManager.leave(this);
+        // 界面被 setScreen 切走时 onClose 不会被调用：若不在这里还原网络回调持有者，
+        // 会残留指向已关闭界面的引用，后续服务端回调打到死界面。
+        if (IMaidFileNetwork.ClientHandlerHolder.get() == this) {
+            IMaidFileNetwork.ClientHandlerHolder.set(null);
+        }
         super.removed();
     }
 
@@ -804,8 +809,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 setFeedback(Component.translatable("maid_file_manager.import.fail.unserializable"));
                 return;
             }
+            // 允许分片兜底：超瞬时上限时不再本地拒绝，改由 sendImportFiles 走分片上传
             String importReject = MaidFilePackets.checkMaidDataBatchForWire(
-                    importBlobs, MaidFilePackets.MAX_IMPORT_BATCH_FILES);
+                    importBlobs, MaidFilePackets.MAX_IMPORT_BATCH_FILES, true);
             if (importReject != null) {
                 setFeedback(Component.literal(importReject));
                 return;
@@ -1007,16 +1013,40 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 closeRemoveConfirm();
             } else if (inside(dlgConfirmX, dlgBtnY, dlgBtnW, dlgBtnH, mouseX, mouseY)) {
                 confirmRemoveExport();
+            } else {
+                // 契约（记忆 F/J-11）：点击弹窗外部视为取消，不能像以前那样「点了没反应」。
+                closeRemoveConfirm();
             }
         }
         return true;
     }
 
+    /** 弹窗显示时吞掉拖动，避免背景列表被拖出滚动/误触 */
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (removeConfirmVisible) {
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    /** 弹窗显示时吞掉字符输入，避免背景控件收到输入 */
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (removeConfirmVisible) {
+            return true;
+        }
+        return super.charTyped(codePoint, modifiers);
+    }
+
     /** 弹窗显示时 ESC 只关弹窗，不关闭整个管理界面 */
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (removeConfirmVisible && keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
-            closeRemoveConfirm();
+        if (removeConfirmVisible) {
+            if (keyCode == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE) {
+                closeRemoveConfirm();
+            }
+            // 弹窗是模态的：其它按键也不得传给背景控件（此前只有 ESC 被吞）
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
@@ -1082,7 +1112,21 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
      * 按像素宽度把反馈文本折成多行（最多 maxLines 行，超出部分以省略号标注截断；
      * 完整文本始终会经聊天栏送达，不依赖界面）。
      */
+    /** 只保留最近一次的折行结果：该方法在渲染路径上每帧调用，而反馈文本通常连续多帧不变。
+     *  用单条缓存代替原先的无上限 HashMap，避免长会话里把每条历史反馈文本（含文件名/计数）都留在内存。 */
+    private static String feedbackWrapCacheKey;
+    private static List<String> feedbackWrapCacheLines;
+
+    private static void cacheWrapResult(String key, List<String> lines) {
+        feedbackWrapCacheKey = key;
+        feedbackWrapCacheLines = lines;
+    }
+
     private static List<String> wrapFeedback(String text, int maxWidth, int maxLines) {
+        String cacheKey = maxWidth + "|" + maxLines + "|" + text;
+        if (cacheKey.equals(feedbackWrapCacheKey) && feedbackWrapCacheLines != null) {
+            return feedbackWrapCacheLines;
+        }
         List<String> lines = new ArrayList<>();
         StringBuilder cur = new StringBuilder();
         int curWidth = 0;
@@ -1096,6 +1140,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 if (lines.size() >= maxLines) {
                     int last = lines.size() - 1;
                     lines.set(last, lines.get(last) + "…");
+                    cacheWrapResult(cacheKey, lines);
                     return lines;
                 }
             }
@@ -1129,10 +1174,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 List<Component> lines = new ArrayList<>();
                 lines.add(Component.literal(
                         info.customName() != null
-                                ? info.customName() + " · " + info.displayName()
-                                : info.displayName())
+                                ? info.customName() + " · " + ModelNames.displayModelId(info.modelId())
+                                : ModelNames.displayModelId(info.modelId()))
                         .withStyle(ChatFormatting.GOLD));
-                lines.add(Component.literal("Model ID: " + info.modelId())
+                lines.add(Component.literal("Model ID: " + ModelNames.display(info.modelId()))
                         .withStyle(ChatFormatting.GRAY));
                 lines.add(Component.translatable("maid_file_manager.gui.tooltip.favorability_health",
                         info.favorability(),
@@ -1166,6 +1211,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
     @Override
     public void onMaidListReceived(List<MaidInfo> list) {
+        if (serverExportMode) {
+            // 迟到防护（与 onServerExportListReceived 对称）：统一导出模式下 maidList 承载的是
+            // 服务端回包的全员列表；切模式前发出的"本人女仆列表"响应若在此刻到达就会覆盖它，
+            // 造成列表与 maidOwnerByEntityId 不一致 → 全选导出时部分条目玩家名为空被跳过。
+            return;
+        }
         this.maidList = new ArrayList<>(list);
         // 清理已失效的勾选（entityId 不在新列表里的移除）
         selectedMaidIds.removeIf(id -> list.stream().noneMatch(info -> info.entityId() == id));
@@ -1247,9 +1298,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                     failed++;
                     continue;
                 }
+                // 服务端拿不到客户端语言表，getDisplayName 可能是裸翻译键：这里统一在客户端转换
                 String displayName = data.getDisplayName() != null
-                        ? data.getDisplayName()
-                        : (data.getModelId() != null ? data.getModelId() : "unknown");
+                        ? ModelNames.displayModelId(data.getModelId())
+                        : (data.getModelId() != null ? ModelNames.displayModelId(data.getModelId()) : "unknown");
                 // 若有自定义名（命名牌所取），拼到模型名前面，便于在文件名中体现
                 displayName = MaidFileIo.composeDisplayName(data.getCustomName(), displayName);
                 String ownerUuid = data.getOwnerUuid();
@@ -1456,7 +1508,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         // 第一层 Widget 范围命中：LIST_BG ± 12 像素（父类 scissor 放宽 12px）
         @Override
         public boolean isMouseOver(double mouseX, double mouseY) {
-            return mouseX >= this.listX - 12 && mouseX <= this.listX + this.listW + 12
+            // 容错从 ±12 收窄到 ±2：原先可以把鼠标放到面板外一整条区域仍命中，容易点穿到相邻控件
+            return mouseX >= this.listX - 2 && mouseX <= this.listX + this.listW + 2
                     && mouseY >= this.listTop - 2 && mouseY <= this.listBottom + 2;
         }
 
@@ -1631,8 +1684,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 net.minecraft.client.gui.Font font = MaidFileManagerScreen.this.font;
                 // 第一行：name 超长 → 截断+省略号…（不滚避免勾选框右晃动）
                 String name = info.customName() != null
-                        ? info.customName() + " · " + info.displayName()
-                        : info.displayName();
+                        ? info.customName() + " · " + ModelNames.displayModelId(info.modelId())
+                        : ModelNames.displayModelId(info.modelId());
                 String drawName;
                 if (font.width(name) > contentW) {
                     drawName = font.plainSubstrByWidth(name, contentW - font.width("…")) + "…";
@@ -1734,8 +1787,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             public Component getNarration() {
                 boolean sel = selectedMaidIds.contains(info.entityId());
                 String name = info.customName() != null
-                        ? info.customName() + " · " + info.displayName()
-                        : info.displayName();
+                        ? info.customName() + " · " + ModelNames.displayModelId(info.modelId())
+                        : ModelNames.displayModelId(info.modelId());
                 return Component.translatable(sel
                         ? "maid_file_manager.gui.label.selected"
                         : "maid_file_manager.gui.label.not_selected").append(name);
@@ -1780,7 +1833,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         // ====== v13 交互兜底：同 MaidListWidget（绕开父类 getEntryAtPosition） ======
         @Override
         public boolean isMouseOver(double mouseX, double mouseY) {
-            return mouseX >= this.listX - 12 && mouseX <= this.listX + this.listW + 12
+            // 容错从 ±12 收窄到 ±2：原先可以把鼠标放到面板外一整条区域仍命中，容易点穿到相邻控件
+            return mouseX >= this.listX - 2 && mouseX <= this.listX + this.listW + 2
                     && mouseY >= this.listTop - 2 && mouseY <= this.listBottom + 2;
         }
 
@@ -1926,8 +1980,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                     graphics.disableScissor();
                 }
                 // 第二行：时间超长 → 截断+省略号…（时间格式固定，不滚）
-                long ts = MaidFileIo.parseTimestampFromFileName(fileName);
-                String time = ts > 0 ? new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(ts)) : "?";
+                String time = MaidFileIo.formatDisplayTime(fileName);
                 String timeLine = Component.translatable("maid_file_manager.gui.label.time", time).getString();
                 String drawTime;
                 if (font.width(timeLine) > contentW) {

@@ -84,7 +84,9 @@ public class MaidFileModFabric implements ModInitializer {
                         // isAlive=false，TLM 不会清理既有记录，残留登记会被双胞胎
                         // 拦截误判为女仆仍存活，导致"导出并移除后再导入"被拒。
                         MaidTransferService.unregisterMaidWorldData(e);
+                        java.util.UUID maidfmPhotoUuid = e.getUUID();
                         e.discard();
+                        try { io.github.zgxhzhr.maidfm.data.MaidPhotoStore.delete(io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getGameDir(), maidfmPhotoUuid); } catch (Throwable ignored) { }
                         removedCount++;
                     }
                 }
@@ -143,6 +145,23 @@ public class MaidFileModFabric implements ModInitializer {
             }
         });
 
+        // 分片上传：读一片 → 组装器 → 收齐后交给四端共用分发器
+        registerC2SReceiver(MaidFilePackets.ID_CHUNKED_UPLOAD, (server, player, buf) -> {
+            try {
+                String kind = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
+                int sessionId = buf.readVarInt();
+                int total = buf.readVarInt();
+                int index = buf.readVarInt();
+                byte[] chunk = buf.readByteArray(io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES);
+                byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
+                        player.getUUID(), kind, sessionId, total, index, chunk);
+                if (full != null) {
+                    io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.dispatch(player, kind, full);
+                }
+            } catch (Throwable e) {
+                Constants.LOG.warn("[maid_file_manager] 分片上传处理失败: {}", e.toString());
+            }
+        });
         registerC2SReceiver(MaidFilePackets.ID_CLIENT_CONSENT, (server, player, buf) -> {
             boolean allow = buf.readBoolean();
             MaidConfigManager.handleClientConsent(player.getUUID(), allow);
@@ -379,6 +398,8 @@ public class MaidFileModFabric implements ModInitializer {
         MaidFilePackets.writeStringList(out, MaidConfigManager.getOpBaubleBlockedCuriosSlots());
         MaidFilePackets.writeStringList(out, MaidConfigManager.getBaubleImportBlockedNamespaces());
         MaidFilePackets.writeStringList(out, MaidConfigManager.getBaubleImportBlockedCuriosSlots());
+        // 白名单强制状态（服务端判定，含解析失败时的失败关闭）
+        out.writeBoolean(MaidConfigManager.isBaubleWhitelistEnforced());
         ServerPlayNetworking.send(player, MaidFilePackets.ID_SERVER_CONFIG_SYNC, out);
     }
 

@@ -32,7 +32,9 @@ public final class NbtMigration {
             "Fire", "Air", "LifeTicks", "PortalCooldown", "FallDistance",
             "FallFlying", "NoGravity", "Glowing", "Invulnerable",
             "HasVisualFire", "TicksFrozen", "FrozenTicks",
-            "Attributes", "ActiveEffects", "active_effects", "Effects", "AbsorptionAmount",
+            // 1.21 的实体存档把属性修饰符写在**小写** attributes 下；只删大写 Attributes 会让 1.21 导入
+            // 保留源属性修饰符，与 1.20 的「属性回白板」硬约束不等价。
+            "Attributes", "attributes", "ActiveEffects", "active_effects", "Effects", "AbsorptionAmount",
             "SleepingX", "SleepingY", "SleepingZ", "Brain", "Saddle",
             "Bukkit.updateLevel", "Bukkit.values",  // Paper/Arclight 残留（防御）
             "Motion", "Rotation", "FallHurtDistance",

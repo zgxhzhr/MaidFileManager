@@ -144,7 +144,8 @@ public final class MaidProfileService {
         }
         byte[] photo = profile.getPhoto();
         if (photo == null || photo.length == 0) {
-            MaidPhotoStore.delete(gameDir(), uuid);
+            // 不再把「照片为空」当成「玩家清空」：1.20.x 保存档案时按协议不携带照片，
+            // 在这里删除会把已有头像误删。清空头像改由玩家直接删除 maid_photos/<UUID>.png。
             return;
         }
         if (!MaidPhotoStore.isValidProfilePhoto(photo)) {
