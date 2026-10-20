@@ -30,6 +30,18 @@ public class MaidFileModFabricClient implements ClientModInitializer {
         IMaidFileNetwork.Holder.set(new FabricNetwork());
         registerTitleScreenEntry();
 
+        // 协议版本校验（Fabric 没有 Forge 的 NetworkRegistry predicate，需显式上报）
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            try {
+                net.minecraft.network.FriendlyByteBuf buf = net.fabricmc.fabric.api.networking.v1.PacketByteBufs.create();
+                buf.writeUtf(MaidFilePackets.PROTOCOL_VERSION);
+                net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
+                        MaidFilePackets.ID_PROTOCOL_CHECK, buf);
+            } catch (Throwable t) {
+                io.github.zgxhzhr.maidfm.Constants.LOG.debug("[maid_file_manager] 协议版本上报失败: {}", t.toString());
+            }
+        });
+
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_MAID_LIST, (client, handler, buf, responseSender) -> {
             try {
             List<MaidInfo> list = MaidFilePackets.readMaidInfoList(buf);
