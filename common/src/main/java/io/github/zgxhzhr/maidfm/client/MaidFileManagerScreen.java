@@ -241,11 +241,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         int sideY3 = sideY2 + toolBtnH + rowGap;           // 第 3 行：打开导出文件夹 / 导入后删除源文件
 
         // 行 1：全选（导出/导入 各一，共用 X/Y，Tab 切换 visible）
-        selectAllState = false;
+        // 勾选状态在 init 之间保留：从统一导出确认弹窗返回时不应丢掉用户已选的项
         selectAllBtn = Button.builder(selectAllLabel(selectAllState),
                         b -> { selectAllState = !selectAllState; onSelectAllToggled(selectAllState); refreshSelectAllLabel(); })
                 .bounds(sideX, sideY1, sideBtnW, toolBtnH).build();
-        selectAllImportState = false;
+        // 同上：导入页全选状态保留
         selectAllImportBtn = Button.builder(selectAllLabel(selectAllImportState),
                         b -> { selectAllImportState = !selectAllImportState; onSelectAllImportToggled(selectAllImportState); refreshSelectAllImportLabel(); })
                 .bounds(sideX, sideY1, sideBtnW, toolBtnH).build();
@@ -2066,7 +2066,21 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
 
         @Override
+        public void removed() {
+            // 界面背景音乐（试验性功能）：离开界面时释放
+            UiMusicManager.leave(this);
+            super.removed();
+        }
+
+        @Override
+        public void tick() {
+            super.tick();
+            UiMusicManager.tick();
+        }
+
+        @Override
         protected void init() {
+            UiMusicManager.enter(this);
             int btnW = 160;
             int btnH = 20;
             // 【v4-3Fix 截图2：按钮从 height/2+30 下移到 height/2+96】
