@@ -111,11 +111,16 @@ public final class MaidFilePackets {
      */
     public static final int MAX_NBT_DECOMPRESSED_BYTES = 16 * 1024 * 1024;
     /**
-     * 整个自定义负载的自定字节上限（1 MiB）。
-     * 网络帧解码的真实硬限制在 2 MiB 左右，本上限是模组自律红线：
+     * 整个自定义负载的自定字节上限（1 MiB）——仅适用于 1.21+（其 C2S 载荷上限为 1 MiB）。
      * 发送端必须预检，超限一律回执明确失败，绝不靠帧解码断连来兜底。
      */
     public static final int MAX_PACKET_BYTES = 1024 * 1024;
+    /**
+     * 1.20.x 的 C2S 自定义载荷硬上限：原版 {@code ServerboundCustomPayloadPacket} 只允许 32767 字节。
+     * 本模组的导入批次是**单包**发送的，超过这个值会被服务端在解码线程直接断开连接，**不给任何回执**，
+     * 玩家只会看到"导入时掉线"。这里留约 700 字节余量给通道 ID 与标志位。
+     */
+    private static final int LEGACY_PAYLOAD_MAX_BYTES = 32_000;
     /** 字符串字段长度上限（模型 ID、玩家名、自定义名等） */
     public static final int MAX_TEXT_LEN = 256;
 
@@ -238,7 +243,23 @@ public final class MaidFilePackets {
             return Component.translatable("maid_file_manager.import.check.total_too_large",
                     total / 1024, MAX_PACKET_BYTES / 1024).getString();
         }
+        // 1.20.x 存在额外的 32767 字节硬限（1.21+ 放宽到 1 MiB）：必须在客户端拦住，
+        // 否则服务端解码线程会直接断连，玩家只看到"导入即掉线"且没有任何提示。
+        if (isLegacyPayloadLimit() && total > LEGACY_PAYLOAD_MAX_BYTES) {
+            return Component.translatable("maid_file_manager.import.check.legacy_wire_too_large",
+                    total / 1024, LEGACY_PAYLOAD_MAX_BYTES / 1024).getString();
+        }
         return null;
+    }
+
+    /** 当前运行环境是否受 1.20.x 的 32767 字节 C2S 载荷限制 */
+    private static boolean isLegacyPayloadLimit() {
+        try {
+            String version = io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getMcVersion();
+            return version != null && version.startsWith("1.20");
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** 按线格式写入已预检通过的序列化批次（复用预检时的字节，避免二次 GZIP） */
