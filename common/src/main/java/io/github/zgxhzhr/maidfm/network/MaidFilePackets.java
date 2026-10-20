@@ -41,6 +41,7 @@ import java.util.zip.GZIPInputStream;
  */
 public final class MaidFilePackets {
     public static final ResourceLocation ID_REQUEST_MAID_LIST = id("request_maid_list");
+    /** 【兼容保留】旧版单发导出协议，当前无发送方，仅为接收极旧客户端而保留 */
     public static final ResourceLocation ID_EXPORT_MAID = id("export_maid");
     public static final ResourceLocation ID_EXPORT_BATCH = id("export_batch");
     public static final ResourceLocation ID_IMPORT_BATCH = id("import_batch");
@@ -51,13 +52,21 @@ public final class MaidFilePackets {
     public static final ResourceLocation ID_IMPORT_BATCH_RESULT = id("import_batch_result");
     public static final ResourceLocation ID_MAID_LIST = id("maid_list");
     public static final ResourceLocation ID_FEEDBACK = id("feedback");
+    /** 【兼容保留】旧版单发导出回执，当前无发送方（批量导出走 ID_EXPORT_BATCH_RESULT），保留以兼容旧服务端 */
     public static final ResourceLocation ID_EXPORT_RESULT = id("export_result");
     public static final ResourceLocation ID_EXPORT_BATCH_RESULT = id("export_batch_result");
+    /** 【兼容保留】旧版单文件导入协议，当前无发送方，仅为接收极旧客户端而保留 */
     public static final ResourceLocation ID_IMPORT_FILE = id("import_file");
     /** C2S：客户端请求修改服务端配置（body: utf key + boolean value，服务端校验 OP） */
     public static final ResourceLocation ID_SET_SERVER_CONFIG = id("set_server_config");
+    /** C2S：客户端提交「按模组/槽位禁用」清单（body: utf key + 字符串列表，服务端校验 OP） */
+    public static final ResourceLocation ID_SET_SERVER_BAUBLE_BLOCKED_LIST = id("set_server_bauble_blocked_list");
     /** C2S：客户端上报「允许服务端统一导出」同意状态（body: boolean） */
     public static final ResourceLocation ID_CLIENT_CONSENT = id("client_consent");
+    /** C2S：分片上传（1.20.x 单包 32767 限制下承载 >32KB 的负载；见 ChunkedUploadAssembler） */
+    public static final ResourceLocation ID_CHUNKED_UPLOAD = id("chunked_upload");
+    /** S2C：分片下载（服务端 → 客户端，导出结果等大负载的反向通道） */
+    public static final ResourceLocation ID_CHUNKED_DOWNLOAD = id("chunked_download");
 
     /** OP 统一导出：请求服务端收集所有在线玩家（以各玩家为中心）的女仆列表 */
     public static final ResourceLocation ID_REQUEST_SERVER_EXPORT_LIST = id("request_server_export_list");
@@ -113,12 +122,28 @@ public final class MaidFilePackets {
      * 发送端必须预检，超限一律回执明确失败，绝不靠帧解码断连来兜底。
      */
     public static final int MAX_PACKET_BYTES = 1024 * 1024;
+    /** 线上帧的固定开销余量（通道 ID 文本 + 标志位），预检时必须从上限里扣掉，否则边界包仍会超过真实帧限 */
+    private static final int PACKET_OVERHEAD_MARGIN = 64;
     /**
      * 1.20.x 的 C2S 自定义载荷硬上限：原版 {@code ServerboundCustomPayloadPacket} 只允许 32767 字节。
      * 本模组的导入批次是**单包**发送的，超过这个值会被服务端在解码线程直接断开连接，**不给任何回执**，
      * 玩家只会看到"导入时掉线"。这里留约 700 字节余量给通道 ID 与标志位。
      */
     private static final int LEGACY_PAYLOAD_MAX_BYTES = 32_000;
+    /**
+     * 网络协议版本（客户端与服务端必须一致，否则拒绝连接）。
+     *
+     * <p><b>递增规则</b>：仅在「新增/删除网络包、修改字段顺序或字段类型」时 +1；
+     * 纯后端逻辑、UI、资源、配置项变化<b>不得</b>改动此值，否则会让本可互通的版本无谓互拒。
+     *
+     * <p><b>现状与风险</b>：本值自首个版本沿用至今始终是 {@code "1"}，但<b>包结构在历史上确实变过</b>
+     * （1.5.0 起累计新增了 7 个网络通道）。所以 "1" 并不能保证跨版本互换：两端都报 "1" 时握手照常通过，
+     * 旧端遇到新通道只会静默忽略或解析失败。真正的兼容性只能靠"两端同版本"。
+     *
+     * <p>今后任何新增/删除网络包、或改动字段布局，<b>必须</b>把本值 +1，并同步更新 README 兼容性说明。
+     */
+    public static final String PROTOCOL_VERSION = "2";
+
     /** 字符串字段长度上限（模型 ID、玩家名、自定义名等） */
     public static final int MAX_TEXT_LEN = 256;
 
@@ -225,6 +250,16 @@ public final class MaidFilePackets {
      *                 导出结果通道传 {@link #MAX_EXPORT_IDS}（与 ID_EXPORT_BATCH 请求侧一致）
      */
     public static String checkMaidDataBatchForWire(List<byte[]> blobs, int maxFiles) {
+        return checkMaidDataBatchForWire(blobs, maxFiles, false);
+    }
+
+    /**
+     * @param allowChunkedFallback 允许超限时改走分片上传（{@code ID_CHUNKED_UPLOAD}）。
+     *                             为 true 时跳过「整包体积」两项检查——上限由分片组装器把关。
+     *                             单文件上限仍检查：单片也装不下就没有意义。
+     */
+    public static String checkMaidDataBatchForWire(List<byte[]> blobs, int maxFiles,
+                                                   boolean allowChunkedFallback) {
         if (blobs.size() > maxFiles) {
             return Component.translatable("maid_file_manager.import.check.too_many_files", maxFiles, blobs.size()).getString();
         }
@@ -237,12 +272,17 @@ public final class MaidFilePackets {
             }
             total += varIntSize(len) + (long) len;
         }
-        if (total > MAX_PACKET_BYTES) {
+        // 允许分片兜底时，整包体积不再受限（分片绕过单包上限，总量上限由 ChunkedUploadAssembler 把关）
+        if (allowChunkedFallback) {
+            return null;
+        }
+        if (total > MAX_PACKET_BYTES - PACKET_OVERHEAD_MARGIN) {
             return Component.translatable("maid_file_manager.import.check.total_too_large",
-                    total / 1024, MAX_PACKET_BYTES / 1024).getString();
+                    total / 1024, (MAX_PACKET_BYTES - PACKET_OVERHEAD_MARGIN) / 1024).getString();
         }
         // 1.20.x 存在额外的 32767 字节硬限（1.21+ 放宽到 1 MiB）：必须在客户端拦住，
         // 否则服务端解码线程会直接断连，玩家只看到"导入即掉线"且没有任何提示。
+        // 单人/局域网主机不走这条（isLegacyPayloadLimit 已排除集成服务器）。
         if (isLegacyPayloadLimit() && total > LEGACY_PAYLOAD_MAX_BYTES) {
             return Component.translatable("maid_file_manager.import.check.legacy_wire_too_large",
                     total / 1024, LEGACY_PAYLOAD_MAX_BYTES / 1024).getString();
@@ -251,12 +291,18 @@ public final class MaidFilePackets {
     }
 
     /** 当前运行环境是否受 1.20.x 的 32767 字节 C2S 载荷限制 */
-    private static boolean isLegacyPayloadLimit() {
+    public static boolean isLegacyPayloadLimit() {
         try {
             String version = io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getMcVersion();
-            return version != null && version.startsWith("1.20");
+            if (version == null || !version.startsWith("1.20")) {
+                return false;
+            }
+            // 关键：单人/局域网主机之间的集成服务器走 LocalServerConnection（内存直连），
+            // 数据不经过 ServerboundCustomPayloadPacket 序列化，32767 上限**不生效**。
+            // 此前只看 MC 版本，会把单人世界本来可用的导入/保存一律拦掉（误伤）。
+            return !io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().isSingleplayer();
         } catch (Throwable t) {
-            return false;
+            return true; // 判断不了就保守按受限处理
         }
     }
 
@@ -267,6 +313,22 @@ public final class MaidFilePackets {
             buf.writeVarInt(bytes.length);
             buf.writeBytes(bytes);
         }
+    }
+
+    /**
+     * 从 buf 反序列化「已序列化字节列表」（{@link #writeMaidDataBlobs} 的对称读端）。
+     * 每项字节需要调用方再用 {@code readMaidFileData} 还原成对象。
+     */
+    public static List<byte[]> readMaidDataBlobs(FriendlyByteBuf buf, int maxFiles) {
+        int size = checkSize(buf.readVarInt(), maxFiles, "maidDataBlobs");
+        List<byte[]> out = new ArrayList<>(size);
+        for (int i = 0; i < size; i++) {
+            int len = checkSize(buf.readVarInt(), MAX_SINGLE_FILE_BYTES, "maidDataBlob");
+            byte[] arr = new byte[len];
+            buf.readBytes(arr);
+            out.add(arr);
+        }
+        return out;
     }
 
     /** 序列化 MaidInfo 列表到 buf */
@@ -444,6 +506,7 @@ public final class MaidFilePackets {
         for (int i = 0; i < ownerCount; i++) {
             IMaidFileNetwork.BackupOwner owner = safe.get(i);
             buf.writeUtf(owner.ownerUuid() == null ? "" : owner.ownerUuid(), MAX_TEXT_LEN);
+            buf.writeUtf(owner.ownerName() == null ? "" : owner.ownerName(), MAX_TEXT_LEN);
             List<IMaidFileNetwork.BackupMaid> maids = owner.maids() == null ? List.of() : owner.maids();
             int maidCount = Math.min(maids.size(), MAX_BACKUP_MAIDS);
             buf.writeVarInt(maidCount);
@@ -467,6 +530,7 @@ public final class MaidFilePackets {
         List<IMaidFileNetwork.BackupOwner> owners = new ArrayList<>(ownerCount);
         for (int i = 0; i < ownerCount; i++) {
             String ownerUuid = buf.readUtf(MAX_TEXT_LEN);
+            String ownerName = buf.readUtf(MAX_TEXT_LEN);
             int maidCount = checkSize(buf.readVarInt(), MAX_BACKUP_MAIDS, "backupMaids");
             List<IMaidFileNetwork.BackupMaid> maids = new ArrayList<>(maidCount);
             for (int j = 0; j < maidCount; j++) {
@@ -479,7 +543,7 @@ public final class MaidFilePackets {
                 }
                 maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, maidName, files));
             }
-            owners.add(new IMaidFileNetwork.BackupOwner(ownerUuid, maids));
+            owners.add(new IMaidFileNetwork.BackupOwner(ownerUuid, ownerName.isEmpty() ? null : ownerName, maids));
         }
         return owners;
     }
@@ -531,6 +595,8 @@ public final class MaidFilePackets {
     public static void writeMaidProfile(FriendlyByteBuf buf, MaidProfile profile) {
         buf.writeBoolean(profile != null);
         if (profile != null) {
+            // 总是带上照片：超过单包上限的情形已由 sendSaveMaidProfile 的分片上传兜底，
+            // 这里若再按版本裁剪，分片路径会连照片一起丢掉（实测「无法上传头像」即由此而来）。
             buf.writeNbt(profile.writeToNbt());
         }
     }

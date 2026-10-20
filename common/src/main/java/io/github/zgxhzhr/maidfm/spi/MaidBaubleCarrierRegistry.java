@@ -101,6 +101,17 @@ public final class MaidBaubleCarrierRegistry {
      * @param carrier 要注册的声明
      */
     public static void register(MaidBaubleCarrier carrier) {
+        // 第三方实现：任何一步（getId / isAvailable / carriedNamespaces / 其它 getter）抛异常
+        // 都不能连累注册流程与其它模组——统一兜底并记录。
+        try {
+            registerInternal(carrier);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 饰品携带声明注册抛异常，已跳过该声明: {}",
+                    t.toString());
+        }
+    }
+
+    private static void registerInternal(MaidBaubleCarrier carrier) {
         if (carrier == null || carrier.getId() == null) {
             return;
         }

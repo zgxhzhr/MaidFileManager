@@ -22,7 +22,20 @@ public class NeoForgeNetwork implements IMaidFileNetwork {
 
     @Override
     public void sendImportFiles(List<MaidFileData> dataList, boolean keepBaubles, boolean deleteAfterImport) {
-        PacketDistributor.sendToServer(new MaidFilePayloads.ImportBatchPayload(
+        // 编码成与 ImportBatchPayload 相同的字节：writeMaidFileDataList + 2 个布尔。
+        // 超过单片上限就改走分片上传——1.20.x 真联机的 32767 单包上限会直接断连，
+        // 1.21 的 1 MiB 也可能被多文件批量撑破，两条路都靠分片兜底。
+        net.minecraft.network.FriendlyByteBuf probe =
+                new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        MaidFilePackets.writeMaidFileDataList(probe, dataList);
+        probe.writeBoolean(keepBaubles);
+        probe.writeBoolean(deleteAfterImport);
+        byte[] encodedImport = new byte[probe.readableBytes()];
+        probe.getBytes(0, encodedImport);
+        if (encodedImport.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
+            sendChunkedUpload(io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_IMPORT_BATCH, encodedImport);
+            return;
+        }        PacketDistributor.sendToServer(new MaidFilePayloads.ImportBatchPayload(
                 dataList, keepBaubles, deleteAfterImport));
     }
 
@@ -59,6 +72,19 @@ public class NeoForgeNetwork implements IMaidFileNetwork {
 
     @Override
     public void sendSaveMaidProfile(int entityId, MaidProfile profile) {
+        // 先把负载编码成「VarInt entityId + 档案 NBT」字节：分片路径与普通包共用这一格式。
+        net.minecraft.network.FriendlyByteBuf probe = new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        probe.writeVarInt(entityId);
+        MaidFilePackets.writeMaidProfile(probe, profile);
+        byte[] encoded = new byte[probe.readableBytes()];
+        probe.getBytes(0, encoded);
+        if (MaidFilePackets.isLegacyPayloadLimit()
+                && encoded.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
+            // 1.20.x 真联机：单包 32767 上限，带照片的档案必然超限 —— 改走分片上传。
+            // 单人/局域网主机不走这里（isLegacyPayloadLimit 会返回 false）。
+            sendChunkedUpload(io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_SAVE_PROFILE, encoded);
+            return;
+        }
         PacketDistributor.sendToServer(new MaidFilePayloads.SaveMaidProfilePayload(entityId, profile));
     }
 
@@ -71,5 +97,26 @@ public class NeoForgeNetwork implements IMaidFileNetwork {
     public void sendRequestBackupExport(String ownerUuid, String maidUuid, String fileName) {
         PacketDistributor.sendToServer(
                 new MaidFilePayloads.RequestBackupExportPayload(ownerUuid, maidUuid, fileName));
+    }
+
+    @Override
+    public void sendChunkedUpload(String kind, byte[] payload) {
+        if (payload == null || payload.length == 0) {
+            return;
+        }
+        int chunkBytes = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES;
+        int total = (payload.length + chunkBytes - 1) / chunkBytes;
+        int sessionId = java.util.concurrent.ThreadLocalRandom.current().nextInt();
+        for (int i = 0; i < total; i++) {
+            int off = i * chunkBytes;
+            int len = Math.min(chunkBytes, payload.length - off);
+            byte[] chunk = java.util.Arrays.copyOfRange(payload, off, off + len);
+            sendChunkedPacket(kind, sessionId, total, i, chunk);
+        }
+    }
+    /** 发送一片分片上传包（NeoForge：走专用 CustomPacketPayload） */
+    private static void sendChunkedPacket(String kind, int sessionId, int total, int index, byte[] chunk) {
+        net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                new MaidFilePayloads.ChunkedUploadPayload(kind, sessionId, total, index, chunk));
     }
 }

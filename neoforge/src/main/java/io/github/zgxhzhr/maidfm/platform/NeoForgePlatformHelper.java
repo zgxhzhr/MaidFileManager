@@ -88,17 +88,32 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
 
     @Override
     public int baubleGetSlots(EntityMaid maid) {
-        return ((ItemStackHandler) maid.getMaidBauble()).getSlots();
+        // 裸转型曾无任何保护：一旦 TLM(NeoForge) 换用非 ItemStackHandler 的实现，
+        // ClassCastException 会直接冒到导入/导出主流程。与 baubleGetStack 口径对齐，统一兜底。
+        try {
+            return ((ItemStackHandler) maid.getMaidBauble()).getSlots();
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] NeoForge baubleGetSlots 失败: {}", t.toString());
+            return 0;
+        }
     }
 
     @Override
     public void baubleResize(EntityMaid maid, int slots) {
-        ((ItemStackHandler) maid.getMaidBauble()).setSize(slots);
+        try {
+            ((ItemStackHandler) maid.getMaidBauble()).setSize(slots);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] NeoForge baubleResize 失败: {}", t.toString());
+        }
     }
 
     @Override
     public void baubleSetStack(EntityMaid maid, int slot, ItemStack stack) {
-        ((ItemStackHandler) maid.getMaidBauble()).setStackInSlot(slot, stack);
+        try {
+            ((ItemStackHandler) maid.getMaidBauble()).setStackInSlot(slot, stack);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] NeoForge baubleSetStack 失败: {}", t.toString());
+        }
     }
 
     @Override

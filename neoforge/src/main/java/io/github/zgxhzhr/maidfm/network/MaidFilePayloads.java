@@ -90,7 +90,7 @@ public final class MaidFilePayloads {
 
     public record RequestMaidListPayload() implements CustomPacketPayload {
         public static final Type<RequestMaidListPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "request_maid_list"));
+                new Type<>(MaidFilePackets.ID_REQUEST_MAID_LIST);
         public static final StreamCodec<ByteBuf, RequestMaidListPayload> STREAM_CODEC =
                 StreamCodec.unit(new RequestMaidListPayload());
 
@@ -115,7 +115,7 @@ public final class MaidFilePayloads {
 
     public record ExportMaidPayload(int entityId) implements CustomPacketPayload {
         public static final Type<ExportMaidPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "export_maid"));
+                new Type<>(MaidFilePackets.ID_EXPORT_MAID);
         public static final StreamCodec<ByteBuf, ExportMaidPayload> STREAM_CODEC =
                 StreamCodec.composite(
                         ByteBufCodecs.VAR_INT,
@@ -159,7 +159,7 @@ public final class MaidFilePayloads {
     public record ImportFilePayload(byte[] bytes, boolean keepBaubles, boolean deleteAfterImport)
             implements CustomPacketPayload {
         public static final Type<ImportFilePayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "import_file"));
+                new Type<>(MaidFilePackets.ID_IMPORT_FILE);
         public static final StreamCodec<ByteBuf, ImportFilePayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (p, buf) -> {
@@ -211,7 +211,7 @@ public final class MaidFilePayloads {
 
     public record ExportBatchPayload(byte[] encoded) implements CustomPacketPayload {
         public static final Type<ExportBatchPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "export_batch"));
+                new Type<>(MaidFilePackets.ID_EXPORT_BATCH);
         public static final StreamCodec<ByteBuf, ExportBatchPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (p, buf) -> { FriendlyByteBuf fbb = new FriendlyByteBuf(buf); fbb.writeVarInt(p.encoded.length); fbb.writeBytes(p.encoded); },
@@ -271,7 +271,9 @@ public final class MaidFilePayloads {
                                         // isAlive=false，TLM 不会清理既有记录，残留登记会被双胞胎
                                         // 拦截误判为女仆仍存活，导致"导出并移除后再导入"被拒。
                                         MaidTransferService.unregisterMaidWorldData(e);
+                                        java.util.UUID maidfmPhotoUuid = e.getUUID();
                                         e.discard();
+                                        try { io.github.zgxhzhr.maidfm.data.MaidPhotoStore.delete(io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getGameDir(), maidfmPhotoUuid); } catch (Throwable ignored) { }
                                         removed++;
                                     }
                                 }
@@ -290,7 +292,7 @@ public final class MaidFilePayloads {
     public record ImportBatchPayload(byte[] encoded, boolean keepBaubles, boolean deleteAfterImport)
             implements CustomPacketPayload {
         public static final Type<ImportBatchPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "import_batch"));
+                new Type<>(MaidFilePackets.ID_IMPORT_BATCH);
         public static final StreamCodec<ByteBuf, ImportBatchPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (p, buf) -> {
@@ -369,7 +371,7 @@ public final class MaidFilePayloads {
 
     public record ClientConsentPayload(boolean allow) implements CustomPacketPayload {
         public static final Type<ClientConsentPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "client_consent"));
+                new Type<>(MaidFilePackets.ID_CLIENT_CONSENT);
         public static final StreamCodec<ByteBuf, ClientConsentPayload> STREAM_CODEC =
                 StreamCodec.composite(
                         ByteBufCodecs.BOOL, ClientConsentPayload::allow,
@@ -397,7 +399,7 @@ public final class MaidFilePayloads {
     /** OP 统一导出：请求服务端收集所有在线玩家（以各玩家为中心）的女仆列表 */
     public record RequestServerExportListPayload() implements CustomPacketPayload {
         public static final Type<RequestServerExportListPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "request_server_export_list"));
+                new Type<>(MaidFilePackets.ID_REQUEST_SERVER_EXPORT_LIST);
         public static final StreamCodec<ByteBuf, RequestServerExportListPayload> STREAM_CODEC =
                 StreamCodec.unit(new RequestServerExportListPayload());
 
@@ -450,7 +452,7 @@ public final class MaidFilePayloads {
     /** OP 统一导出提交：按玩家分组导出女仆到服务端磁盘 maid_exports/<玩家名>/ */
     public record ServerExportBatchPayload(byte[] encoded) implements CustomPacketPayload {
         public static final Type<ServerExportBatchPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "server_export_batch"));
+                new Type<>(MaidFilePackets.ID_SERVER_EXPORT_BATCH);
         public static final StreamCodec<ByteBuf, ServerExportBatchPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (p, buf) -> { FriendlyByteBuf fbb = new FriendlyByteBuf(buf); fbb.writeVarInt(p.encoded.length); fbb.writeBytes(p.encoded); },
@@ -502,7 +504,7 @@ public final class MaidFilePayloads {
 
     public record SetServerConfigPayload(String key, boolean value) implements CustomPacketPayload {
         public static final Type<SetServerConfigPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_server_config"));
+                new Type<>(MaidFilePackets.ID_SET_SERVER_CONFIG);
         public static final StreamCodec<ByteBuf, SetServerConfigPayload> STREAM_CODEC =
                 StreamCodec.composite(
                         ByteBufCodecs.stringUtf8(MaidFilePackets.MAX_TEXT_LEN), SetServerConfigPayload::key,
@@ -541,7 +543,7 @@ public final class MaidFilePayloads {
     /** C2S：OP 修改自己维护的「禁用携带的饰品」清单：权限校验 → 收窄写入 → 广播同步 */
     public record SetServerBaubleBlockedListPayload(String key, List<String> ids) implements CustomPacketPayload {
         public static final Type<SetServerBaubleBlockedListPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "set_server_bauble_blocked_list"));
+                new Type<>(MaidFilePackets.ID_SET_SERVER_BAUBLE_BLOCKED_LIST);
         public static final StreamCodec<ByteBuf, SetServerBaubleBlockedListPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                                                 (p, buf) -> {
@@ -597,7 +599,7 @@ public final class MaidFilePayloads {
     /** C2S：请求某女仆档案（服务端校验归属后回发 {@link MaidProfilePayload}） */
     public record RequestMaidProfilePayload(int entityId) implements CustomPacketPayload {
         public static final Type<RequestMaidProfilePayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "request_maid_profile"));
+                new Type<>(MaidFilePackets.ID_REQUEST_MAID_PROFILE);
         public static final StreamCodec<ByteBuf, RequestMaidProfilePayload> STREAM_CODEC =
                 StreamCodec.composite(
                         ByteBufCodecs.VAR_INT, RequestMaidProfilePayload::entityId,
@@ -631,7 +633,7 @@ public final class MaidFilePayloads {
     /** C2S：保存女仆档案（服务端校验归属后写入实体并回执） */
     public record SaveMaidProfilePayload(int entityId, MaidProfile profile) implements CustomPacketPayload {
         public static final Type<SaveMaidProfilePayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "save_maid_profile"));
+                new Type<>(MaidFilePackets.ID_SAVE_MAID_PROFILE);
         public static final StreamCodec<ByteBuf, SaveMaidProfilePayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (p, buf) -> {
@@ -677,7 +679,7 @@ public final class MaidFilePayloads {
     /** C2S：备份管理——请求服务端返回可浏览的自动备份列表（服务端按权限过滤后回发 BackupListPayload） */
     public record RequestBackupListPayload() implements CustomPacketPayload {
         public static final Type<RequestBackupListPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "request_backup_list"));
+                new Type<>(MaidFilePackets.ID_REQUEST_BACKUP_LIST);
         public static final StreamCodec<ByteBuf, RequestBackupListPayload> STREAM_CODEC =
                 StreamCodec.unit(new RequestBackupListPayload());
 
@@ -726,7 +728,7 @@ public final class MaidFilePayloads {
     public record RequestBackupExportPayload(String ownerUuid, String maidUuid, String fileName)
             implements CustomPacketPayload {
         public static final Type<RequestBackupExportPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "request_backup_export"));
+                new Type<>(MaidFilePackets.ID_REQUEST_BACKUP_EXPORT);
         public static final StreamCodec<ByteBuf, RequestBackupExportPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (p, buf) -> {
@@ -792,10 +794,10 @@ public final class MaidFilePayloads {
                                           boolean baubleManaged, List<String> baubleBlockedNamespaces,
                                           List<String> baubleBlockedCuriosSlots,
                                           List<String> baubleImportBlockedNamespaces,
-                                          List<String> baubleImportBlockedCuriosSlots)
+                                          List<String> baubleImportBlockedCuriosSlots, boolean baubleWhitelistEnforced)
             implements CustomPacketPayload {
         public static final Type<ServerConfigSyncPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "server_config_sync"));
+                new Type<>(MaidFilePackets.ID_SERVER_CONFIG_SYNC);
         public static final StreamCodec<ByteBuf, ServerConfigSyncPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (p, buf) -> {
@@ -834,11 +836,12 @@ public final class MaidFilePayloads {
                             List<String> baubleBlockedCuriosSlots = readStringList(fbb);
                             List<String> baubleImportBlockedNamespaces = readStringList(fbb);
                             List<String> baubleImportBlockedCuriosSlots = readStringList(fbb);
+                            boolean baubleWhitelistEnforced = fbb.readBoolean();
                             return new ServerConfigSyncPayload(allowImport, allowBaubles, allowAdvancements,
                                     allowEffects, allowInvulnerable, carryCurios, baubleStripAttributes, baubleBlockedList,
                                     baubleBlacklist, baubleWhitelist, baubleManaged,
                                     baubleBlockedNamespaces, baubleBlockedCuriosSlots,
-                                    baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots);
+                                    baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots, baubleWhitelistEnforced);
                         }
                 );
 
@@ -852,7 +855,7 @@ public final class MaidFilePayloads {
                     allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable, carryCurios,
                     baubleStripAttributes, baubleBlockedList, baubleBlacklist, baubleWhitelist, baubleManaged,
                     baubleBlockedNamespaces, baubleBlockedCuriosSlots,
-                    baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots));
+                    baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots, baubleWhitelistEnforced));
         }
     }
 
@@ -874,7 +877,8 @@ public final class MaidFilePayloads {
                                         MaidConfigManager.getOpBaubleBlockedNamespaces(),
                     MaidConfigManager.getOpBaubleBlockedCuriosSlots(),
                     MaidConfigManager.getBaubleImportBlockedNamespaces(),
-                    MaidConfigManager.getBaubleImportBlockedCuriosSlots()));
+                    MaidConfigManager.getBaubleImportBlockedCuriosSlots(),
+                    MaidConfigManager.isBaubleWhitelistEnforced()));
         }
     }
 
@@ -891,7 +895,7 @@ public final class MaidFilePayloads {
     public record MaidListPayload(java.util.List<io.github.zgxhzhr.maidfm.data.MaidInfo> list)
             implements CustomPacketPayload {
         public static final Type<MaidListPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "maid_list"));
+                new Type<>(MaidFilePackets.ID_MAID_LIST);
         public static final StreamCodec<ByteBuf, MaidListPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (payload, buf) -> MaidFilePackets.writeMaidInfoList(new FriendlyByteBuf(buf), payload.list),
@@ -913,7 +917,7 @@ public final class MaidFilePayloads {
 
     public record ExportBatchResultPayload(byte[] encoded) implements CustomPacketPayload {
         public static final Type<ExportBatchResultPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "export_batch_result"));
+                new Type<>(MaidFilePackets.ID_EXPORT_BATCH_RESULT);
         public static final StreamCodec<ByteBuf, ExportBatchResultPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (p, buf) -> { FriendlyByteBuf fbb = new FriendlyByteBuf(buf); fbb.writeVarInt(p.encoded.length); fbb.writeBytes(p.encoded); },
@@ -959,7 +963,7 @@ public final class MaidFilePayloads {
     public record FeedbackPayload(Component message)
             implements CustomPacketPayload {
         public static final Type<FeedbackPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "feedback"));
+                new Type<>(MaidFilePackets.ID_FEEDBACK);
         private static final RegistryAccess EMPTY_REGISTRY = RegistryAccess.EMPTY;
         private static final StreamCodec<ByteBuf, Component> COMPONENT_STREAM_CODEC = StreamCodec.ofMember(
                 (component, buf) -> {
@@ -996,7 +1000,7 @@ public final class MaidFilePayloads {
     public record ImportBatchResultPayload(Component summary, List<Boolean> spawned)
             implements CustomPacketPayload {
         public static final Type<ImportBatchResultPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "import_batch_result"));
+                new Type<>(MaidFilePackets.ID_IMPORT_BATCH_RESULT);
         private static final RegistryAccess EMPTY_REGISTRY = RegistryAccess.EMPTY;
         private static final StreamCodec<ByteBuf, Component> COMPONENT_STREAM_CODEC = StreamCodec.ofMember(
                 (component, buf) -> {
@@ -1038,7 +1042,7 @@ public final class MaidFilePayloads {
     /** OP 统一导出：服务端返回的分组女仆列表（每项 = 玩家名 + 同意状态 + 女仆列表） */
     public record ServerExportListPayload(byte[] encoded) implements CustomPacketPayload {
         public static final Type<ServerExportListPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "server_export_list"));
+                new Type<>(MaidFilePackets.ID_SERVER_EXPORT_LIST);
         public static final StreamCodec<ByteBuf, ServerExportListPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (p, buf) -> { FriendlyByteBuf fbb = new FriendlyByteBuf(buf); fbb.writeVarInt(p.encoded.length); fbb.writeBytes(p.encoded); },
@@ -1081,7 +1085,7 @@ public final class MaidFilePayloads {
     /** S2C：返回女仆档案视图（档案正文 + 只读展示数据 + 饰品图标） */
     public record MaidProfilePayload(MaidProfileView view) implements CustomPacketPayload {
         public static final Type<MaidProfilePayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "maid_profile"));
+                new Type<>(MaidFilePackets.ID_MAID_PROFILE);
         public static final StreamCodec<ByteBuf, MaidProfilePayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (p, buf) -> MaidFilePackets.writeMaidProfileView(new FriendlyByteBuf(buf), p.view),
@@ -1105,7 +1109,7 @@ public final class MaidFilePayloads {
     /** S2C：备份管理——返回按权限过滤后的自动备份列表 */
     public record BackupListPayload(List<IMaidFileNetwork.BackupOwner> owners) implements CustomPacketPayload {
         public static final Type<BackupListPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "backup_list"));
+                new Type<>(MaidFilePackets.ID_BACKUP_LIST);
         public static final StreamCodec<ByteBuf, BackupListPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (p, buf) -> MaidFilePackets.writeBackupOwners(new FriendlyByteBuf(buf), p.owners),
@@ -1127,7 +1131,7 @@ public final class MaidFilePayloads {
     /** S2C：备份管理——回传单条备份数据（客户端据此写入本地 maid_file/maid_exports/） */
     public record BackupExportResultPayload(byte[] encoded) implements CustomPacketPayload {
         public static final Type<BackupExportResultPayload> TYPE =
-                new Type<>(ResourceLocation.fromNamespaceAndPath(Constants.MOD_ID, "backup_export_result"));
+                new Type<>(MaidFilePackets.ID_BACKUP_EXPORT_RESULT);
         public static final StreamCodec<ByteBuf, BackupExportResultPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
                         (p, buf) -> {
@@ -1167,5 +1171,96 @@ public final class MaidFilePayloads {
         Constants.LOG.error("[maid_file_manager] C2S handler 崩溃: packet={}, player={}, cause={}",
                 packetName, sp.getName().getString(), t.toString(), t);
         feedback(sp, Component.translatable("maid_file_manager.server.handler_error", packetName));
+    }
+
+    /**
+     * 分片上传（1.20.x 单包 32767 限制的绕行方案）。
+     *
+     * <p>客户端把可能超限的负载切成 ≤ {@code ChunkedUploadAssembler.CHUNK_BYTES} 的小片，
+     * 服务端按 {@code playerUUID + sessionId} 重组，收齐后按 {@code kind} 分发到导入/保存档案处理。
+     */
+    public record ChunkedUploadPayload(String kind, int sessionId, int total, int index, byte[] chunk)
+            implements CustomPacketPayload {
+        public static final Type<ChunkedUploadPayload> TYPE =
+                new Type<>(MaidFilePackets.ID_CHUNKED_UPLOAD);
+        public static final StreamCodec<ByteBuf, ChunkedUploadPayload> STREAM_CODEC =
+                StreamCodec.ofMember(
+                        (p, buf) -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            fbb.writeUtf(p.kind == null ? "" : p.kind, MaidFilePackets.MAX_TEXT_LEN);
+                            fbb.writeVarInt(p.sessionId);
+                            fbb.writeVarInt(p.total);
+                            fbb.writeVarInt(p.index);
+                            fbb.writeVarInt(p.chunk.length);
+                            fbb.writeBytes(p.chunk);
+                        },
+                        buf -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            String kind = fbb.readUtf(MaidFilePackets.MAX_TEXT_LEN);
+                            int sessionId = fbb.readVarInt();
+                            int total = fbb.readVarInt();
+                            int index = fbb.readVarInt();
+                            int len = MaidFilePackets.checkSize(fbb.readVarInt(),
+                                    io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES, "chunk");
+                            byte[] arr = new byte[len];
+                            fbb.readBytes(arr);
+                            return new ChunkedUploadPayload(kind, sessionId, total, index, arr);
+                        }
+                );
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                if (!(ctx.player() instanceof ServerPlayer sp)) {
+                    return;
+                }
+                byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
+                        sp.getUUID(), kind, sessionId, total, index, chunk);
+                if (full == null) {
+                    return;
+                }
+                if (io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_SAVE_PROFILE.equals(kind)) {
+                    processSaveProfileBytes(sp, full);
+                } else if (io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_IMPORT_BATCH.equals(kind)) {
+                    // 导入批次的分片分发尚未接入（下一步）：显式记录而不是静默丢弃
+                    Constants.LOG.warn("[maid_file_manager] 收到导入批次分片但尚未接入分发，已忽略: player={}",
+                            sp.getName().getString());
+                } else {
+                    Constants.LOG.warn("[maid_file_manager] 未知的分片负载类型: {}", kind);
+                }
+            });
+        }
+    }
+
+    /**
+     * 分片收齐后的保存档案处理。负载格式与 {@link SaveMaidProfilePayload} 一致：
+     * {@code VarInt entityId + 账号档案 NBT}。
+     *
+     * <p>这里是**有意重复** SaveMaidProfilePayload.handle 的校验逻辑：该 record 的处理内联在
+     * handle 里、没有可复用的静态入口，抽取会牵动四端同名结构；重复一份更小的风险。
+     */
+    private static void processSaveProfileBytes(ServerPlayer sp, byte[] full) {
+        try {
+            FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(full));
+            int entityId = fbb.readVarInt();
+            MaidProfile profile = MaidFilePackets.readMaidProfile(fbb);
+            if (profile == null) {
+                feedback(sp, Component.translatable("gui.maid_file_manager.profile.save_failed"));
+                return;
+            }
+            EntityMaid maid = resolveOwnedMaid(sp, entityId);
+            if (maid == null) {
+                feedback(sp, Component.translatable("gui.maid_file_manager.profile.no_permission"));
+                return;
+            }
+            MaidProfileService.writeToMaid(maid, profile, true);
+            feedback(sp, Component.translatable("gui.maid_file_manager.profile.save_ok"));
+        } catch (Throwable t) {
+            handleError(sp, "SAVE_MAID_PROFILE_CHUNKED", t);
+        }
     }
 }

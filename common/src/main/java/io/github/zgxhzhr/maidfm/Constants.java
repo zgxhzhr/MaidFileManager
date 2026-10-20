@@ -52,11 +52,13 @@ public class Constants {
      */
     public static final int PROFILE_PHOTO_MAX_SIDE = 512;
     /**
-     * 档案照片「可选原图」文件字节上限（10 MiB）。
-     * 玩家在档案界面挑选的照片原图超过此值即拒绝读取，提示换一张更小的图片；
-     * 与本值无关的存盘体积见 {@link #PROFILE_PHOTO_MAX_BYTES}。
+     * 允许作为档案照片的源图字节上限（4 MiB）。
+     *
+     * <p>解码（{@code ImageIO.read}）在客户端主线程同步执行，源图越大卡顿越明显；
+     * 从 10 MiB 收紧到 4 MiB 后，常见手机照片（2~3 MiB）仍可接受，同时把最坏情况下的
+     * 主线程停顿压到可感知阈值以内。真正的异步化解码需配合 UI 回滚，暂不引入。
      */
-    public static final long PROFILE_PHOTO_SOURCE_MAX_BYTES = 10L * 1024 * 1024;
+    public static final long PROFILE_PHOTO_SOURCE_MAX_BYTES = 4L * 1024 * 1024;
     /**
      * 档案照片「存盘 PNG」字节上限（128 KiB）。
      * 照片存盘与传输（档案视图下发、{@code .maid} 打包）共用本上限：

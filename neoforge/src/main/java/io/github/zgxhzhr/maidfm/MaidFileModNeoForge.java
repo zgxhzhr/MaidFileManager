@@ -48,7 +48,10 @@ public class MaidFileModNeoForge {
     }
 
     private void registerPayloads(RegisterPayloadHandlersEvent event) {
-        final PayloadRegistrar registrar = event.registrar(Constants.MOD_ID);
+        // registrar 的第一个参数就是 NeoForge 用来做协议版本校验的字符串：
+        // 原先传的是 MOD_ID（恒定），等价于永不拒绝版本差异；改为公共协议版本常量。
+        final PayloadRegistrar registrar =
+                event.registrar(io.github.zgxhzhr.maidfm.network.MaidFilePackets.PROTOCOL_VERSION);
 
         registrar.playToServer(MaidFilePayloads.RequestMaidListPayload.TYPE,
                 MaidFilePayloads.RequestMaidListPayload.STREAM_CODEC,
@@ -62,6 +65,9 @@ public class MaidFileModNeoForge {
         registrar.playToServer(MaidFilePayloads.ImportFilePayload.TYPE,
                 MaidFilePayloads.ImportFilePayload.STREAM_CODEC,
                 MaidFilePayloads.ImportFilePayload::handle);
+        registrar.playToServer(MaidFilePayloads.ChunkedUploadPayload.TYPE,
+                MaidFilePayloads.ChunkedUploadPayload.STREAM_CODEC,
+                MaidFilePayloads.ChunkedUploadPayload::handle);
         registrar.playToServer(MaidFilePayloads.ImportBatchPayload.TYPE,
                 MaidFilePayloads.ImportBatchPayload.STREAM_CODEC,
                 MaidFilePayloads.ImportBatchPayload::handle);
@@ -125,20 +131,9 @@ public class MaidFileModNeoForge {
     }
 
     private void onRegisterCommands(RegisterCommandsEvent event) {
-        // /maidfile gui：打开客户端管理界面（仅客户端）
-        event.getDispatcher().register(
-                Commands.literal("maidfile")
-                        .then(Commands.literal("gui")
-                                .executes(ctx -> {
-                                    if (FMLEnvironment.dist != Dist.CLIENT) {
-                                        ctx.getSource().sendFailure(Component.translatable("maid_file_manager.command.client_only"));
-                                        return 0;
-                                    }
-                                    ClientRegistration.openGui();
-                                    return 1;
-                                }))
-        );
-        // /maidfile exportall：服务端统一导出（仅 OP，需客户端在设置里同意）
+        // 只注册一次根节点：/maidfile gui 与 exportall 都在 MaidServerCommands 的同一次 builder 内注册。
+        // 历史坑：此处曾额外注册一次无 requires 的 maidfile（含 gui），Brigadier 合并同名节点时
+        // 保留先注册者的 requires，导致后面那次带 hasPermission(2) 的注册被丢弃、OP 门槛失效。
         MaidServerCommands.register(event.getDispatcher());
         Constants.LOG.info("[maid_file_manager] /maidfile gui + exportall commands registered");
     }

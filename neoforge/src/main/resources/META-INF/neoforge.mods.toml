@@ -6,8 +6,9 @@ modId="maid_file_manager"
 version="${version}"
 displayName="Maid File Manager"
 authors="zgxhzhr"
+credits="为档案管理器做出贡献的所有人"
 description='''
-女仆数据导入导出管理器，支持 1.21.1 女仆数据跨版本导入导出
+车万女仆附属模组，支持跨版本导入导出女仆数据（含档案、饰品、成就与界面背景音乐）
 '''
 
 [[dependencies.maid_file_manager]]
