@@ -235,6 +235,8 @@
     "maid_file_manager.import.check.legacy_wire_too_large": "Batch too large (%s KB): on 1.20.x a single packet is limited to about %s KB and the import would disconnect you. Import fewer files at once, or remove the maid photo before exporting.",
     "maid_file_manager.gui.label.colon_value": ": %s",
     "maid_file_manager.gui.backup.world_row": "%s  (%s players)",
+    "maid_file_manager.gui.backup.uuid_offline": " (offline)",
+    "maid_file_manager.gui.backup.uuid_premium": " (premium)",
     "maid_file_manager.server.prefix": "[Maid File Manager] ",
     "maid_file_manager.protocol.mismatch": "Protocol version mismatch: server {0}, client {1}. Please update both sides to the same version (.maid files remain interchangeable).",
     "maid_file_manager.server.export_chunked_disabled": "This maid data is too large and needs chunked transfer, which is still under verification. Export aborted and the maid was kept in the world. Try exporting in singleplayer, or remove the photo and retry.",
