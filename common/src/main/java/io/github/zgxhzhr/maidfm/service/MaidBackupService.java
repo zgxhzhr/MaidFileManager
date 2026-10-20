@@ -97,6 +97,10 @@ public final class MaidBackupService {
     }
 
     /** 扫描指定备份根目录：返回「主人 → 女仆 → 备份文件」三层结构（不涉及权限） */
+    /** 备份扫描上限：主线程同步扫描，设上限避免目录极多时长时间卡死 */
+    private static final int MAX_SCAN_OWNER_DIRS = 200;
+    private static final int MAX_SCAN_MAID_DIRS_PER_OWNER = 200;
+
     private static List<IMaidFileNetwork.BackupOwner> scanRoot(Path root) {
         ensureUsernameCacheLoaded();
         List<IMaidFileNetwork.BackupOwner> owners = new ArrayList<>();
@@ -112,9 +116,20 @@ public final class MaidBackupService {
             if (!isUuid(ownerUuid)) {
                 continue;
             }
+            if (owners.size() >= MAX_SCAN_OWNER_DIRS) {
+                Constants.LOG.warn("[maid_file_manager] 备份扫描达到玩家目录上限 {}，其余目录已跳过（避免长时间占用主线程）",
+                        MAX_SCAN_OWNER_DIRS);
+                break;
+            }
             Map<String, String> nameByMaid = readIndexNames(ownerDir.toPath().resolve("index.dat"));
             List<IMaidFileNetwork.BackupMaid> maids = new ArrayList<>();
             File[] maidDirs = ownerDir.listFiles(File::isDirectory);
+            // 同一玩家下女仆目录也设上限：主线程同步扫描，目录极多时会明显卡顿
+            if (maidDirs != null && maidDirs.length > MAX_SCAN_MAID_DIRS_PER_OWNER) {
+                Constants.LOG.warn("[maid_file_manager] 玩家 {} 下有 {} 个备份女仆目录，仅扫描前 {} 个",
+                        ownerDir.getName(), maidDirs.length, MAX_SCAN_MAID_DIRS_PER_OWNER);
+                maidDirs = java.util.Arrays.copyOf(maidDirs, MAX_SCAN_MAID_DIRS_PER_OWNER);
+            }
             if (maidDirs != null) {
                 for (File maidDir : maidDirs) {
                     String maidUuid = maidDir.getName();
