@@ -51,11 +51,12 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     java.util.List<String> baubleBlacklist = MaidFilePackets.readStringList(packet.data);
                     java.util.List<String> baubleWhitelist = MaidFilePackets.readStringList(packet.data);
                     boolean baubleManaged = packet.data.readBoolean();
-                    boolean baubleWhitelistEnforced = packet.data.readBoolean();
                     java.util.List<String> baubleBlockedNamespaces = MaidFilePackets.readStringList(packet.data);
                     java.util.List<String> baubleBlockedCuriosSlots = MaidFilePackets.readStringList(packet.data);
                     java.util.List<String> baubleImportBlockedNamespaces = MaidFilePackets.readStringList(packet.data);
                     java.util.List<String> baubleImportBlockedCuriosSlots = MaidFilePackets.readStringList(packet.data);
+                    // 必须与写端顺序严格一致：写端在最后一个列表之后才写这个布尔（C2SPacket:493）
+                    boolean baubleWhitelistEnforced = packet.data.readBoolean();
                     io.github.zgxhzhr.maidfm.config.MaidConfigManager.handleServerConfigSync(
                             allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable, carryCurios,
                             baubleStripAttributes, baubleBlockedList, baubleBlacklist, baubleWhitelist, baubleManaged,
