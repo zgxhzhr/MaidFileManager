@@ -61,7 +61,9 @@ public class MultiLineEditBox extends EditBox {
 
     public void setValue(String value) {
         this.value = value == null ? "" : value;
-        this.cursor = this.value.length();
+        // 只读预览（档案页等）把视口放在开头：原先光标固定落到末尾，
+        // ensureCursorVisible() 会把滚动位置推到文末，打开长文本直接看到结尾。
+        this.cursor = this.editable ? this.value.length() : 0;
         this.scrollLine = 0;
         ensureCursorVisible();
     }
@@ -360,12 +362,17 @@ public class MultiLineEditBox extends EditBox {
         while (true) {
             int start = i;
             StringBuilder sb = new StringBuilder();
+            int lineWidth = 0;
             while (i < n && this.value.charAt(i) != '\n') {
                 char c = this.value.charAt(i);
-                if (sb.length() > 0 && this.font.width(sb.toString() + c) > innerW) {
+                // 原先每追加一个字符就 font.width(整串)：长文本是 O(n²)，且本方法每帧调用。
+                // 改为累加单字符宽度（字距有几像素误差，但换行点视觉上无差别）。
+                int cw = this.font.width(String.valueOf(c));
+                if (sb.length() > 0 && lineWidth + cw > innerW) {
                     break;
                 }
                 sb.append(c);
+                lineWidth += cw;
                 i++;
             }
             out.add(new DLine(start, sb.toString()));
