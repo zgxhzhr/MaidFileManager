@@ -79,6 +79,7 @@
     "maid_file_manager.import.fail.duplicate": "Import failed: this maid already exists in the world. Importing the same maid twice is not allowed (%s). Dismiss or remove the original maid before importing again; if the original maid has died, importing is allowed.",
     "maid_file_manager.import.fail.source_alive": "Import failed: this maid (%s) still exists in this world; importing again would create a duplicate. Export with the original maid removed, or remove the original maid before importing.",
     "maid_file_manager.import.fail.invalid": "Invalid maid data",
+    "maid_file_manager.import.fail.not_your_maid": "This archive belongs to another player. Only maids exported by you can be imported.",
     "maid_file_manager.import.fail.empty": "No valid files available for import",
     "maid_file_manager.import.fail.unserializable": "Some maid files could not be serialized (see logs)",
     "maid_file_manager.import.fail.local_read": "Failed to read local maid files; check for corruption (see logs)",
