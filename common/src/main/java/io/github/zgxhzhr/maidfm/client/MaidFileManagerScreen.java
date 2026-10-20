@@ -442,8 +442,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         selectAllState = false;
         // 统一导出强制保留女仆，确认弹窗一并关闭
         closeRemoveConfirm();
+        // P2-6：进入/退出统一导出都要清掉「等待服务端列表」标记。此前只在收到回包时复位，
         // 切换模式时重置"等待服务端异步"的反馈抑制（避免返回单独导出模式后 feedback 仍被静默吞掉）
+        // 回包失败或中途退出后该标记会残留，下次进统一导出时任何一次列表回包都会触发自动全选+提交。
         serverExportSuppressFeedbackUntil = 0L;
+        pendingServerExport = false;
         refreshSelectAllLabel();
         updateActionButtonText();
         // 统一导出模式：隐藏保留女仆开关（永远强制保留所有玩家女仆在世界，不允许 OP 移除他人女仆）
