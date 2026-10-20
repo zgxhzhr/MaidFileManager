@@ -210,14 +210,42 @@ public final class NbtDowngrade {
         int idx = type.indexOf(':');
         return idx >= 0 ? type.substring(idx + 1) : type;
     }
-    /** 1.21 槽位字段：slot:{slot:".."} 或 slot:{slots:[..]}，取第一个；无则空串（视为全槽位） */
+    /**
+     * 解析属性修饰符的槽位。
+     *
+     * <p>格式随版本变化：
+     * <ul>
+     *   <li><b>1.21 / 1.21.1</b>：{@code slot} 是<b>字符串</b>（如 "chest"、"mainhand"）</li>
+     *   <li><b>1.21.2+</b>：{@code slot} 是<b>复合</b>，形如 {@code {slot:"chest"}} 或 {@code {slots:["chest","legs"]}}</li>
+     * </ul>
+     *
+     * <p>原实现直接 {@code getCompound("slot")}：对字符串调用会返回空复合，于是永远返回空串，
+     * 降级后 1.20.1 侧的 {@code Slot} 只能落到默认值。这里按「先字符串、再复合」依次探测。
+     */
     private static String resolveSlotName(CompoundTag modifier) {
-        CompoundTag slot = modifier.getCompound("slot");
-        if (slot.contains("slot", Tag.TAG_STRING)) {
-            return slot.getString("slot");
+        // 1.21 / 1.21.1：slot 是字符串
+        if (modifier.contains("slot", Tag.TAG_STRING)) {
+            return modifier.getString("slot");
         }
-        if (slot.contains("slots", Tag.TAG_LIST)) {
-            ListTag slots = slot.getList("slots", Tag.TAG_STRING);
+        // 1.21.2+：slot 是复合
+        if (modifier.contains("slot", Tag.TAG_COMPOUND)) {
+            CompoundTag slot = modifier.getCompound("slot");
+            if (slot.contains("slot", Tag.TAG_STRING)) {
+                return slot.getString("slot");
+            }
+            if (slot.contains("slots", Tag.TAG_LIST)) {
+                ListTag slots = slot.getList("slots", Tag.TAG_STRING);
+                if (!slots.isEmpty()) {
+                    return slots.getString(0);
+                }
+            }
+        }
+        // 其它键名兜底（部分模组直接写 Slot / slots）：
+        if (modifier.contains("Slot", Tag.TAG_STRING)) {
+            return modifier.getString("Slot");
+        }
+        if (modifier.contains("slots", Tag.TAG_LIST)) {
+            ListTag slots = modifier.getList("slots", Tag.TAG_STRING);
             if (!slots.isEmpty()) {
                 return slots.getString(0);
             }
