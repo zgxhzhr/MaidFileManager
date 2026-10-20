@@ -229,19 +229,6 @@ public class ForgePlatformHelper implements IPlatformHelper {
     /** 女仆档案 NBT 键名（与 NeoForge 版一致），同样落在 ForgeData 下随实体保存 */
     private static final String KEY_PROFILE = "maid_file_manager:profile";
 
-    @Override
-    public CompoundTag getStoredEffects(Entity entity) {
-        try {
-            CompoundTag persistentData = entity.getPersistentData();
-            if (persistentData.contains(KEY_EFFECTS, CompoundTag.TAG_COMPOUND)) {
-                return persistentData.getCompound(KEY_EFFECTS);
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] Forge getStoredEffects 失败: {}", t.toString());
-        }
-        return null;
-    }
-
     /**
      * 读取女仆实体上持久化的档案 NBT（键 {@code maid_file_manager:profile}）。
      * Forge 有 PersistentData 机制，档案随 ForgeData 写入实体 NBT 一并存档，服务器重启后仍在；

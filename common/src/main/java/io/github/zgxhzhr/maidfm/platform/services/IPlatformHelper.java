@@ -145,7 +145,6 @@ public interface IPlatformHelper {
      * @param entity 女仆实体
      * @return 存储的效果 NBT（含 active_effects 键），无则 null
      */
-    CompoundTag getStoredEffects(Entity entity);
 
     /**
      * 将药水效果 NBT 写入实体持久化标签。
