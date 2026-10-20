@@ -318,27 +318,40 @@ public final class MaidFileIo {
         // 确保父目录存在（玩家子目录不存在时自动创建，避免 FileNotFoundException）
         Files.createDirectories(dir);
         String baseName = buildExportFileName(displayName, modelId, ownerUuid, time);
-        Path target = resolveUniqueTarget(dir, baseName);
         CompoundTag root = data.writeToNbt();
-        // 临时文件名必须唯一：此前固定为「目标名 + .tmp」，两个线程同时导出同名女仆时
-        // 会抢同一个 tmp，先完成的 deleteIfExists 会删掉后完成的那个临时文件。
-        Path tmp = dir.resolve(target.getFileName().toString() + TMP_SUFFIX
-                + "-" + Long.toHexString(System.nanoTime())
-                + "-" + Integer.toHexString(java.util.concurrent.ThreadLocalRandom.current().nextInt(0x10000)));
-        try {
-            // 1.20.x 的 NbtIo 压缩读写接收 File 而非 Path
-            NbtIo.writeCompressed(root, tmp.toFile());
+        // 目标名在 resolveUniqueTarget 里只是「查一下存不存在」，到 move 之间有空窗：
+        // 两个线程同时导出同名女仆会拿到同一个 target，后移动的会覆盖先移动的（ATOMIC_MOVE
+        // 在 POSIX 上是覆盖语义）。这里改为「不带 REPLACE 的移动 + 冲突重试」：
+        // 目标已存在时 move 抛 FileAlreadyExistsException，重新取名再试，最多 5 次。
+        IOException lastConflict = null;
+        for (int attempt = 0; attempt < 5; attempt++) {
+            Path target = resolveUniqueTarget(dir, baseName);
+            // 临时文件名必须唯一：此前固定为「目标名 + .tmp」，两个线程同时导出同名女仆时
+            // 会抢同一个 tmp，先完成的 deleteIfExists 会删掉后完成的那个临时文件。
+            Path tmp = dir.resolve(target.getFileName().toString() + TMP_SUFFIX
+                    + "-" + Long.toHexString(System.nanoTime())
+                    + "-" + Integer.toHexString(java.util.concurrent.ThreadLocalRandom.current().nextInt(0x10000)));
             try {
-                Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
-            } catch (AtomicMoveNotSupportedException e) {
-                // 个别文件系统不支持原子移动，退回普通覆盖移动（同目录内仍是同卷，风险很低）
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+                // 1.20.x 的 NbtIo 压缩读写接收 File 而非 Path
+                NbtIo.writeCompressed(root, tmp.toFile());
+                try {
+                    // 不带 REPLACE_EXISTING：目标已存在时抛 FileAlreadyExistsException，
+                    // 由外层捕获后重新取名，避免静默覆盖别的线程刚写好的文件。
+                    Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException e) {
+                    // 个别文件系统不支持原子移动，退回普通移动（同样不带 REPLACE）
+                    Files.move(tmp, target);
+                }
+                return target.getFileName().toString();
+            } catch (java.nio.file.FileAlreadyExistsException conflict) {
+                lastConflict = conflict;
+                // 换名重试
+            } finally {
+                // 失败路径清理残留临时文件
+                Files.deleteIfExists(tmp);
             }
-        } finally {
-            // 失败路径清理残留临时文件
-            Files.deleteIfExists(tmp);
         }
-        return target.getFileName().toString();
+        throw lastConflict != null ? lastConflict : new IOException("无法为导出文件分配唯一名称: " + baseName);
     }
 
     /** 重名时按 _1/_2 递增；只剥离末尾扩展名，不用全局 replace 以免误改名字本体 */
