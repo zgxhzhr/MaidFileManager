@@ -141,6 +141,8 @@
     "gui.maid_file_manager.profile.picker_open_dir": "Open Photo Folder",
     "gui.maid_file_manager.profile.picker_open_dir_failed": "Failed to open the photo folder; open maid_file/photos/ manually",
     "gui.maid_file_manager.profile.photo_selected": "Photo selected: %s",
+    "gui.maid_file_manager.profile.picker_refresh": "Refresh",
+    "gui.maid_file_manager.profile.picker_refreshed": "Refreshed, {0} image(s)",
     "gui.maid_file_manager.profile.photo_cleared": "Photo cleared",
     "gui.maid_file_manager.profile.photo_source_too_large": "Image too large (over 4 MB); please use a smaller image",
     "gui.maid_file_manager.profile.photo_too_large": "Photo still exceeds the limit (128 KiB) after scaling; please use a simpler image",

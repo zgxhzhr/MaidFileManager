@@ -65,6 +65,19 @@ public final class UiMusicManager {
         if (!MaidConfigManager.isClientUiMusic() || current != null) {
             return;
         }
+        startPlayback();
+    }
+
+    /**
+     * 开始播放界面背景音乐。
+     *
+     * <p>单曲不循环（{@code looping=false}），因此曲终后必须由 {@link #tick()} 重新调用本方法，
+     * 否则界面停留超过一曲长度后就会永久静音。
+     */
+    private static void startPlayback() {
+        if (current != null) {
+            return;
+        }
         float volume = MaidConfigManager.getClientUiMusicVolume();
         if (volume <= 0F) {
             return;
@@ -75,11 +88,15 @@ public final class UiMusicManager {
                 return;
             }
             // MUSIC 类别：跟随玩家「音乐」音量；原版音乐由 tick() 每帧压住，不会叠加
+            // looping=true：单曲不循环时，界面停留超过一曲长度（本曲约 2 分钟）就会永久静音。
+            // 循环播放比"检测曲终再重播"稳妥 —— 后者依赖 SoundInstance.isStopped()，
+            // 该 API 在 1.20.1 不存在。
             SimpleSoundInstance instance = new SimpleSoundInstance(
                     id, SoundSource.MUSIC, volume, 1.0F, RandomSource.create(),
-                    false, 0, SoundInstance.Attenuation.NONE, 0.0D, 0.0D, 0.0D, true);
+                    true, 0, SoundInstance.Attenuation.NONE, 0.0D, 0.0D, 0.0D, true);
             Minecraft.getInstance().getSoundManager().play(instance);
             current = instance;
+            quietTicks = 0;
         } catch (Throwable t) {
             if (!failureLogged) {
                 failureLogged = true;
@@ -106,6 +123,7 @@ public final class UiMusicManager {
      */
     public static void tick() {
         if (current == null) {
+            // 音乐已停止（离开全部界面后）或无播放实例：空操作
             return;
         }
         // MusicManager.stopPlaying() 每次都会把内部的 nextSongDelay 再加 100（tick），
