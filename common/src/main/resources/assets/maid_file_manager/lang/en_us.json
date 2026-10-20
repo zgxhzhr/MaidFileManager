@@ -236,6 +236,7 @@
     "maid_file_manager.gui.label.colon_value": ": %s",
     "maid_file_manager.gui.backup.world_row": "%s  (%s players)",
     "maid_file_manager.server.prefix": "[Maid File Manager] ",
+    "maid_file_manager.protocol.mismatch": "Protocol version mismatch: server {0}, client {1}. Please update both sides to the same version (.maid files remain interchangeable).",
     "maid_file_manager.server.export_chunked_disabled": "This maid data is too large and needs chunked transfer, which is still under verification. Export aborted and the maid was kept in the world. Try exporting in singleplayer, or remove the photo and retry.",
     "maid_file_manager.server.handler_error": "[Maid File Manager] Server-side handling failed; check the server log (at: %s)",
     "maid_file_manager.server.serialize_failed": "[Maid File Manager] Failed to serialize export data; please retry. If it keeps failing, ask the server owner to check the log.",
