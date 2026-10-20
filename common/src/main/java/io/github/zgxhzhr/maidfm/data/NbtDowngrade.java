@@ -145,7 +145,7 @@ public final class NbtDowngrade {
         }
     }
 
-    /** 属性修饰符：1.21 组件（type/amount/operation/slot/name/id）→ 1.20 列表（Name/Amount/Operation/SlotName/UUID） */
+    /** 属性修饰符：1.21 组件（type/amount/operation/slot/name/id）→ 1.20.1 物品 AttributeModifiers（AttributeName/Name/Amount/Operation/Slot/UUID int[4]） */
     private static void convertAttributeModifiers(CompoundTag components, CompoundTag tag) {
         if (!components.contains(KEY_ATTRIBUTE_MODIFIERS, Tag.TAG_COMPOUND)) {
             return;
@@ -159,6 +159,12 @@ public final class NbtDowngrade {
         for (int i = 0; i < src.size(); i++) {
             CompoundTag m = src.getCompound(i);
             CompoundTag conv = new CompoundTag();
+            // 1.20.1 的物品属性修饰符必须带 AttributeName（1.21 是 type 字符串），缺了整条会被丢弃
+            String type = m.getString("type");
+            if (type.isEmpty()) {
+                continue;
+            }
+            conv.putString("AttributeName", stripNamespace(type));
             String name = m.getString("name");
             conv.putString("Name", name.isEmpty() ? "unknown" : name);
             if (m.contains("amount", Tag.TAG_ANY_NUMERIC)) {
@@ -166,11 +172,17 @@ public final class NbtDowngrade {
             } else {
                 continue;
             }
-            conv.putInt("Operation", m.getInt("operation"));
-            conv.putString("SlotName", resolveSlotName(m));
+            // 1.21 的 operation 是字符串，1.20.1 要 0/1/2
+            conv.putInt("Operation", parseOperation(m.get("operation")));
+            // 1.20.1 物品格式的键是 Slot（不是 SlotName，SlotName 只用于实体属性）
+            conv.putString("Slot", resolveSlotName(m));
+            // 1.20.1 物品 UUID 是 int[4]（UUIDMost/UUIDLeast 是实体属性列表的格式）
             UUID uuid = resolveModifierUuid(m, name);
-            conv.putLong("UUIDMost", uuid.getMostSignificantBits());
-            conv.putLong("UUIDLeast", uuid.getLeastSignificantBits());
+            conv.putIntArray("UUID", new int[]{
+                    (int) (uuid.getMostSignificantBits() >> 32),
+                    (int) uuid.getMostSignificantBits(),
+                    (int) (uuid.getLeastSignificantBits() >> 32),
+                    (int) uuid.getLeastSignificantBits()});
             out.add(conv);
         }
         if (!out.isEmpty()) {
@@ -178,6 +190,26 @@ public final class NbtDowngrade {
         }
     }
 
+    /** 1.21 的 operation 是字符串（add_value / add_multiplied_base / add_multiplied_total），1.20.1 要 int */
+    private static int parseOperation(net.minecraft.nbt.Tag operation) {
+        if (operation instanceof net.minecraft.nbt.StringTag stringTag) {
+            return switch (stringTag.getAsString()) {
+                case "add_multiplied_base" -> 1;
+                case "add_multiplied_total" -> 2;
+                default -> 0;
+            };
+        }
+        if (operation instanceof net.minecraft.nbt.NumericTag numericTag) {
+            return numericTag.getAsInt();
+        }
+        return 0;
+    }
+
+    /** minecraft:generic.attack_damage → generic.attack_damage（1.20.1 的属性名不带命名空间） */
+    private static String stripNamespace(String type) {
+        int idx = type.indexOf(':');
+        return idx >= 0 ? type.substring(idx + 1) : type;
+    }
     /** 1.21 槽位字段：slot:{slot:".."} 或 slot:{slots:[..]}，取第一个；无则空串（视为全槽位） */
     private static String resolveSlotName(CompoundTag modifier) {
         CompoundTag slot = modifier.getCompound("slot");
