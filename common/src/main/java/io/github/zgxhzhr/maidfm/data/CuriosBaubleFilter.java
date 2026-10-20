@@ -126,7 +126,9 @@ public final class CuriosBaubleFilter {
     /** 取出并清零当前批次统计（流程结束点提示用） */
     public static Stats takeBatch() {
         Stats stats = BATCH_STATS.get();
-        BATCH_STATS.set(new Stats());
+        // 用 remove() 而不是 set(new Stats())：ThreadLocal 会随线程存活，set 会一直留一个
+        // 空 Stats 实例在线程上；remove() 让下一次 get() 通过 withInitial 重新创建，语义等价且释放更干净。
+        BATCH_STATS.remove();
         return stats;
     }
 
@@ -375,27 +377,4 @@ public final class CuriosBaubleFilter {
         return sub.getList(ITEMS_KEY, Tag.TAG_COMPOUND).size();
     }
 
-    /**
-     * 取条目里物品的命名空间；取不到返回 {@code null}（调用方按"不允许携带"处理，失败关闭）。
-     * <p>兼容两代形状：1.20.x 取 {@code id}；1.21.x 取 {@code Stack.id}。
-     */
-    private static String namespaceOfItemEntry(CompoundTag itemEntry) {
-        String id = null;
-        if (itemEntry.contains(ITEM_ID_KEY, Tag.TAG_STRING)) {
-            id = itemEntry.getString(ITEM_ID_KEY);
-        } else if (itemEntry.contains(ITEM_STACK_KEY, Tag.TAG_COMPOUND)) {
-            CompoundTag stack = itemEntry.getCompound(ITEM_STACK_KEY);
-            if (stack.contains(ITEM_ID_KEY, Tag.TAG_STRING)) {
-                id = stack.getString(ITEM_ID_KEY);
-            }
-        }
-        if (id == null || id.isEmpty()) {
-            return null;
-        }
-        int colon = id.indexOf(':');
-        if (colon <= 0) {
-            return "minecraft";
-        }
-        return id.substring(0, colon);
-    }
 }
