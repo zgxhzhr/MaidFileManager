@@ -141,7 +141,7 @@ public class MaidFileModNeoForge {
         // 历史坑：此处曾额外注册一次无 requires 的 maidfile（含 gui），Brigadier 合并同名节点时
         // 保留先注册者的 requires，导致后面那次带 hasPermission(2) 的注册被丢弃、OP 门槛失效。
         MaidServerCommands.register(event.getDispatcher());
-        Constants.LOG.info("[maid_file_manager] /maidfile gui + exportall commands registered");
+        Constants.LOG.info("[maid_file_manager] /maidfile exportall command registered");
     }
 
     /** 玩家登录：仅向该玩家单播服务端配置（客户端收到后回发同意状态） */
