@@ -242,20 +242,6 @@ public class ForgePlatformHelper implements IPlatformHelper {
         return null;
     }
 
-    @Override
-    public void storeEffects(Entity entity, CompoundTag effectsTag) {
-        try {
-            CompoundTag persistentData = entity.getPersistentData();
-            if (effectsTag == null) {
-                persistentData.remove(KEY_EFFECTS);
-            } else {
-                persistentData.put(KEY_EFFECTS, effectsTag);
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] Forge storeEffects 失败: {}", t.toString());
-        }
-    }
-
     /**
      * 读取女仆实体上持久化的档案 NBT（键 {@code maid_file_manager:profile}）。
      * Forge 有 PersistentData 机制，档案随 ForgeData 写入实体 NBT 一并存档，服务器重启后仍在；

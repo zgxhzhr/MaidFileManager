@@ -331,10 +331,7 @@ public final class MaidTransferService {
                 effectsTag.put("normalized", buildNormalizedEffects(rawEffectList));
             }
             // 检查实体持久化标签中是否有存储的效果（禁药水服务器再导出的场景）
-            CompoundTag storedEffects = Services.PLATFORM.get().getStoredEffects(maid);
-            if (storedEffects != null) {
-                effectsTag = storedEffects;
-            }
+        // 注：1.6.3 起不再读取/写入 maid_file_manager:stored_effects；万法皆通特殊女仆的永久效果由该模组自行维护
             fullNbt.putString("MaidTask", TaskManager.getIdleTask().getUid().toString());
             fullNbt.putByte("Sitting", (byte) 0);
             String ownerUuid = null;
