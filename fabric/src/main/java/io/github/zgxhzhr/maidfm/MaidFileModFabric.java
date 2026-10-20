@@ -40,6 +40,24 @@ public class MaidFileModFabric implements ModInitializer {
         // 配置系统初始化（服务端/客户端 properties 文件）
         MaidConfigManager.init(net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir());
 
+        // 协议版本校验：客户端连上后会上报自身版本，不一致就断开并说明原因。
+        // 只影响联机握手；.maid 文件格式与 PROTOCOL_VERSION 无关，跨版本仍可互导。
+        registerC2SReceiver(MaidFilePackets.ID_PROTOCOL_CHECK, (server, player, buf) -> {
+            String clientVersion;
+            try {
+                clientVersion = buf.readUtf(64);
+            } catch (Throwable t) {
+                clientVersion = "<unreadable>";
+            }
+            if (!MaidFilePackets.PROTOCOL_VERSION.equals(clientVersion)) {
+                Constants.LOG.warn("[maid_file_manager] 协议版本不匹配，断开连接: player={} server={} client={}",
+                        player.getName().getString(), MaidFilePackets.PROTOCOL_VERSION, clientVersion);
+                player.connection.disconnect(Component.translatable(
+                        "maid_file_manager.protocol.mismatch",
+                        MaidFilePackets.PROTOCOL_VERSION, clientVersion));
+            }
+        });
+
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_MAID_LIST, (server, player, buf) -> {
             List<MaidInfo> list = MaidTransferService.listOwnMaids(player);
             FriendlyByteBuf out = MaidPayload.buffer();

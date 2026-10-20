@@ -71,6 +71,7 @@ public final class MaidPayload implements CustomPacketPayload {
                 MaidFilePackets.ID_CLIENT_CONSENT,
                 MaidFilePackets.ID_CHUNKED_UPLOAD,
                 MaidFilePackets.ID_CHUNKED_DOWNLOAD,
+                MaidFilePackets.ID_PROTOCOL_CHECK,
                 MaidFilePackets.ID_REQUEST_SERVER_EXPORT_LIST,
                 MaidFilePackets.ID_SERVER_EXPORT_LIST,
                 MaidFilePackets.ID_SERVER_EXPORT_BATCH,
