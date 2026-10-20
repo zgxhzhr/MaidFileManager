@@ -780,7 +780,26 @@ public final class MaidConfigManager {
                 Files.createDirectories(file.getParent());
             }
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+            // Properties.store 是「全量重写」：会丢弃文件里原有的手写注释。配置是给整合包作者手改的，
+            // 注释往往是唯一的使用说明，这里先收集原文件的注释行，写新内容前原样回放一遍。
+            java.util.List<String> keptComments = new java.util.ArrayList<>();
+            if (Files.exists(file)) {
+                try {
+                    for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                        String trimmed = line.trim();
+                        if (trimmed.startsWith("#") || trimmed.startsWith("!")) {
+                            keptComments.add(line);
+                        }
+                    }
+                } catch (IOException ignored) {
+                    // 读旧注释失败不影响写入，退回纯覆盖行为
+                }
+            }
             try (Writer writer = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
+                for (String kept : keptComments) {
+                    writer.write(kept);
+                    writer.write(System.lineSeparator());
+                }
                 props.store(writer, comment);
             }
             try {
