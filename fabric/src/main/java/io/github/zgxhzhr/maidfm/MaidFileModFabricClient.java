@@ -124,11 +124,12 @@ public class MaidFileModFabricClient implements ClientModInitializer {
             List<String> baubleBlockedCuriosSlots = MaidFilePackets.readStringList(body);
             List<String> baubleImportBlockedNamespaces = MaidFilePackets.readStringList(body);
             List<String> baubleImportBlockedCuriosSlots = MaidFilePackets.readStringList(body);
+            boolean baubleWhitelistEnforced = body.readBoolean();
             context.client().execute(() -> MaidConfigManager.handleServerConfigSync(
                     allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable, carryCurios,
                     baubleStripAttributes, baubleBlockedList, baubleBlacklist, baubleWhitelist, baubleManaged,
                     baubleBlockedNamespaces, baubleBlockedCuriosSlots,
-                    baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots));
+                    baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots, baubleWhitelistEnforced));
         });
 
         // 女仆档案视图：服务端校验归属后返回，交由当前活跃界面展示
@@ -195,5 +196,14 @@ public class MaidFileModFabricClient implements ClientModInitializer {
         });
 
         Constants.LOG.info("Maid File Manager client initialized");
+    }
+
+    /**
+     * 供 /maidfile gui 命令通过反射调用（{@code MaidServerCommands.openClientGui}）。
+     * common 层不能静态引用客户端类，因此命令侧用类名反射；方法名必须保持 {@code openGui}。
+     */
+    public static void openGui() {
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        mc.setScreen(new io.github.zgxhzhr.maidfm.client.MaidFileManagerScreen());
     }
 }

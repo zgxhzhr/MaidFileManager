@@ -218,6 +218,17 @@ public final class MaidTransferService {
                             }
                             return fallbackNameFromModelId(modelId);
                         }
+                        // TLM 的 IModelInfo.getName() 有时返回**裸翻译键**，有时返回**已可读的名字**
+                        //（中文名等）。因此：能翻译就用翻译，翻译不出来必须**保留原名**，
+                        // 绝不能降级成 modelId 短名——那会把本来正常显示的中文名砍成 kirisame_marisa。
+                        // 裸键的翻译交给客户端 ModelNames.display()（翻译表在客户端语言文件里）。
+                        try {
+                            String translated = Component.translatable(s).getString();
+                            if (translated != null && !translated.isEmpty() && !translated.equals(s)) {
+                                return translated;
+                            }
+                        } catch (Exception ignored) {
+                        }
                         return s;
                     }
                 } catch (NoSuchMethodException ignored) {
@@ -584,6 +595,10 @@ public final class MaidTransferService {
         String fileOwnerUuid = data.getOwnerUuid();
         if (fileOwnerUuid != null && !fileOwnerUuid.isEmpty()
                 && !fileOwnerUuid.equals(player.getUUID().toString())) {
+            // 闸门 3 只比 UUID（**用户决议：不做名字兜底**）。UUID 不同必然拒绝。
+            // 常见成因：在线模式导出（正版 v4 UUID）→ 离线服导入（v3 离线 UUID），
+            // 或反向。这属于服务器 online-mode 配置问题，不是模组缺陷；
+            // 解决办法是让服务器开正版验证，或在目标环境重新导出一次 .maid。
             Constants.LOG.info("[maid_file_manager] 导入被拒绝: 非本人档案 owner={}, player={}",
                     fileOwnerUuid, player.getName().getString());
             return ImportResult.failed(
@@ -661,18 +676,24 @@ public final class MaidTransferService {
                 // 这里是玩家/服务端主动不要饰品，不计入"模组未声明"的提示统计。
                 CuriosBaubleFilter.strip(migrated, false, MaidTransferService::allowCuriosItem, false);
             }
-            CompoundTag tlmTag = extractTlmData(migrated);
+            CompoundTag tlmTag = extractTlmData(migrated, sameVersion);
             loadMaidNbt(maid, migrated, tlmTag, keepBaubles, sourceStruckByLightning, sameVersion,
                     stripAttributes, blockedList, sourceMojangDataVersion, baubleNotes);
-            if (curiosStats.hasDrops()) {
+            // 统计口径修正：原先 hasDrops() 只含"硬禁槽位"时也会走这里，
+            // 而 dropped()+forbiddenItems() 可能为 0，于是提示出"其中 0 件…"。
+            int curiosDroppedTotal = curiosStats.dropped() + curiosStats.forbiddenItems();
+            if (curiosDroppedTotal > 0) {
                 baubleNotes.add(Component.translatable("maid_file_manager.import.curios.dropped",
-                        curiosStats.dropped() + curiosStats.forbiddenItems()));                if (curiosStats.missingItems() > 0) {
-                    baubleNotes.add(Component.translatable("maid_file_manager.curios.missing",
-                            curiosStats.missingItems()));
-                }
-                if (curiosStats.dropped() > 0) {
-                    addBaubleNoticeOnce(baubleNotes);
-                }
+                        curiosDroppedTotal));
+            }
+            if (curiosStats.missingItems() > 0) {
+                baubleNotes.add(Component.translatable("maid_file_manager.curios.missing",
+                        curiosStats.missingItems()));
+            }
+            if (curiosStats.dropped() > 0) {
+                addBaubleNoticeOnce(baubleNotes);
+            }
+            if (curiosStats.hasDrops()) {
                 Constants.LOG.info("[maid_file_manager] 导入裁剪 Curios 饰品: 命名空间未声明 {} 件, "
                                 + "硬禁槽位 {} 个(含 {} 件), 保留 {} 件",
                         curiosStats.dropped(), curiosStats.forbiddenSlots(), curiosStats.forbiddenItems(),
@@ -960,24 +981,36 @@ public final class MaidTransferService {
      * 简单值字段（MaidFavorability / MaidExperience / MaidHunger / ModelId 等）一律保留，
      * 交给 TLM 自己的 readAdditionalSaveData 还原。
      */
-    private static CompoundTag extractTlmData(CompoundTag tag) {
+    private static CompoundTag extractTlmData(CompoundTag tag, boolean sameVersion) {
         CompoundTag extracted = new CompoundTag();
-        String[] keys = {
-                // 物品容器
+        // 物品容器：无论同版本/跨版本都抽取，因为饰品要按「声明制」逐件裁剪，不能交给 TLM 全量还原。
+        String[] alwaysExtract = {
                 "MaidBaubleInventory", "MaidInventory", "MaidHideInventory", "MaidTaskInventory",
-                "MaidGameSkillData",
-                // 跨版本结构可能不一致的复杂容器
-                "MaidTaskDataMaps",
+        };
+        // 其余复杂容器：只在**跨版本**时抽取（结构与目标端可能不一致）。
+        // 同版本时保留在 NBT 里，让 TLM 自己的 readAdditionalSaveData 原样还原——
+        // 此前不分版本一律抽取，导致 MaidSubConfig（拾取/开门/爬墙等开关）、
+        // MaidGameSkillData、MaidTaskDataMaps、YsmRoamingVars 等同版本导入也被永久丢弃，只打一条 WARN。
+        String[] crossVersionOnly = {
+                "MaidGameSkillData", "MaidTaskDataMaps",
                 "MaidAIChat", "MaidHistoryChat", "MaidHistorySummary", "MaidLastChatTokenUsage",
                 "MaidConfig", "MaidSubConfig", "MaidWorldData",
                 "MaidBackpackData", "MaidTask",
                 "MaidGameRecord", "MaidKillRecord",
                 "MaidSchedulePos", "YsmRoamingVars", "Brain",
         };
-        for (String key : keys) {
+        for (String key : alwaysExtract) {
             if (tag.contains(key)) {
                 extracted.put(key, tag.get(key).copy());
                 tag.remove(key);
+            }
+        }
+        if (!sameVersion) {
+            for (String key : crossVersionOnly) {
+                if (tag.contains(key)) {
+                    extracted.put(key, tag.get(key).copy());
+                    tag.remove(key);
+                }
             }
         }
         return extracted;
@@ -1323,11 +1356,13 @@ public final class MaidTransferService {
         if (list == null || list.isEmpty()) {
             return false;
         }
-        if (id != null && !id.isEmpty() && list.contains(id)) {
+        // 匹配侧再归一化一次（双保险）：即使清单由旧版本或外部工具写入未小写，也不会漏判。
+        if (id != null && !id.isEmpty()
+                && list.contains(id.toLowerCase(java.util.Locale.ROOT))) {
             return true;
         }
         String name = displayNameOf(item);
-        return name != null && list.contains(name);
+        return name != null && list.contains(name.toLowerCase(java.util.Locale.ROOT));
     }
 
     /** 物品的游戏内显示名（含语言文件本地化）；无法解析时返回 null，绝不抛出 */

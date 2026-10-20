@@ -138,19 +138,32 @@ public interface IPlatformHelper {
     ItemStack convertItemStackNbt(RegistryAccess registries, CompoundTag legacyTag, int sourceDataVersion);
 
     /**
-     * 从实体持久化标签读取存储的药水效果 NBT。
-     * 用于"禁药水服务器导入后再导出"的场景——效果不恢复到实体但保留在持久化标签中。
+     * 当前进程是否是「单人/局域网主机」的集成服务器。
      *
-     * @param entity 女仆实体
-     * @return 存储的效果 NBT（含 active_effects 键），无则 null
+     * <p>用反射调 {@code Minecraft.hasSingleplayerServer()}：common 层不能静态引用客户端类，
+     * 专用服务器上没有客户端类则返回 false（按"非单人"保守处理）。
+     *
+     * <p>用途：集成服务器与客户端之间是 {@code LocalServerConnection} 内存直连，数据不经过
+     * {@code ServerboundCustomPayloadPacket} 序列化，因此 1.20.x 的 32767 字节上限**不生效**。
      */
+    default boolean isSingleplayer() {
+        try {
+            // 必须用**双端共有**的 MinecraftServer 判断，绝不能反射 net.minecraft.client.Minecraft：
+            // 在专用服务器上加载客户端类会被 Forge 的 RuntimeDistCleaner 拦下并刷 ERROR
+            //（实测日志："Attempted to load class net/minecraft/client/Minecraft for invalid dist DEDICATED_SERVER"）。
+            Class<?> serverClass = Class.forName("net.minecraft.server.MinecraftServer");
+            Object server = serverClass.getMethod("getServer").invoke(null);
+            if (server == null) {
+                return false;
+            }
+            Object result = serverClass.getMethod("isSingleplayer").invoke(server);
+            return Boolean.TRUE.equals(result);
+        } catch (Throwable t) {
+            return false; // 判断不了按非单人处理（保守：走分片更安全）
+        }
+    }
 
-    /**
-     * 将药水效果 NBT 写入实体持久化标签。
-     *
-     * @param entity     女仆实体
-     * @param effectsTag 效果 NBT（含 active_effects 键）
-     */
+
 
 
     /**

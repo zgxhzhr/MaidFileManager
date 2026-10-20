@@ -36,15 +36,49 @@ public final class MaidServerCommands {
     private MaidServerCommands() {
     }
 
-    /** 由 loader 侧在指令注册事件中调用 */
+    /**
+     * 由 loader 侧在指令注册事件中调用。
+     *
+     * <p><b>根节点不得带 requires</b>：`/maidfile gui` 任何玩家都能用（只是打开自己的界面），
+     * 而 `/maidfile exportall` 必须 OP。门槛各自挂在子节点上。
+     *
+     * <p>历史坑：此前 NeoForge 主类先注册了一次无 requires 的 maidfile（含 gui），随后这里再注册
+     * 同名节点（含 requires(2)）。Brigadier 合并同名节点时<b>保留先注册者的 requires</b>，
+     * 导致 OP 门槛被丢弃、非 OP 也能执行 exportall。现在根节点只在这里注册一次。
+     */
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(LiteralArgumentBuilder.<CommandSourceStack>literal("maidfile")
-                .requires(source -> source.hasPermission(2))
+                .then(LiteralArgumentBuilder.<CommandSourceStack>literal("gui")
+                        .executes(context -> openClientGui(context.getSource())))
                 .then(LiteralArgumentBuilder.<CommandSourceStack>literal("exportall")
+                        .requires(source -> source.hasPermission(2))
                         .executes(context -> executeExportAll(context.getSource()))));
     }
 
+    /** /maidfile gui：反射调用各端客户端入口（common 层不能静态引用客户端类） */
+    private static int openClientGui(CommandSourceStack source) {
+        for (String className : new String[]{
+                "io.github.zgxhzhr.maidfm.ClientRegistration",       // NeoForge
+                "io.github.zgxhzhr.maidfm.MaidFileModForgeClient",   // Forge
+                "io.github.zgxhzhr.maidfm.MaidFileModFabricClient"   // Fabric
+        }) {
+            try {
+                Class.forName(className).getMethod("openGui").invoke(null);
+                return 1;
+            } catch (Throwable ignored) {
+                // 客户端不存在（专用服务器）或该类不是本端入口：继续试下一个
+            }
+        }
+        source.sendFailure(Component.translatable("maid_file_manager.command.client_only"));
+        return 0;
+    }
+
     private static int executeExportAll(CommandSourceStack source) {
+        // 双保险：即使命令树的 requires 因任何原因失效，执行体自身也拒绝非 OP。
+        if (!source.hasPermission(2)) {
+            source.sendFailure(Component.translatable("maid_file_manager.config.fail.no_permission"));
+            return 0;
+        }
         MinecraftServer server = source.getServer();
         if (server == null) {
             source.sendFailure(Component.translatable("maid_file_manager.command.no_server"));

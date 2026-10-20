@@ -160,6 +160,12 @@ public final class AdvancementTransfer {
             if (id == null) {
                 continue;
             }
+            // 与收集端对称：只允许 TLM 命名空间的成就。收集端有 TLM_NS 过滤，应用端此前没有，
+            // 于是构造过的 .maid 可以让导入者把**任意服务端已知成就**的 criterion 补完
+            // （解锁其它模组的配方/奖励），这是权限边界上的缺口。
+            if (!id.getNamespace().equals(TLM_NS)) {
+                continue;
+            }
             // 开局赠送型进度不补：award 会绕过 TLM 配置开关强发手册/魂符（旧 .maid 同样拦截）
             if (NON_TRANSFERABLE_PATHS.contains(id.getPath())) {
                 continue;

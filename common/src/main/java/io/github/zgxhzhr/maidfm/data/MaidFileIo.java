@@ -358,7 +358,7 @@ public final class MaidFileIo {
     }
 
     /**
-     * 列出目录中所有 .maid 文件，按时间戳降序排列（最新在前）。
+     * 列出目录中所有 .maid 文件。排序为**文件名字典序反序**（本模组导出名把时间戳嵌在名字里，视觉上近似时间倒序；重命名过的不保证）。
      *
      * @return 文件名列表（不含路径）
      */
@@ -374,7 +374,7 @@ public final class MaidFileIo {
         } catch (IOException e) {
             Constants.LOG.error("列出 maid 目录失败: {}", dir, e);
         }
-        // 按时间戳降序排序（最新的在前）
+        // 注意：这里是按**整串文件名**反序，不是按解析出的时间戳排序（时间戳只用于显示）
         result.sort(Comparator.reverseOrder());
         return result;
     }
@@ -427,5 +427,28 @@ public final class MaidFileIo {
         } catch (Exception e) {
             return 0L;
         }
+    }
+
+    /** 文件名 → 显示用时间串（解析失败为 "?"）。带小缓存：UI 列表每帧都会调用，
+     *  原先每帧重新解析文件名并 new SimpleDateFormat，属明显的每帧分配与重复计算。 */
+    private static final java.util.Map<String, String> DISPLAY_TIME_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 缓存条目上限：超出即整体清空（文件名数量有限，清空代价可接受，避免长期累积 */
+    private static final int DISPLAY_TIME_CACHE_MAX = 512;
+
+    public static String formatDisplayTime(String fileName) {
+        String key = fileName == null ? "" : fileName;
+        if (DISPLAY_TIME_CACHE.size() > DISPLAY_TIME_CACHE_MAX) {
+            DISPLAY_TIME_CACHE.clear();
+        }
+        return DISPLAY_TIME_CACHE.computeIfAbsent(key, n -> {
+            long ts = parseTimestampFromFileName(n);
+            if (ts <= 0) {
+                return "?";
+            }
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                    .format(java.time.Instant.ofEpochMilli(ts)
+                            .atZone(java.time.ZoneId.systemDefault()));
+        });
     }
 }

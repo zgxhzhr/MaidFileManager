@@ -167,6 +167,11 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     public void removed() {
         // 界面背景音乐（试验性功能）：离开界面时释放，全部界面关闭后延迟停止
         UiMusicManager.leave(this);
+        // 界面被 setScreen 切走时 onClose 不会被调用：若不在这里还原网络回调持有者，
+        // 会残留指向已关闭界面的引用，后续服务端回调打到死界面。
+        if (IMaidFileNetwork.ClientHandlerHolder.get() == this) {
+            IMaidFileNetwork.ClientHandlerHolder.set(prevHandler);
+        }
         super.removed();
     }
 
@@ -308,6 +313,12 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
 
     private OwnerNode buildOwner(IMaidFileNetwork.BackupOwner o) {
         OwnerNode owner = new OwnerNode(o.ownerUuid());
+        // 服务端已从 usernamecache.json 反查出玩家名时直接用它：客户端自己的 usernamecache 里
+        // 往往没有服务端离线 UUID 的条目，只能显示 UUID 前缀。
+        String serverName = o.ownerName();
+        if (serverName != null && !serverName.isEmpty()) {
+            owner.displayName = serverName;
+        }
         List<IMaidFileNetwork.BackupMaid> maids = o.maids() == null ? List.of() : o.maids();
         for (IMaidFileNetwork.BackupMaid m : maids) {
             owner.maids.add(new MaidNode(m.maidUuid(), m.maidName(),
@@ -320,7 +331,9 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     private void resolveAllNames() {
         for (WorldNode world : worlds) {
             for (OwnerNode owner : world.owners) {
-                owner.displayName = resolveDisplayName(owner.uuid);
+                if (owner.displayName == null) {
+                    owner.displayName = resolveDisplayName(owner.uuid);
+                }
             }
         }
     }
@@ -341,7 +354,7 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
             PlayerNameResolver.resolve(uuid, (resolvedUuid, name) -> {
                 for (WorldNode world : worlds) {
                     for (OwnerNode owner : world.owners) {
-                        if (owner.uuid.equals(resolvedUuid.toString())) {
+                        if (owner.uuid.equals(resolvedUuid.toString()) && owner.displayName == null) {
                             owner.displayName = name;
                         }
                     }
@@ -352,6 +365,36 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         return shortId(uuidStr);
     }
 
+
+    /**
+     * 根据 UUID 的版本号标注账号来源。
+     *
+     * <ul>
+     *   <li>版本 4（第 3 段首位 {@code 4}）→ **正版** UUID</li>
+     *   <li>版本 3（第 3 段首位 {@code 3}）→ **离线** UUID（由名字 MD5 得来）</li>
+     * </ul>
+     *
+     * <p>这个区分很实用：正版服与离线服对同一玩家给的 UUID 不同，备份目录也按 UUID 分，
+     * 一眼看出某个目录属于哪种身份，能避免「为什么我的备份在另一台服上看不到」的困惑。
+     */
+    private static String uuidOrigin(String uuid) {
+        try {
+            if (uuid == null) {
+                return "";
+            }
+            String[] seg = uuid.split("-");
+            if (seg.length < 3 || seg[2].isEmpty()) {
+                return "";
+            }
+            return switch (seg[2].charAt(0)) {
+                case '3' -> "（离线）";
+                case '4' -> "（正版）";
+                default -> "";
+            };
+        } catch (Throwable t) {
+            return "";
+        }
+    }
     private static String shortId(String uuid) {
         String s = uuid.replace("-", "");
         return s.length() > 8 ? s.substring(0, 8) : s;
@@ -520,7 +563,7 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
             data.setOwnerName(ownerName);
             Path exportRoot = MaidFileIo.ensureExportsDir(this.minecraft.gameDirectory.toPath());
             Path playerDir = MaidFileIo.resolvePlayerDir(exportRoot, ownerName);
-            String written = MaidFileIo.writeMaidFile(playerDir, data.getDisplayName(), data.getModelId(),
+            String written = MaidFileIo.writeMaidFile(playerDir, ModelNames.displayModelId(data.getModelId()), data.getModelId(),
                     data.getOwnerUuid(), data, LocalDateTime.now());
             setFeedback(Component.translatable("gui.maid_file_manager.backup.exported", written), ACCENT);
         } catch (Throwable t) {
@@ -689,7 +732,8 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
             graphics.drawString(this.font, Component.literal(text), listX + 14, top + 3, HEADER_COLOR, false);
         } else if (row.type == 2) {
             String arrow = row.maid.expanded ? "▼ " : "▶ ";
-            String name = row.maid.name != null ? row.maid.name : shortId(row.maid.uuid);
+            // 备份 index.dat 里存的是翻译键，显示前统一转换（服务端不会翻译）
+            String name = row.maid.name != null ? ModelNames.display(row.maid.name) : shortId(row.maid.uuid);
             graphics.drawString(this.font, Component.literal(arrow + name),
                     listX + 24, top + 3, ACCENT, false);
         } else {
