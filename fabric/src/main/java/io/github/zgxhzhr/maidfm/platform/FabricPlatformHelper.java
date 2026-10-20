@@ -230,11 +230,6 @@ public class FabricPlatformHelper implements IPlatformHelper {
         }
     }
 
-    @Override
-    public CompoundTag getStoredEffects(Entity entity) {
-        return EFFECTS_CACHE.get(entity.getUUID());
-    }
-
     /**
      * 读取女仆实体上持久化的档案 NBT。
      * Fabric 无原版持久化标签 API，档案由 {@link io.github.zgxhzhr.maidfm.mixin.EntityMaidMixin}
