@@ -82,7 +82,13 @@ public final class MaidFilePayloads {
             feedback(sp, Component.translatable("maid_file_manager.server.prefix").append(reject));
             return false;
         }
-        PacketDistributor.sendToPlayer(sp, new ExportBatchResultPayload(blobs));
+        byte[] encodedOut = ExportBatchResultPayload.encodeExportBatchResult(blobs);
+        if (encodedOut.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
+            ChunkedDownloadPayload.sendChunks(sp,
+                    io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH, encodedOut);
+        } else {
+            PacketDistributor.sendToPlayer(sp, new ExportBatchResultPayload(encodedOut));
+        }
         return true;
     }
 
@@ -930,7 +936,7 @@ public final class MaidFilePayloads {
                             return new ExportBatchResultPayload(arr);
                         }
                 );
-        private static byte[] encodeExportBatchResult(List<byte[]> blobs) {
+        static byte[] encodeExportBatchResult(List<byte[]> blobs) {
             // 直接复用发送端已序列化好的 GZIP 字节，避免二次压缩
             FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
             try {
@@ -953,7 +959,13 @@ public final class MaidFilePayloads {
                 if (handler != null) {
                     FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
                     // 条目上限与服务端导出请求侧 MAX_EXPORT_IDS(512) 对齐，不能沿用导入通道的 64
-                    List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(fbb, MaidFilePackets.MAX_EXPORT_IDS);
+                    List<MaidFileData> list = new ArrayList<>();
+                    for (byte[] blob : MaidFilePackets.readMaidDataBlobs(fbb, MaidFilePackets.MAX_EXPORT_IDS)) {
+                        MaidFileData one = MaidFilePackets.deserializeMaidFileData(blob);
+                        if (one != null) {
+                            list.add(one);
+                        }
+                    }
                     handler.onExportResultReceived(list);
                 }
             });
@@ -1261,6 +1273,106 @@ public final class MaidFilePayloads {
             feedback(sp, Component.translatable("gui.maid_file_manager.profile.save_ok"));
         } catch (Throwable t) {
             handleError(sp, "SAVE_MAID_PROFILE_CHUNKED", t);
+        }
+    }
+
+    /**
+     * 分片下发（服务端 → 客户端）。1.20.x 的 32767 字节上限对 S2C 同样生效，
+     * 带照片的导出结果必然超限，故与 C2S 方向对称地切片发送。
+     */
+    public record ChunkedDownloadPayload(String kind, int sessionId, int total, int index, byte[] chunk)
+            implements CustomPacketPayload {
+        public static final Type<ChunkedDownloadPayload> TYPE =
+                new Type<>(MaidFilePackets.ID_CHUNKED_DOWNLOAD);
+        public static final StreamCodec<ByteBuf, ChunkedDownloadPayload> STREAM_CODEC =
+                StreamCodec.ofMember(
+                        (p, buf) -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            fbb.writeUtf(p.kind == null ? "" : p.kind, MaidFilePackets.MAX_TEXT_LEN);
+                            fbb.writeVarInt(p.sessionId);
+                            fbb.writeVarInt(p.total);
+                            fbb.writeVarInt(p.index);
+                            fbb.writeVarInt(p.chunk.length);
+                            fbb.writeBytes(p.chunk);
+                        },
+                        buf -> {
+                            FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
+                            String kind = fbb.readUtf(MaidFilePackets.MAX_TEXT_LEN);
+                            int sessionId = fbb.readVarInt();
+                            int total = fbb.readVarInt();
+                            int index = fbb.readVarInt();
+                            int len = MaidFilePackets.checkSize(fbb.readVarInt(),
+                                    io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES, "chunk");
+                            byte[] arr = new byte[len];
+                            fbb.readBytes(arr);
+                            return new ChunkedDownloadPayload(kind, sessionId, total, index, arr);
+                        }
+                );
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+
+        /** 服务端调用：把负载切片逐片发给玩家 */
+        static void sendChunks(ServerPlayer player, String kind, byte[] payload) {
+            if (player == null || payload == null || payload.length == 0) {
+                return;
+            }
+            int chunkBytes = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES;
+            int total = (payload.length + chunkBytes - 1) / chunkBytes;
+            int sessionId = java.util.concurrent.ThreadLocalRandom.current().nextInt();
+            for (int i = 0; i < total; i++) {
+                int off = i * chunkBytes;
+                int len = Math.min(chunkBytes, payload.length - off);
+                byte[] chunk = java.util.Arrays.copyOfRange(payload, off, off + len);
+                PacketDistributor.sendToPlayer(player,
+                        new ChunkedDownloadPayload(kind, sessionId, total, i, chunk));
+            }
+            Constants.LOG.info("[maid_file_manager] 导出结果分片下发: player={} bytes={} chunks={}",
+                    player.getName().getString(), payload.length, total);
+        }
+
+        /** S2C 包：客户端收到后累积，收齐再交给 UI 回调 */
+        public void handle(IPayloadContext ctx) {
+            byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
+                    clientUuid(), kind, sessionId, total, index, chunk);
+            if (full == null
+                    || !io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH.equals(kind)) {
+                return;
+            }
+            var clientHandler = IMaidFileNetwork.ClientHandlerHolder.get();
+            if (clientHandler == null) {
+                return;
+            }
+            ctx.enqueueWork(() -> {
+                FriendlyByteBuf fullBuf = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(full));
+                List<MaidFileData> decoded = new ArrayList<>();
+                for (byte[] blob : MaidFilePackets.readMaidDataBlobs(fullBuf, MaidFilePackets.MAX_EXPORT_IDS)) {
+                    MaidFileData one = MaidFilePackets.deserializeMaidFileData(blob);
+                    if (one != null) {
+                        decoded.add(one);
+                    }
+                }
+                var h = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (h != null) {
+                    h.onExportResultReceived(decoded);
+                }
+            });
+        }
+
+        /** 客户端玩家族（服务端侧不该走到 handle，但反射避免静态引用客户端类） */
+        private static java.util.UUID clientUuid() {
+            try {
+                Object mc = Class.forName("net.minecraft.client.Minecraft").getMethod("getInstance").invoke(null);
+                Object player = mc.getClass().getMethod("getPlayer").invoke(mc);
+                if (player == null) {
+                    return new java.util.UUID(0L, 0L);
+                }
+                return (java.util.UUID) player.getClass().getMethod("getUUID").invoke(player);
+            } catch (Throwable t) {
+                return new java.util.UUID(0L, 0L);
+            }
         }
     }
 }

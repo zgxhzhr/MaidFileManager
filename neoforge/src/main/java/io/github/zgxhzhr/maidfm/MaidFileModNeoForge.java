@@ -99,6 +99,9 @@ public class MaidFileModNeoForge {
                 MaidFilePayloads.RequestBackupExportPayload.STREAM_CODEC,
                 MaidFilePayloads.RequestBackupExportPayload::handle);
 
+        registrar.playToClient(MaidFilePayloads.ChunkedDownloadPayload.TYPE,
+                MaidFilePayloads.ChunkedDownloadPayload.STREAM_CODEC,
+                MaidFilePayloads.ChunkedDownloadPayload::handle);
         registrar.playToClient(MaidFilePayloads.MaidListPayload.TYPE,
                 MaidFilePayloads.MaidListPayload.STREAM_CODEC,
                 MaidFilePayloads.MaidListPayload::handle);
