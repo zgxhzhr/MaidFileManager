@@ -581,6 +581,18 @@ public final class MaidTransferService {
             keepBaubles = false;
         }
 
+        // 闸门 3：所有权校验 —— 只接受由本人导出的档案（**有意设计**，不是缺陷）。
+        // 导出侧只允许本人导出（isOwnedBy / ownerUUID 精确匹配），导入侧再显式校验一次，
+        // 避免手工构造或转交的文件把别人的女仆搬进本世界。未驯服档案（无 owner）放行。
+        String fileOwnerUuid = data.getOwnerUuid();
+        if (fileOwnerUuid != null && !fileOwnerUuid.isEmpty()
+                && !fileOwnerUuid.equals(player.getUUID().toString())) {
+            Constants.LOG.info("[maid_file_manager] 导入被拒绝: 非本人档案 owner={}, player={}",
+                    fileOwnerUuid, player.getName().getString());
+            return ImportResult.failed(
+                    Component.translatable("maid_file_manager.import.fail.not_your_maid"));
+        }
+
         Level level = player.level();
         // 快照必须在迁移之前从原始 NBT 读取（迁移会删除运行时标签）
         CompoundTag originalNbt = data.getData();
@@ -1702,10 +1714,10 @@ public final class MaidTransferService {
     /**
      * 主人绑定：按「原主人 UUID → 在线玩家名 → 未驯服」三级匹配，把导入的女仆绑给某个玩家。
      *
-     * <p><b>当前实际行为只接受本人导出的档案</b>（owner UUID 与导入者一致），不一致时导入会失败。
-     * 这源于一处既有的实现缺陷（不是本方法内的判断所致），但该行为本身是想要的——防止把别人的
-     * 女仆搬进自己的世界，因此<b>保留现状，不在本处改动逻辑</b>。三级匹配的分支保留原样，作为
-     * 将来修好该缺陷后的既有路径。
+     * <p><b>前置条件由导入入口的「所有权闸门」保证</b>：{@code importMaidFromData} 会先拒绝
+     * owner UUID 与导入者不一致的档案（见该方法的闸门 3），因此这里的第一分支（原主人 UUID 等于
+     * 导入者）在正常流程中必然命中；后两级匹配仅作为防御性兜底保留。这是**有意设计**：
+     * 只允许把本人导出的女仆导入回来，不是缺陷。
      *
      * <p>所有权约束的另一半在**导出侧**：普通导出走 {@code isOwnedBy(player)}、统一导出走 ownerUUID
      * 精确匹配（见 {@link #exportMaidToData} / {@link #exportMaidOwnedBy}），只能导出自己的女仆。
