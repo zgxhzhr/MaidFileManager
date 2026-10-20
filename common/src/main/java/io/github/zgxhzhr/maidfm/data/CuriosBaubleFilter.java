@@ -266,6 +266,9 @@ public final class CuriosBaubleFilter {
         ListTag items = sub.getList(ITEMS_KEY, Tag.TAG_COMPOUND);
         ListTag kept = new ListTag();
         int dropped = 0;
+        // 局部缺失计数：missingOut[0] 是跨槽位（跨多个 Items 列表）的累加值，
+        // 直接拿它判断「本列表是否需要回写」会让后续槽位即使毫无变化也被重写一遍。
+        int missingThisList = 0;
         for (Tag element : items) {
             if (!(element instanceof CompoundTag itemEntry)) {
                 kept.add(element);
@@ -276,6 +279,7 @@ public final class CuriosBaubleFilter {
             // 否则玩家只会看到饰品凭空消失，不知道原因。
             if (itemId != null && !itemExists(itemId)) {
                 missingOut[0]++;
+                missingThisList++;
                 continue;
             }
             String namespace = namespaceOfItemId(itemId);
@@ -289,7 +293,7 @@ public final class CuriosBaubleFilter {
             dropped++;
             droppedByNamespace.merge(namespace == null ? "unknown" : namespace, 1, Integer::sum);
         }
-        if (dropped > 0 || missingOut[0] > 0) {
+        if (dropped > 0 || missingThisList > 0) {
             sub.put(ITEMS_KEY, kept);
         }
         return dropped;
