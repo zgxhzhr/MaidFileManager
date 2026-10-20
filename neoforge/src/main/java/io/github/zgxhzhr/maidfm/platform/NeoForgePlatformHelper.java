@@ -176,19 +176,6 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
      */
     private static final String KEY_EFFECTS = "maid_file_manager:stored_effects";
 
-    @Override
-    public CompoundTag getStoredEffects(Entity entity) {
-        try {
-            CompoundTag persistentData = entity.getPersistentData();
-            if (persistentData.contains(KEY_EFFECTS, CompoundTag.TAG_COMPOUND)) {
-                return persistentData.getCompound(KEY_EFFECTS);
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] NeoForge getStoredEffects 失败: {}", t.toString());
-        }
-        return null;
-    }
-
     /** 女仆档案持久化键名（同样用 modId 命名空间前缀隔离） */
     private static final String KEY_PROFILE = "maid_file_manager:profile";
 
