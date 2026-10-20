@@ -51,6 +51,7 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     java.util.List<String> baubleBlacklist = MaidFilePackets.readStringList(packet.data);
                     java.util.List<String> baubleWhitelist = MaidFilePackets.readStringList(packet.data);
                     boolean baubleManaged = packet.data.readBoolean();
+                    boolean baubleWhitelistEnforced = packet.data.readBoolean();
                     java.util.List<String> baubleBlockedNamespaces = MaidFilePackets.readStringList(packet.data);
                     java.util.List<String> baubleBlockedCuriosSlots = MaidFilePackets.readStringList(packet.data);
                     java.util.List<String> baubleImportBlockedNamespaces = MaidFilePackets.readStringList(packet.data);
@@ -59,7 +60,7 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                             allowImport, allowBaubles, allowAdvancements, allowEffects, allowInvulnerable, carryCurios,
                             baubleStripAttributes, baubleBlockedList, baubleBlacklist, baubleWhitelist, baubleManaged,
                             baubleBlockedNamespaces, baubleBlockedCuriosSlots,
-                            baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots);
+                            baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots, baubleWhitelistEnforced);
                     return;
                 }
                 IMaidFileNetwork.ClientHandler handler = IMaidFileNetwork.ClientHandlerHolder.get();
@@ -75,6 +76,48 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     MaidFileData maidData = MaidFilePackets.readMaidFileData(data);
                     handler.onExportResultReceived(maidData == null
                             ? new java.util.ArrayList<>() : java.util.Collections.singletonList(maidData));
+                } else if (MaidFilePackets.ID_CHUNKED_DOWNLOAD.equals(id)) {
+                    // 分片下载：累积后交回同一个 UI 回调，界面无需感知分片
+                    String kind = packet.data.readUtf(MaidFilePackets.MAX_TEXT_LEN);
+                    int sessionId = packet.data.readVarInt();
+                    int total = packet.data.readVarInt();
+                    int index = packet.data.readVarInt();
+                    byte[] chunk = packet.data.readByteArray(
+                            io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES);
+                    var localPlayer = net.minecraft.client.Minecraft.getInstance().player;
+                    if (localPlayer != null) {
+                        byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
+                                localPlayer.getUUID(), kind, sessionId, total, index, chunk);
+                        if (full != null
+                                && io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH.equals(kind)) {
+                            // 【诊断】打印重组结果的长度与前 8 字节：用于确认拼装是否错位
+                            StringBuilder head = new StringBuilder();
+                            for (int bi = 0; bi < Math.min(8, full.length); bi++) {
+                                head.append(String.format("%02X ", full[bi]));
+                            }
+                            io.github.zgxhzhr.maidfm.Constants.LOG.info(
+                                    "[maid_file_manager] 分片重组完成: len={} head={}", full.length, head);
+                            FriendlyByteBuf fullBuf = new FriendlyByteBuf(
+                                    io.netty.buffer.Unpooled.wrappedBuffer(full));
+                            java.util.List<io.github.zgxhzhr.maidfm.data.MaidFileData> decoded =
+                                    new java.util.ArrayList<>();
+                            for (byte[] blob : MaidFilePackets.readMaidDataBlobs(fullBuf,
+                                    MaidFilePackets.MAX_EXPORT_IDS)) {
+                                // readMaidDataBlobs 解出的已经是**纯 GZIP 字节**，不能再走
+                                // readMaidFileData（它会先读一个 VarInt 当长度，把 GZIP 魔数 0x1F
+                                // 当成"长度 31"吃掉，导致后续字节错位报 Not in GZIP format）。
+                                io.github.zgxhzhr.maidfm.data.MaidFileData one =
+                                        MaidFilePackets.deserializeMaidFileData(blob);
+                                if (one != null) {
+                                    decoded.add(one);
+                                }
+                            }
+                            IMaidFileNetwork.ClientHandler clientHandler = IMaidFileNetwork.ClientHandlerHolder.get();
+                            if (clientHandler != null) {
+                                clientHandler.onExportResultReceived(decoded);
+                            }
+                        }
+                    }
                 } else if (MaidFilePackets.ID_EXPORT_BATCH_RESULT.equals(id)) {
                     // 条目上限与服务端导出请求侧 MAX_EXPORT_IDS(512) 对齐，不能沿用导入通道的 64
                     List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(data, MaidFilePackets.MAX_EXPORT_IDS);

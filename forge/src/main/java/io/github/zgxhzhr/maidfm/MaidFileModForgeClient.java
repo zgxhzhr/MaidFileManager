@@ -82,4 +82,13 @@ public final class MaidFileModForgeClient {
             mc.setScreen(new MaidFileManagerScreen());
         }
     }
+
+    /**
+     * 供 /maidfile gui 命令通过反射调用（{@code MaidServerCommands.openClientGui}）。
+     * common 层不能静态引用客户端类，因此命令侧用类名反射；方法名必须保持 {@code openGui}。
+     */
+    public static void openGui() {
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        mc.setScreen(new io.github.zgxhzhr.maidfm.client.MaidFileManagerScreen());
+    }
 }

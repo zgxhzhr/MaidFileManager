@@ -13,7 +13,8 @@ import net.minecraftforge.network.simple.SimpleChannel;
 
 @Mod(Constants.MOD_ID)
 public class MaidFileModForge {
-    private static final String PROTOCOL_VERSION = "1";
+    /** 协议版本引用公共常量（递增规则见 MaidFilePackets.PROTOCOL_VERSION） */
+    private static final String PROTOCOL_VERSION = io.github.zgxhzhr.maidfm.network.MaidFilePackets.PROTOCOL_VERSION;
 
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             new ResourceLocation(Constants.MOD_ID, "main"),
@@ -23,7 +24,9 @@ public class MaidFileModForge {
     );
 
     public MaidFileModForge() {
-        Constants.LOG.info("Maid File Manager (Forge) loading...");
+        // 【诊断】打印协议版本：客户端与服务端日志里这个值必须一致，
+        // 不一致说明两端 jar 不同（SimpleChannel 会按它做握手校验）。
+        Constants.LOG.info("Maid File Manager (Forge) loading... protocol={}", PROTOCOL_VERSION);
 
         // 注册网络包（必须显式声明 NetworkDirection，否则集成服务器下 handler 可能在错误的一侧被调用）
         int id = 0;

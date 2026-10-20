@@ -100,7 +100,7 @@ public final class MaidPhotoUtil {
      */
     public static byte[] loadAndEncode(Path file, int maxSide) throws IOException {
         if (isSourceTooLarge(file)) {
-            throw new IOException("图片原图超过上限（10MB）: " + file.getFileName());
+            throw new IOException("图片原图超过上限（4 MiB）: " + file.getFileName());
         }
         BufferedImage src = ImageIO.read(file.toFile());
         if (src == null) {

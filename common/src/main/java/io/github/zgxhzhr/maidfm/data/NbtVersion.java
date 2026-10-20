@@ -61,4 +61,33 @@ public final class NbtVersion {
             return UNKNOWN;
         }
     }
+
+    /**
+     * Mojang {@code DataVersion} → 本模组内部版本编码。
+     *
+     * <p>TLM 自动备份的 {@code .dat} 里写的是 <b>Mojang</b> 版本号（1.20.1=3465、1.21.1=3955），
+     * 而 {@code .maid} 的 {@code data_version} 用的是本类的内部编码（1200100 / 1210100）。
+     * 直接把 Mojang 号透传进来会让「同版本备份」被判成跨版本——表现为饰品属性被全新化、
+     * {@code YsmModelName} 被删、1.21→1.20 备份模型回默认。
+     *
+     * @param mojangDataVersion Mojang 数据版本号；{@code <= 0} 或过旧时返回 {@link #UNKNOWN}
+     */
+    public static int fromMojangDataVersion(int mojangDataVersion) {
+        if (mojangDataVersion <= 0) {
+            return UNKNOWN;
+        }
+        if (mojangDataVersion >= 3955) {
+            return MC_1_21_1;
+        }
+        if (mojangDataVersion >= 3953) {
+            return MC_1_21;
+        }
+        if (mojangDataVersion >= 3837) {
+            return MC_1_20_6;
+        }
+        if (mojangDataVersion >= 3465) {
+            return MC_1_20_1;
+        }
+        return UNKNOWN;
+    }
 }

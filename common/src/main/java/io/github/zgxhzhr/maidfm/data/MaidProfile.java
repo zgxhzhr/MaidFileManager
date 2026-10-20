@@ -73,6 +73,11 @@ public final class MaidProfile {
 
     private static void putIfNotBlank(CompoundTag tag, String key, String value) {
         if (value != null && !value.isEmpty()) {
+            // 统一截断：客户端输入框有限制，但服务端收到的档案 NBT 可能来自构造包，
+            // 不截断会让实体存档被任意撑大（PROFILE_TEXT_MAX_LEN 此前只在客户端使用）。
+            if (value.length() > io.github.zgxhzhr.maidfm.Constants.PROFILE_TEXT_MAX_LEN) {
+                value = value.substring(0, io.github.zgxhzhr.maidfm.Constants.PROFILE_TEXT_MAX_LEN);
+            }
             tag.putString(key, value);
         }
     }

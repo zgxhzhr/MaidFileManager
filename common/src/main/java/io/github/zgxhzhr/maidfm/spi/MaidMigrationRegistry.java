@@ -1,5 +1,7 @@
 package io.github.zgxhzhr.maidfm.spi;
 
+import java.util.ArrayList;
+
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
@@ -37,9 +39,19 @@ public final class MaidMigrationRegistry {
 
     /** 返回所有已注册且当前可用的 provider（导出时遍历）。 */
     public static List<MaidMigrationProvider> getAvailable() {
-        return PROVIDERS.stream()
-                .filter(MaidMigrationProvider::isAvailable)
-                .toList();
+        // 逐项 try：第三方 provider 的 isAvailable() 若抛异常，不能让整个遍历崩掉（此前在 stream 里裸调用）
+        List<MaidMigrationProvider> out = new ArrayList<>();
+        for (MaidMigrationProvider provider : PROVIDERS) {
+            try {
+                if (provider.isAvailable()) {
+                    out.add(provider);
+                }
+            } catch (Throwable t) {
+                io.github.zgxhzhr.maidfm.Constants.LOG.warn("[maid_file_manager] 迁移 provider 可用性检查抛异常，已跳过: {} ({})",
+                        provider == null ? "null" : provider.getId(), t.toString());
+            }
+        }
+        return out;
     }
 
     /** 按 id 查找 provider（导入时按 id 匹配），找不到返回 null。 */

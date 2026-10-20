@@ -154,10 +154,27 @@ public final class MaidConfigManager {
         baubleImportConfigFile = gameDir.resolve("config").resolve("maid_file_manager").resolve("bauble_import.json");
         // 目录结构升级：把旧版本散落的导出/导入/照片目录搬入 maid_file/ 之下（幂等，无旧目录则跳过）
         MaidFileIo.migrateLegacyDirs(gameDir);
-        loadServer();
-        loadClient();
+        // 配置解析必须逐段兜底：properties 里的非法转义（如单独的反斜杠）会抛 IllegalArgumentException，
+        // json 语法错误会抛运行时异常；这些若外泄会让模组初始化失败，表现为游戏启动崩溃。
+        try {
+            loadServer();
+        } catch (Throwable t) {
+            io.github.zgxhzhr.maidfm.Constants.LOG.error(
+                    "[maid_file_manager] 服务端配置加载失败，已回退默认值: {}", t.toString());
+        }
+        try {
+            loadClient();
+        } catch (Throwable t) {
+            io.github.zgxhzhr.maidfm.Constants.LOG.error(
+                    "[maid_file_manager] 客户端配置加载失败，已回退默认值: {}", t.toString());
+        }
         // 整合包配置最后加载：存在时覆盖 properties 的黑名单并启用白名单（整合包作者优先级最高）
-        loadBaubleImportConfig();
+        try {
+            loadBaubleImportConfig();
+        } catch (Throwable t) {
+            io.github.zgxhzhr.maidfm.Constants.LOG.error(
+                    "[maid_file_manager] 整合包饰品配置加载失败，已忽略该文件: {}", t.toString());
+        }
     }
 
     // ==================== 服务端配置（读取） ====================
@@ -435,6 +452,11 @@ public final class MaidConfigManager {
     }
 
     /** 是否存在整合包配置（bauble_import.json）：用于界面提示，不代表整张列表只读 */
+    /** 白名单是否处于强制状态（由服务端判定并同步，客户端不得自行推断） */
+    public static boolean isBaubleWhitelistEnforced() {
+        return baubleWhitelistEnforced;
+    }
+
     public static boolean isBaubleConfigManaged() {
         return baubleConfigManaged;
     }
@@ -481,7 +503,7 @@ public final class MaidConfigManager {
                                               boolean baubleManaged, List<String> baubleBlockedNamespaces,
                                               List<String> baubleBlockedCuriosSlots,
                                               List<String> baubleImportBlockedNamespaces,
-                                              List<String> baubleImportBlockedCuriosSlots) {
+                                              List<String> baubleImportBlockedCuriosSlots, boolean whitelistEnforced) {
         serverAllowClientImport = allowImport;
         serverAllowBaubles = allowBaubles;
         serverAllowAdvancements = allowAdvancements;
@@ -501,7 +523,9 @@ public final class MaidConfigManager {
         baubleImportBlacklist = List.copyOf(baubleBlacklist == null ? List.of() : baubleBlacklist);
         serverBaubleWhitelist = List.copyOf(baubleWhitelist == null ? List.of() : baubleWhitelist);
         baubleConfigManaged = baubleManaged;
-        baubleWhitelistEnforced = baubleManaged && !serverBaubleWhitelist.isEmpty();
+        // 直接采用服务端判定：服务端在 bauble_import.json 解析失败时会「失败关闭」并置 true，
+        // 客户端此前按「managed && 白名单非空」自行重算，导致与服务端相反（UI 显示可放行、实际全拒绝）。
+        baubleWhitelistEnforced = whitelistEnforced;
         IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
         if (net != null) {
             net.sendClientConsent(clientAllowServerExport);
@@ -600,7 +624,9 @@ public final class MaidConfigManager {
         serverCarryCurios = parse(props, KEY_CARRY_CURIOS, false);
         serverBaubleBlockedNamespaces = parseSanitizedList(props, KEY_BAUBLE_BLOCKED_NAMESPACES);
         serverBaubleBlockedCuriosSlots = parseSanitizedList(props, KEY_BAUBLE_BLOCKED_CURIOS_SLOTS);
-        serverBaubleBlockedList = parseIdList(props, KEY_BAUBLE_BLOCKED_LIST);
+        // 与另外两张清单口径对齐：统一走 parseSanitizedList（trim + 去重 + 小写），
+        // 否则手写配置里带大写字母的条目永远命中不了，黑名单方向属于"失败开放"。
+        serverBaubleBlockedList = parseSanitizedList(props, KEY_BAUBLE_BLOCKED_LIST);
     }
 
     private static void loadClient() {
@@ -707,7 +733,9 @@ public final class MaidConfigManager {
             if (value == null) {
                 continue;
             }
-            value = value.trim();
+            // 与 properties 侧一致：统一小写，避免整合包作者写成首字母大写时静默失效（失败开放）。
+            // 中文显示名不含大小写，转小写无副作用。
+            value = value.trim().toLowerCase(java.util.Locale.ROOT);
             if (!value.isEmpty() && !out.contains(value)) {
                 out.add(value);
             }

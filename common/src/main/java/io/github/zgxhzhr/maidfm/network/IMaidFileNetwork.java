@@ -34,6 +34,18 @@ public interface IMaidFileNetwork {
     /** 上报本客户端对「服务端统一导出」的同意状态（默认 false，服务端按 UUID 记录） */
     void sendClientConsent(boolean allow);
 
+    /**
+     * 分片上传：把可能超过 1.20.x 单包上限（32767 字节）的负载切成小片逐片发送，
+     * 由服务端 {@link ChunkedUploadAssembler} 重组。
+     *
+     * <p>调用方无需关心分片：负载 ≤ {@link ChunkedUploadAssembler#CHUNK_BYTES} 时也走这里，
+     * 只是只发一片。
+     *
+     * @param kind    负载类型（{@link ChunkedUploadAssembler#KIND_IMPORT_BATCH} 等）
+     * @param payload 完整负载字节
+     */
+    void sendChunkedUpload(String kind, byte[] payload);
+
     /** 请求服务端修改服务端配置（服务端校验 OP 权限后写文件并广播同步） */
     void sendSetServerConfig(String key, boolean value);
 
@@ -87,7 +99,8 @@ public interface IMaidFileNetwork {
     }
 
     /** 备份管理：某主人（按主人 UUID 分组）的全部女仆备份 */
-    record BackupOwner(String ownerUuid, List<BackupMaid> maids) {
+    /** @param ownerName 服务端 usernamecache.json 里反查到的玩家名，可为 null（客户端再兜底解析） */
+    record BackupOwner(String ownerUuid, String ownerName, List<BackupMaid> maids) {
     }
 
     /**

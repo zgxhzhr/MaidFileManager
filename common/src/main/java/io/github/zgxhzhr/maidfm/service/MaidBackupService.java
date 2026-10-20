@@ -98,6 +98,7 @@ public final class MaidBackupService {
 
     /** 扫描指定备份根目录：返回「主人 → 女仆 → 备份文件」三层结构（不涉及权限） */
     private static List<IMaidFileNetwork.BackupOwner> scanRoot(Path root) {
+        ensureUsernameCacheLoaded();
         List<IMaidFileNetwork.BackupOwner> owners = new ArrayList<>();
         if (root == null || !Files.isDirectory(root)) {
             return owners;
@@ -131,7 +132,7 @@ public final class MaidBackupService {
                 }
             }
             maids.sort(Comparator.comparing(IMaidFileNetwork.BackupMaid::maidUuid));
-            owners.add(new IMaidFileNetwork.BackupOwner(ownerUuid, maids));
+            owners.add(new IMaidFileNetwork.BackupOwner(ownerUuid, resolveOwnerName(ownerUuid), maids));
         }
         owners.sort(Comparator.comparing(IMaidFileNetwork.BackupOwner::ownerUuid));
         return owners;
@@ -218,11 +219,14 @@ public final class MaidBackupService {
         }
         CuriosBaubleFilter.batch().add(backupCurios);
         data.setData(exportTag);
-        // 备份 NBT 已由 TLM 写入 DataVersion，缺失时退回当前版本
-        int dataVersion = tag.contains("DataVersion")
+        // TLM 备份 .dat 里的 DataVersion 是 Mojang 版本号（1.20.1=3465、1.21.1=3955），
+        // 而 .maid 的内部 data_version 是 NbtVersion 编码（1200100/1210100）。
+        // 直接透传会让同版本备份被判成跨版本（饰品属性全新化、YsmModelName 被删、模型回默认），
+        // 必须做一次正向映射。缺失 DataVersion 时按当前运行时版本。
+        int mojangDataVersion = tag.contains("DataVersion")
                 ? tag.getInt("DataVersion")
                 : SharedConstants.getCurrentVersion().getDataVersion().getVersion();
-        data.setDataVersion(dataVersion);
+        data.setDataVersion(io.github.zgxhzhr.maidfm.data.NbtVersion.fromMojangDataVersion(mojangDataVersion));
         data.setSourceMcVersion(SharedConstants.getCurrentVersion().getName());
         data.setSourceTlmVersion("");
         data.setExportedAt(System.currentTimeMillis());
@@ -326,6 +330,58 @@ public final class MaidBackupService {
             return true;
         } catch (IllegalArgumentException e) {
             return false;
+        }
+    }
+
+    /**
+     * 从游戏目录的 {@code usernamecache.json}（Minecraft 本体维护的「UUID → 最后已知用户名」）
+     * 反查玩家名。备份目录本身只以 UUID 命名，不读这张表就只能显示 UUID 前缀。
+     *
+     * <p>服务端与单人主机都有这份文件；客户端侧另有一套 PlayerNameResolver 兜底。
+     */
+    private static String resolveOwnerName(String uuid) {
+        try {
+            if (uuid == null || uuid.isEmpty()) {
+                return null;
+            }
+            String cached = USERNAME_CACHE.get(uuid.toLowerCase(java.util.Locale.ROOT));
+            return cached != null && !cached.isEmpty() ? cached : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /** usernamecache.json 的懒加载缓存（UUID 小写 → 玩家名） */
+    private static final java.util.Map<String, String> USERNAME_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static volatile boolean usernameCacheLoaded;
+
+    /** 载入 usernamecache.json（失败静默：备份列表退回显示 UUID 前缀，不影响其它功能） */
+    private static void ensureUsernameCacheLoaded() {
+        if (usernameCacheLoaded) {
+            return;
+        }
+        usernameCacheLoaded = true;
+        try {
+            java.nio.file.Path file = io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get()
+                    .getGameDir().resolve(io.github.zgxhzhr.maidfm.Constants.USERNAME_CACHE_FILE);
+            if (!java.nio.file.Files.isRegularFile(file)) {
+                Constants.LOG.info("[maid_file_manager] 未找到 {}，备份列表将显示 UUID 前缀", file);
+                return;
+            }
+            String json = java.nio.file.Files.readString(file);
+            com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(json);
+            if (!root.isJsonObject()) {
+                return;
+            }
+            for (java.util.Map.Entry<String, com.google.gson.JsonElement> e : root.getAsJsonObject().entrySet()) {
+                if (e.getValue() != null && e.getValue().isJsonPrimitive()) {
+                    USERNAME_CACHE.put(e.getKey().toLowerCase(java.util.Locale.ROOT), e.getValue().getAsString());
+                }
+            }
+            Constants.LOG.info("[maid_file_manager] 已从 {} 载入 {} 条玩家名用于备份列表",
+                    io.github.zgxhzhr.maidfm.Constants.USERNAME_CACHE_FILE, USERNAME_CACHE.size());
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 读取 usernamecache.json 失败: {}", t.toString());
         }
     }
 }

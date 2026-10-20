@@ -55,7 +55,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     Constants.LOG.warn("[maid_file_manager] C2S 包 {} 被丢弃：ctx.getSender() 返回 null", id);
                     return;
                 }
-                Constants.LOG.debug("[maid_file_manager] S<-C RECV: id={}, player={}", id,
+                // 【诊断期】临时提到 INFO：用于确认服务端到底有没有收到 C2S 包。
+                // 排查完（包通道/握手问题）后应改回 debug。
+                Constants.LOG.info("[maid_file_manager] S<-C RECV: id={}, player={}", id,
                         player.getName().getString());
                 FriendlyByteBuf data = packet.data;
                 if (MaidFilePackets.ID_REQUEST_MAID_LIST.equals(id)) {
@@ -71,6 +73,8 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     handleImportFile(player, data);
                 } else if (MaidFilePackets.ID_IMPORT_BATCH.equals(id)) {
                     handleImportBatch(player, data);
+                } else if (MaidFilePackets.ID_CHUNKED_UPLOAD.equals(id)) {
+                    handleChunkedUpload(player, data);
                 } else if (MaidFilePackets.ID_CLIENT_CONSENT.equals(id)) {
                     boolean allow = data.readBoolean();
                     io.github.zgxhzhr.maidfm.config.MaidConfigManager.handleClientConsent(player.getUUID(), allow);
@@ -182,7 +186,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                         // isAlive=false，TLM 不会清理既有记录，残留登记会被双胞胎
                         // 拦截误判为女仆仍存活，导致"导出并移除后再导入"被拒。
                         MaidTransferService.unregisterMaidWorldData(e);
+                        java.util.UUID maidfmPhotoUuid = e.getUUID();
                         e.discard();
+                        try { io.github.zgxhzhr.maidfm.data.MaidPhotoStore.delete(io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getGameDir(), maidfmPhotoUuid); } catch (Throwable ignored) { }
                         removedCount++;
                     }
                 }
@@ -261,7 +267,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
             sendFeedback(player, Component.translatable("maid_file_manager.server.serialize_failed"));
             return false;
         }
-        String reject = MaidFilePackets.checkMaidDataBatchForWire(blobs, MaidFilePackets.MAX_EXPORT_IDS);
+        // 允许分片兜底：整包体积超限时不再拒绝，改走 ID_CHUNKED_DOWNLOAD 分片下发。
+        // 1.20.x 的 32767 单包上限对 S2C 同样生效，带头像的女仆导出必然超限。
+        String reject = MaidFilePackets.checkMaidDataBatchForWire(blobs, MaidFilePackets.MAX_EXPORT_IDS, true);
         if (reject != null) {
             Constants.LOG.warn("[maid_file_manager] 导出结果预检被拒绝: player={}, count={}, reason={}",
                     player.getName().getString(), blobs.size(), reject);
@@ -270,7 +278,14 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         }
         FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
         MaidFilePackets.writeMaidDataBlobs(buf, blobs);
-        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_EXPORT_BATCH_RESULT, buf);
+        byte[] encoded = new byte[buf.readableBytes()];
+        buf.getBytes(0, encoded);
+        if (encoded.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
+            sendChunkedDownload(player, io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH, encoded);
+            // 分片链路已修复（客户端改为 deserializeMaidFileData(blob)，不再误读 VarInt）
+        } else {
+            ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_EXPORT_BATCH_RESULT, buf);
+        }
         return true;
     }
 
@@ -478,6 +493,8 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleImportBlockedNamespaces());
         MaidFilePackets.writeStringList(buf,
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleImportBlockedCuriosSlots());
+        // 白名单强制状态由服务端判定（含「整合包配置解析失败 → 失败关闭」），必须显式下发
+        buf.writeBoolean(io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleWhitelistEnforced());
         ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_SERVER_CONFIG_SYNC, buf);
     }
 
@@ -489,5 +506,53 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
             sendServerConfig(p);
         }
+    }
+
+    /**
+     * 分片上传：读一片 → 交给组装器 → 收齐后交给四端共用的分发器。
+     * 1.20.x 单包上限 32767 字节，大负载（带照片的档案 / 带头像的 .maid）走这条路。
+     */
+    private static void handleChunkedUpload(ServerPlayer player, FriendlyByteBuf data) {
+        try {
+            String kind = data.readUtf(MaidFilePackets.MAX_TEXT_LEN);
+            int sessionId = data.readVarInt();
+            int total = data.readVarInt();
+            int index = data.readVarInt();
+            byte[] chunk = data.readByteArray(io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES);
+            byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
+                    player.getUUID(), kind, sessionId, total, index, chunk);
+            if (full != null) {
+                io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.dispatch(player, kind, full);
+            }
+        } catch (Throwable e) {
+            Constants.LOG.warn("[maid_file_manager] 分片上传处理失败: {}", e.toString());
+        }
+    }
+
+    /**
+     * 分片下发（服务端 → 客户端）。1.20.x 的 32767 字节上限对 S2C 同样生效，
+     * 导出结果（带照片的 .maid）必然超限，故与 C2S 方向对称地切片发送。
+     */
+    private static void sendChunkedDownload(ServerPlayer player, String kind, byte[] payload) {
+        if (payload == null || payload.length == 0) {
+            return;
+        }
+        int chunkBytes = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES;
+        int total = (payload.length + chunkBytes - 1) / chunkBytes;
+        int sessionId = java.util.concurrent.ThreadLocalRandom.current().nextInt();
+        for (int i = 0; i < total; i++) {
+            int off = i * chunkBytes;
+            int len = Math.min(chunkBytes, payload.length - off);
+            byte[] chunk = java.util.Arrays.copyOfRange(payload, off, off + len);
+            FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+            buf.writeUtf(kind == null ? "" : kind, MaidFilePackets.MAX_TEXT_LEN);
+            buf.writeVarInt(sessionId);
+            buf.writeVarInt(total);
+            buf.writeVarInt(i);
+            buf.writeByteArray(chunk);
+            ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_CHUNKED_DOWNLOAD, buf);
+        }
+        Constants.LOG.info("[maid_file_manager] 导出结果分片下发: player={} bytes={} chunks={}",
+                player.getName().getString(), payload.length, total);
     }
 }

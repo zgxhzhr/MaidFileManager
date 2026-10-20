@@ -131,6 +131,8 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
 
     private Component feedback = Component.empty();
     private int feedbackColor = SUBTEXT_COLOR;
+    /** 反馈自动过期时间戳（毫秒）；0 表示不设过期。此前档案页反馈会一直挂着不消失。 */
+    private long feedbackUntil;
 
     private ResourceLocation photoRl;
     private DynamicTexture photoTexture;
@@ -229,6 +231,11 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
     public void removed() {
         // 界面背景音乐（试验性功能）：离开界面时释放，全部界面关闭后延迟停止
         UiMusicManager.leave(this);
+        // 界面被 setScreen 切走时 onClose 不会被调用：若不在这里还原网络回调持有者，
+        // 会残留指向已关闭界面的引用，后续服务端回调打到死界面。
+        if (IMaidFileNetwork.ClientHandlerHolder.get() == this) {
+            IMaidFileNetwork.ClientHandlerHolder.set(prevHandler);
+        }
         super.removed();
     }
     @Override
@@ -425,6 +432,7 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
     }
 
     private void choosePhoto(String fileName) {
+
         Path dir = MaidPhotoUtil.photosDir(this.minecraft.gameDirectory.toPath());
         Path file = dir.resolve(fileName);
         try {
@@ -460,6 +468,10 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
     }
 
     private void clearPhoto() {
+        if (io.github.zgxhzhr.maidfm.network.MaidFilePackets.isLegacyPayloadLimit()) {
+            setFeedback(Component.translatable("gui.maid_file_manager.profile.photo_manual_only"), ERROR_COLOR);
+            return;
+        }
         profile.setPhoto(null);
         releasePhotoTexture();
         setFeedback(Component.translatable("gui.maid_file_manager.profile.photo_cleared"), SUBTEXT_COLOR);
@@ -691,7 +703,8 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
     private void renderReadonly(GuiGraphics graphics) {
         String faction = view != null && view.ownerName() != null ? view.ownerName() : "-";
         // 姓名行：设有命名牌（自定义名称）时显示姓名，否则回退显示模型名
-        String modelName = view != null && view.displayName() != null ? view.displayName() : "-";
+        String modelName = view != null && view.displayName() != null
+                ? ModelNames.display(view.displayName()) : "-";
         String custom = view != null ? view.customName() : null;
         String shownName = custom != null && !custom.isBlank() ? custom : modelName;
         graphics.drawString(this.font,
@@ -784,6 +797,11 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
     }
 
     private void renderFeedback(GuiGraphics graphics) {
+        // 自动过期：超过 6 秒的提示自行消失，不必关窗才清掉
+        if (this.feedbackUntil > 0L && System.currentTimeMillis() > this.feedbackUntil) {
+            this.feedback = Component.empty();
+            this.feedbackUntil = 0L;
+        }
         if (feedback.getString().isEmpty()) {
             return;
         }
@@ -923,6 +941,7 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
     private void setFeedback(Component message, int color) {
         this.feedback = message == null ? Component.empty() : message;
         this.feedbackColor = color;
+        this.feedbackUntil = System.currentTimeMillis() + 6000L;
     }
 
     private String tr(String key) {
