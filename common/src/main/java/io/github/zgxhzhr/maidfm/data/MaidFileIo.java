@@ -412,7 +412,13 @@ public final class MaidFileIo {
         if (tsStart < 0) {
             return 0L;
         }
-        String timestampPart = name.substring(tsStart + 1, dashIdx + 7);
+        // 长度校验必须在 substring 之前：玩家可自由重命名文件（如 名字_20260820-15.maid），
+        // 越界会抛 StringIndexOutOfBoundsException —— 而本方法在导入列表的渲染路径里每帧调用。
+        int tsEnd = dashIdx + 7;
+        if (tsEnd > name.length()) {
+            return 0L;
+        }
+        String timestampPart = name.substring(tsStart + 1, tsEnd);
         try {
             return LocalDateTime.parse(timestampPart, TIMESTAMP_FORMAT)
                     .atZone(java.time.ZoneId.systemDefault())
