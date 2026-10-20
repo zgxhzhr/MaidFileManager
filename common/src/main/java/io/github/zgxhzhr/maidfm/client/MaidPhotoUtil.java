@@ -102,6 +102,16 @@ public final class MaidPhotoUtil {
         if (isSourceTooLarge(file)) {
             throw new IOException("图片原图超过上限（4 MiB）: " + file.getFileName());
         }
+        // 先只读图片头拿宽高，不分配像素缓冲：ImageIO.read 会按 PNG 声明的宽高直接分配，
+        // 构造出来的「1 字节文件 + 巨大宽高」可瞬间吃掉数 GB 堆内存。
+        int[] dims = readImageDimensions(file);
+        if (dims != null) {
+            long pixels = (long) dims[0] * (long) dims[1];
+            if (dims[0] > MAX_SOURCE_SIDE || dims[1] > MAX_SOURCE_SIDE || pixels > MAX_SOURCE_PIXELS) {
+                throw new IOException("图片尺寸过大（" + dims[0] + "×" + dims[1]
+                        + "，上限 " + MAX_SOURCE_SIDE + "×" + MAX_SOURCE_SIDE + "）: " + file.getFileName());
+            }
+        }
         BufferedImage src = ImageIO.read(file.toFile());
         if (src == null) {
             throw new IOException("无法解析图片文件: " + file.getFileName());
@@ -152,5 +162,37 @@ public final class MaidPhotoUtil {
             throw new IOException("PNG 编码器不可用");
         }
         return out.toByteArray();
+    }
+
+    /** 源图单边像素上限（防构造超大宽高把内存打爆） */
+    private static final int MAX_SOURCE_SIDE = 8192;
+
+    /** 源图总像素上限（约 6700 万，足够 8K 图片） */
+    private static final long MAX_SOURCE_PIXELS = 67_000_000L;
+
+    /**
+     * 只读取图片头部的宽高，不分配像素缓冲。
+     *
+     * @return {@code [width, height]}；无法识别时返回 {@code null}（交给后续 ImageIO.read 报错）
+     */
+    private static int[] readImageDimensions(java.nio.file.Path file) {
+        try (javax.imageio.stream.ImageInputStream in = javax.imageio.ImageIO.createImageInputStream(file.toFile())) {
+            if (in == null) {
+                return null;
+            }
+            java.util.Iterator<javax.imageio.ImageReader> readers = javax.imageio.ImageIO.getImageReaders(in);
+            if (!readers.hasNext()) {
+                return null;
+            }
+            javax.imageio.ImageReader reader = readers.next();
+            try {
+                reader.setInput(in);
+                return new int[]{reader.getWidth(0), reader.getHeight(0)};
+            } finally {
+                reader.dispose();
+            }
+        } catch (Throwable t) {
+            return null;
+        }
     }
 }

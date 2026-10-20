@@ -75,6 +75,12 @@ public class MultiLineEditBox extends EditBox {
     public void setEditable(boolean editable) {
         this.editable = editable;
         this.active = editable;
+        // 转为只读时把光标与视口归零：调用方通常是 setValue() → setEditable(false)，
+        // 那时 setValue 里还认为 editable=true，会把光标落在文末，导致只读预览一打开就显示结尾。
+        if (!editable) {
+            this.cursor = 0;
+            this.scrollLine = 0;
+        }
     }
 
     public void setHint(Component hint) {

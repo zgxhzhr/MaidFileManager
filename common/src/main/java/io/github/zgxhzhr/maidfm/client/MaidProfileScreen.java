@@ -156,6 +156,9 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
     private int pickerCancelX;
     private int pickerCancelY;
     private int pickerCancelW;
+    private int pickerRefreshX;
+    private int pickerRefreshY;
+    private int pickerRefreshW;
 
     /** 已解析的饰品图标（客户端渲染用） */
     private final List<ItemStack> baubleIcons = new ArrayList<>();
@@ -410,11 +413,16 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
 
     // ===== 照片 =====
 
-    private void openPicker() {
+    /** 重新扫描 maid_photos 目录（供「刷新」按钮与首次打开共用） */
+    private void refreshPhotoList() {
         photoFiles.clear();
         Path dir = MaidPhotoUtil.photosDir(this.minecraft.gameDirectory.toPath());
         photoFiles.addAll(MaidPhotoUtil.listPhotoFiles(dir));
         pickerScroll = 0;
+    }
+
+    private void openPicker() {
+        refreshPhotoList();
         pickerOpen = true;
         layoutPicker();
     }
@@ -429,6 +437,14 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         pickerOpenBtnW = 108;
         pickerCancelW = 64;
         pickerCancelX = pickerX + pickerW - 8 - pickerCancelW;
+        // 「刷新」按钮：夹在「打开目录」与「取消」之间，用于重新扫描 maid_photos 目录
+        pickerRefreshW = 56;
+        pickerRefreshX = pickerCancelX - 8 - pickerRefreshW;
+        if (pickerRefreshX < pickerOpenBtnX + pickerOpenBtnW + 6) {
+            // 面板太窄时把刷新按钮压到「打开目录」右侧的最小可用位置
+            pickerRefreshX = pickerOpenBtnX + pickerOpenBtnW + 6;
+        }
+        pickerRefreshY = pickerOpenBtnY;
         pickerCancelY = pickerOpenBtnY;
     }
 
@@ -469,10 +485,8 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
     }
 
     private void clearPhoto() {
-        if (io.github.zgxhzhr.maidfm.network.MaidFilePackets.isLegacyPayloadLimit()) {
-            setFeedback(Component.translatable("gui.maid_file_manager.profile.photo_manual_only"), ERROR_COLOR);
-            return;
-        }
+        // 不再按版本拦截：清空照片会走 save_profile 的分片通道（超 24 KiB 自动分片），
+        // 1.20.x 也能正常保存。此前这里挡着，导致 1.20.x 玩家清不掉头像。
         profile.setPhoto(null);
         releasePhotoTexture();
         setFeedback(Component.translatable("gui.maid_file_manager.profile.photo_cleared"), SUBTEXT_COLOR);
@@ -557,6 +571,13 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         }
         if (inRect(mouseX, mouseY, pickerCancelX, pickerCancelY, pickerCancelW, PICKER_BTN_H)) {
             pickerOpen = false;
+            return true;
+        }
+        if (inRect(mouseX, mouseY, pickerRefreshX, pickerRefreshY, pickerRefreshW, PICKER_BTN_H)) {
+            // 刷新：重新扫描目录，不关闭面板（玩家可在界面开着时往目录里丢图）
+            refreshPhotoList();
+            setFeedback(Component.translatable("gui.maid_file_manager.profile.picker_refreshed",
+                    photoFiles.size()), SUBTEXT_COLOR);
             return true;
         }
         if (inRect(mouseX, mouseY, pickerOpenBtnX, pickerOpenBtnY, pickerOpenBtnW, PICKER_BTN_H)) {
@@ -862,6 +883,9 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         drawFlatButton(graphics, pickerOpenBtnX, pickerOpenBtnY, pickerOpenBtnW, PICKER_BTN_H,
                 Component.translatable("gui.maid_file_manager.profile.picker_open_dir"),
                 inRect(mouseX, mouseY, pickerOpenBtnX, pickerOpenBtnY, pickerOpenBtnW, PICKER_BTN_H));
+        drawFlatButton(graphics, pickerRefreshX, pickerRefreshY, pickerRefreshW, PICKER_BTN_H,
+                Component.translatable("gui.maid_file_manager.profile.picker_refresh"),
+                inRect(mouseX, mouseY, pickerRefreshX, pickerRefreshY, pickerRefreshW, PICKER_BTN_H));
         drawFlatButton(graphics, pickerCancelX, pickerCancelY, pickerCancelW, PICKER_BTN_H,
                 Component.translatable("gui.maid_file_manager.profile.back"),
                 inRect(mouseX, mouseY, pickerCancelX, pickerCancelY, pickerCancelW, PICKER_BTN_H));

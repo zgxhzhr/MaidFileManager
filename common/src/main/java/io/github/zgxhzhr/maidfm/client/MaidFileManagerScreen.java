@@ -1494,7 +1494,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
 
         void refresh() {
-            clearEntries();
+clearEntries();
+// 父类 clearEntries() 不重置滚动量：残留 scrollAmount 会让列表白屏、hitRow 算错行
+setScrollAmount(0);
             if (serverExportMode) {
                 // 统一导出浏览：玩家标题行（点击展开/收起）+ 展开玩家的女仆行
                 for (IMaidFileNetwork.PlayerMaidGroup g : serverGroups) {
@@ -1835,7 +1837,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
 
         void refresh() {
-            clearEntries();
+clearEntries();
+// 父类 clearEntries() 不重置滚动量：残留 scrollAmount 会让列表白屏、hitRow 算错行
+setScrollAmount(0);
             for (String fileName : fileList) {
                 addEntry(new Entry(fileName));
             }
@@ -2241,4 +2245,5 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             if (this.minecraft != null) this.minecraft.setScreen(parent);
         }
     }
+
 }
