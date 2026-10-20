@@ -69,6 +69,15 @@ public final class MaidFilePackets {
     public static final ResourceLocation ID_CHUNKED_DOWNLOAD = id("chunked_download");
     /** C2S：客户端已把导出结果写盘的回执（true=写入成功）。用于「导出并移除」延迟删除实体。 */
     public static final ResourceLocation ID_EXPORT_WRITE_ACK = id("export_write_ack");
+    /**
+     * C2S：客户端连上后上报自身协议版本。
+     *
+     * <p>Forge / NeoForge 由 {@code NetworkRegistry.newSimpleChannel} 的三个 predicate 自动校验，
+     * Fabric 没有等价机制，因此补一个显式上报：服务端收到后与 {@link #PROTOCOL_VERSION} 比对，
+     * 不一致就断开并给出可读原因（避免 1.6.3 与 1.6.4 混连时出现难排查的字段错位）。
+     * 注意：这只影响联机握手，`.maid` 文件格式与版本号无关，跨版本仍可互导。
+     */
+    public static final ResourceLocation ID_PROTOCOL_CHECK = id("protocol_check");
 
     /** OP 统一导出：请求服务端收集所有在线玩家（以各玩家为中心）的女仆列表 */
     public static final ResourceLocation ID_REQUEST_SERVER_EXPORT_LIST = id("request_server_export_list");
