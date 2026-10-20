@@ -348,8 +348,11 @@ public class MaidFileModFabric implements ModInitializer {
         // 玩家登录 → 仅向该玩家单播服务端配置（不再全服广播）；退出 → 清理同意状态
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 sendServerConfig(handler.player));
-        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
-                MaidConfigManager.removeClientConsent(handler.player.getUUID()));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            MaidConfigManager.removeClientConsent(handler.player.getUUID());
+            // 清掉该玩家未完成的分片会话：否则中途断线的分片累积器会一直留在内存里
+            io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.onPlayerDisconnect(handler.player.getUUID());
+        });
 
         // /maidfile exportall 命令（仅 OP，权限校验在命令类内）
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
