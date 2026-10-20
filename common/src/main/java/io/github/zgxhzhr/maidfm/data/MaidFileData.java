@@ -129,6 +129,12 @@ public class MaidFileData {
         data.formatVersion = root.contains("format_version", Tag.TAG_INT)
                 ? root.getInt("format_version")
                 : Constants.MAID_FILE_FORMAT_VERSION;
+        if (data.formatVersion > Constants.MAID_FILE_FORMAT_VERSION) {
+            // 来自更新版本的文件：按当前版本尽力解析，但必须明示，避免未来 v8 被当 v7 静默读坏数据
+            Constants.LOG.warn("[maid_file_manager] .maid 的 format_version={} 高于本模组支持的 {}，"
+                            + "将按当前版本尽力解析，部分字段可能被忽略",
+                    data.formatVersion, Constants.MAID_FILE_FORMAT_VERSION);
+        }
         data.exportedAt = root.getLong("exported_at");
         data.sourceMcVersion = root.getString("source_mc_version");
         data.sourceTlmVersion = root.getString("source_tlm_version");

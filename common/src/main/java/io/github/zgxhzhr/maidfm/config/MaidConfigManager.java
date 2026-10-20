@@ -469,6 +469,10 @@ public final class MaidConfigManager {
      * 中文名匹配为整合包作者提供更友好的书写方式）。
      */
     public static boolean isBaubleWhitelistPass(String id, String displayName) {
+        // 清单装载时已 toLowerCase（parseSanitizedList），比较前必须同样归一化，
+        // 否则 handwrite 配置里带大写的条目、以及带大写的显示名永不命中（fail-open 反向）。
+        id = id == null ? null : id.trim().toLowerCase(java.util.Locale.ROOT);
+        displayName = displayName == null ? null : displayName.trim().toLowerCase(java.util.Locale.ROOT);
         if (!baubleWhitelistEnforced) {
             return true;
         }
@@ -614,6 +618,13 @@ public final class MaidConfigManager {
             props.load(reader);
         } catch (IOException ignored) {
             // 文件不存在时使用默认值
+        } catch (IllegalArgumentException badEscape) {
+            // Properties.load 对手写非法转义（例如反斜杠 u 后面没有 4 位十六进制）抛 IllegalArgumentException（不是 IOException）。
+            // 此前只 catch IOException，异常会一路冒到 init() 的兜底，导致整份服务端配置回退默认值——
+            // 其中含"禁止携带饰品"等管控项，属 fail-open。改为就地记录并保留已成功解析的部分。
+            Constants.LOG.error("[maid_file_manager] 服务端配置存在非法转义，已忽略该文件并保留内置默认值: {}",
+                    badEscape.toString());
+            props = new Properties();
         }
         serverAllowClientImport = parse(props, KEY_ALLOW_CLIENT_IMPORT, true);
         serverAllowBaubles = parse(props, KEY_ALLOW_BAUBLES, true);

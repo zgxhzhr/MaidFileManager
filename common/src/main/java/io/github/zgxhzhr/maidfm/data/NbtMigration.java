@@ -92,9 +92,14 @@ public final class NbtMigration {
         boolean versionsKnown = sourceVersion != NbtVersion.UNKNOWN && targetVersion != NbtVersion.UNKNOWN;
         if (versionsKnown && sourceVersion != targetVersion) {
             renameModelId(out, sourceVersion, targetVersion);
-            // YSM 模型名反序列化依赖 RegistryAccess，跨版本直接清空可选项
-            if (out.contains("YsmModelName", Tag.TAG_STRING)) {
-                out.remove("YsmModelName");
+            // YSM 相关键必须**整组**处理：只删 YsmModelName 会留下 IsYsmModel/YsmModelId，
+            // 目标端据此走 YSM 分支但名字为空，比全删或全留都糟。跨版本统一整组清空，
+            // 让目标端退回按 model_id 加载（YsmRoamingVars 属漫游行为数据，与此无关，保留）。
+            for (String ysmKey : new String[]{
+                    "IsYsmModel", "YsmModelId", "YsmModelName", "YsmModelTexture"}) {
+                if (out.contains(ysmKey)) {
+                    out.remove(ysmKey);
+                }
             }
             Constants.LOG.info("[maid_file_manager] NBT 跨版本迁移完成: {} -> {}", sourceVersion, targetVersion);
         }

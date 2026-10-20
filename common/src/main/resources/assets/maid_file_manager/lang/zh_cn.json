@@ -141,6 +141,8 @@
     "gui.maid_file_manager.profile.picker_open_dir": "打开图片文件夹",
     "gui.maid_file_manager.profile.picker_open_dir_failed": "打开图片文件夹失败，请手动打开 maid_file/photos/",
     "gui.maid_file_manager.profile.photo_selected": "已选择照片：%s",
+    "gui.maid_file_manager.profile.picker_refresh": "刷新",
+    "gui.maid_file_manager.profile.picker_refreshed": "已刷新，共 {0} 张图片",
     "gui.maid_file_manager.profile.photo_cleared": "已清除照片",
     "gui.maid_file_manager.profile.photo_source_too_large": "图片过大（超过 4 MB），请换一张更小的图片",
     "gui.maid_file_manager.profile.photo_too_large": "照片缩放编码后仍超过上限（128 KiB），请换一张更简单的图片",
