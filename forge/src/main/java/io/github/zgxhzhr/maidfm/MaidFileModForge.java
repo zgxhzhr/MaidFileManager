@@ -74,6 +74,8 @@ public class MaidFileModForge {
     private void onPlayerLoggedOut(net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer sp) {
             io.github.zgxhzhr.maidfm.config.MaidConfigManager.removeClientConsent(sp.getUUID());
+            // 清掉该玩家未完成的分片会话：否则中途断线的分片累积器会一直留在内存里
+            io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.onPlayerDisconnect(sp.getUUID());
         }
     }
 }
