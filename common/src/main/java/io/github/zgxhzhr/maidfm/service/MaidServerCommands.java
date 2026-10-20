@@ -48,30 +48,11 @@ public final class MaidServerCommands {
      */
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(LiteralArgumentBuilder.<CommandSourceStack>literal("maidfile")
-                .then(LiteralArgumentBuilder.<CommandSourceStack>literal("gui")
-                        .executes(context -> openClientGui(context.getSource())))
                 .then(LiteralArgumentBuilder.<CommandSourceStack>literal("exportall")
                         .requires(source -> source.hasPermission(2))
                         .executes(context -> executeExportAll(context.getSource()))));
     }
 
-    /** /maidfile gui：反射调用各端客户端入口（common 层不能静态引用客户端类） */
-    private static int openClientGui(CommandSourceStack source) {
-        for (String className : new String[]{
-                "io.github.zgxhzhr.maidfm.ClientRegistration",       // NeoForge
-                "io.github.zgxhzhr.maidfm.MaidFileModForgeClient",   // Forge
-                "io.github.zgxhzhr.maidfm.MaidFileModFabricClient"   // Fabric
-        }) {
-            try {
-                Class.forName(className).getMethod("openGui").invoke(null);
-                return 1;
-            } catch (Throwable ignored) {
-                // 客户端不存在（专用服务器）或该类不是本端入口：继续试下一个
-            }
-        }
-        source.sendFailure(Component.translatable("maid_file_manager.command.client_only"));
-        return 0;
-    }
 
     private static int executeExportAll(CommandSourceStack source) {
         // 双保险：即使命令树的 requires 因任何原因失效，执行体自身也拒绝非 OP。
