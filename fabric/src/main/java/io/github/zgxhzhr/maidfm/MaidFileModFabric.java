@@ -77,19 +77,11 @@ public class MaidFileModFabric implements ModInitializer {
             }
             int removedCount = 0;
             if (removeAfter) {
-                for (Integer entityId : exportedIds) {
-                    Entity e = player.level().getEntity(entityId);
-                    if (e != null) {
-                        // 必须在 discard 前清除 MaidWorldData 存活登记：discard 时
-                        // isAlive=false，TLM 不会清理既有记录，残留登记会被双胞胎
-                        // 拦截误判为女仆仍存活，导致"导出并移除后再导入"被拒。
-                        MaidTransferService.unregisterMaidWorldData(e);
-                        java.util.UUID maidfmPhotoUuid = e.getUUID();
-                        e.discard();
-                        try { io.github.zgxhzhr.maidfm.data.MaidPhotoStore.delete(io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getGameDir(), maidfmPhotoUuid); } catch (Throwable ignored) { }
-                        removedCount++;
-                    }
-                }
+                // 【P2-10】不再立刻 discard：服务端无法确认客户端写盘成功。
+                // 改为登记待删，等客户端回执 ID_EXPORT_WRITE_ACK 再删；不回执则永不删除。
+                PENDING_REMOVAL.put(player.getUUID(), new ArrayList<>(exportedIds));
+                Constants.LOG.info("[maid_file_manager] 导出并移除：登记待删 {} 个实体，等待客户端写盘回执 player={}",
+                        exportedIds.size(), player.getName().getString());
             }
             Constants.LOG.debug("[maid_file_manager] EXPORT_BATCH: player={} sent={} removed={}",
                     player.getName().getString(), results.size(), removedCount);
@@ -363,7 +355,7 @@ public class MaidFileModFabric implements ModInitializer {
             sendFeedback(player, Component.translatable("maid_file_manager.server.serialize_failed"));
             return false;
         }
-        String reject = MaidFilePackets.checkMaidDataBatchForWire(blobs, MaidFilePackets.MAX_EXPORT_IDS);
+        String reject = MaidFilePackets.checkMaidDataBatchForWire(blobs, MaidFilePackets.MAX_EXPORT_IDS, true);
         if (reject != null) {
             Constants.LOG.warn("[maid_file_manager] 导出结果预检被拒绝: player={}, count={}, reason={}",
                     player.getName().getString(), blobs.size(), reject);
@@ -372,7 +364,13 @@ public class MaidFileModFabric implements ModInitializer {
         }
         FriendlyByteBuf out = PacketByteBufs.create();
         MaidFilePackets.writeMaidDataBlobs(out, blobs);
-        ServerPlayNetworking.send(player, MaidFilePackets.ID_EXPORT_BATCH_RESULT, out);
+        byte[] encoded = new byte[out.readableBytes()];
+        out.getBytes(0, encoded);
+        if (encoded.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
+            sendChunkedDownload(player, io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH, encoded);
+        } else {
+            ServerPlayNetworking.send(player, MaidFilePackets.ID_EXPORT_BATCH_RESULT, out);
+        }
         return true;
     }
 
@@ -469,5 +467,71 @@ public class MaidFileModFabric implements ModInitializer {
     @FunctionalInterface
     private interface C2SHandler {
         void handle(MinecraftServer server, ServerPlayer player, FriendlyByteBuf buf);
+    }
+
+    /**
+     * 分片下发（服务端 → 客户端）。1.20.x 的 32767 字节上限对 S2C 同样生效，
+     * 带照片的导出结果必然超限，故与 C2S 方向对称地切片发送。
+     */
+    private static void sendChunkedDownload(ServerPlayer player, String kind, byte[] payload) {
+        if (payload == null || payload.length == 0) {
+            return;
+        }
+        int chunkBytes = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES;
+        int total = (payload.length + chunkBytes - 1) / chunkBytes;
+        int sessionId = java.util.concurrent.ThreadLocalRandom.current().nextInt();
+        for (int i = 0; i < total; i++) {
+            int off = i * chunkBytes;
+            int len = Math.min(chunkBytes, payload.length - off);
+            byte[] chunk = java.util.Arrays.copyOfRange(payload, off, off + len);
+            FriendlyByteBuf buf = PacketByteBufs.create();
+            buf.writeUtf(kind == null ? "" : kind, MaidFilePackets.MAX_TEXT_LEN);
+            buf.writeVarInt(sessionId);
+            buf.writeVarInt(total);
+            buf.writeVarInt(i);
+            buf.writeByteArray(chunk);
+            ServerPlayNetworking.send(player, MaidFilePackets.ID_CHUNKED_DOWNLOAD, buf);
+        }
+        Constants.LOG.info("[maid_file_manager] 导出结果分片下发: player={} bytes={} chunks={}",
+                player.getName().getString(), payload.length, total);
+    }
+
+    /** 待删除实体：玩家 UUID → 实体 ID 列表（等客户端写盘回执后才删） */
+    private static final java.util.Map<java.util.UUID, List<Integer>> PENDING_REMOVAL =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 客户端写盘回执：false 则放弃删除，女仆留在世界里 */
+    private static void handleExportWriteAck(ServerPlayer player, boolean success) {
+        List<Integer> ids = PENDING_REMOVAL.remove(player.getUUID());
+        if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        if (!success) {
+            Constants.LOG.warn("[maid_file_manager] 客户端写盘失败，已放弃删除女仆（{} 个），player={}",
+                    ids.size(), player.getName().getString());
+            return;
+        }
+        int removed = 0;
+        for (Integer entityId : ids) {
+            Entity e = player.level().getEntity(entityId);
+            if (e == null) {
+                continue;
+            }
+            try {
+                MaidTransferService.unregisterMaidWorldData(e);
+                java.util.UUID photoUuid = e.getUUID();
+                e.discard();
+                try {
+                    io.github.zgxhzhr.maidfm.data.MaidPhotoStore.delete(
+                            io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getGameDir(), photoUuid);
+                } catch (Throwable ignored) {
+                }
+                removed++;
+            } catch (Throwable t) {
+                Constants.LOG.warn("[maid_file_manager] 删除实体失败: entityId={} err={}", entityId, t.toString());
+            }
+        }
+        Constants.LOG.info("[maid_file_manager] 导出写盘已确认，删除女仆 {} 个 player={}",
+                removed, player.getName().getString());
     }
 }

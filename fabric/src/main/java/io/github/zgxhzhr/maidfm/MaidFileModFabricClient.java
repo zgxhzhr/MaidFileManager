@@ -31,6 +31,7 @@ public class MaidFileModFabricClient implements ClientModInitializer {
         registerTitleScreenEntry();
 
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_MAID_LIST, (client, handler, buf, responseSender) -> {
+            try {
             List<MaidInfo> list = MaidFilePackets.readMaidInfoList(buf);
             client.execute(() -> {
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
@@ -38,9 +39,13 @@ public class MaidFileModFabricClient implements ClientModInitializer {
                     h.onMaidListReceived(list);
                 }
             });
+            } catch (Throwable t) {
+                Constants.LOG.error("[maid_file_manager] S2C 包处理失败，已隔离（不影响网络线程）: {}", t.toString(), t);
+            }
         });
 
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_EXPORT_RESULT, (client, handler, buf, responseSender) -> {
+            try {
             MaidFileData data = MaidFilePackets.readMaidFileData(buf);
             client.execute(() -> {
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
@@ -50,9 +55,13 @@ public class MaidFileModFabricClient implements ClientModInitializer {
                             : java.util.Collections.singletonList(data));
                 }
             });
+            } catch (Throwable t) {
+                Constants.LOG.error("[maid_file_manager] S2C 包处理失败，已隔离（不影响网络线程）: {}", t.toString(), t);
+            }
         });
 
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_FEEDBACK, (client, handler, buf, responseSender) -> {
+            try {
             Component message = buf.readComponent();
             client.execute(() -> {
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
@@ -60,10 +69,14 @@ public class MaidFileModFabricClient implements ClientModInitializer {
                     h.onFeedbackReceived(message);
                 }
             });
+            } catch (Throwable t) {
+                Constants.LOG.error("[maid_file_manager] S2C 包处理失败，已隔离（不影响网络线程）: {}", t.toString(), t);
+            }
         });
 
         // 批量导入 + 删除源文件：汇总文案 + 逐项 spawned 标志，客户端只删除成功导入的本地文件
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_IMPORT_BATCH_RESULT, (client, handler, buf, responseSender) -> {
+            try {
             Component summary = buf.readComponent();
             List<Boolean> spawned = MaidFilePackets.readBooleanList(buf);
             client.execute(() -> {
@@ -72,23 +85,77 @@ public class MaidFileModFabricClient implements ClientModInitializer {
                     h.onImportBatchResultReceived(summary, spawned);
                 }
             });
+            } catch (Throwable t) {
+                Constants.LOG.error("[maid_file_manager] S2C 包处理失败，已隔离（不影响网络线程）: {}", t.toString(), t);
+            }
         });
 
         // 批量导出结果：服务端序列化数据回传，由客户端写 maid_exports/<玩家名>/ 目录。
         // 条目上限必须与服务端导出请求侧 MAX_EXPORT_IDS(512) 对齐，不能沿用导入通道的 64，
         // 否则 65~512 个合法结果会在此解码抛异常把玩家踢下线
+        // 分片下载：累积后交回同一个 UI 回调，界面无需感知分片
+        ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_CHUNKED_DOWNLOAD, (client, handler, buf, responseSender) -> {
+            try {
+            String kind = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
+            int sessionId = buf.readVarInt();
+            int total = buf.readVarInt();
+            int index = buf.readVarInt();
+            byte[] chunk = buf.readByteArray(io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES);
+            client.execute(() -> {
+                var localPlayer = net.minecraft.client.Minecraft.getInstance().player;
+                if (localPlayer == null) {
+                    return;
+                }
+                byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
+                        localPlayer.getUUID(), kind, sessionId, total, index, chunk);
+                if (full == null
+                        || !io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH.equals(kind)) {
+                    return;
+                }
+                IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (h == null) {
+                    return;
+                }
+                net.minecraft.network.FriendlyByteBuf fullBuf = new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(full));
+                java.util.List<MaidFileData> decoded = new java.util.ArrayList<>();
+                for (byte[] blob : MaidFilePackets.readMaidDataBlobs(fullBuf, MaidFilePackets.MAX_EXPORT_IDS)) {
+                    MaidFileData one = MaidFilePackets.deserializeMaidFileData(blob);
+                    if (one != null) {
+                        decoded.add(one);
+                    }
+                }
+                h.onExportResultReceived(decoded);
+            });
+            } catch (Throwable t) {
+                Constants.LOG.error("[maid_file_manager] S2C 包处理失败，已隔离（不影响网络线程）: {}", t.toString(), t);
+            }
+        });
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_EXPORT_BATCH_RESULT, (client, handler, buf, responseSender) -> {
-            List<MaidFileData> dataList = MaidFilePackets.readMaidFileDataList(buf, MaidFilePackets.MAX_EXPORT_IDS);
+            try {
+            // 服务端用 writeMaidDataBlobs 编码（VarInt 条目数 + 每项 VarInt 长度 + 纯 GZIP 字节），
+            // 必须用 readMaidDataBlobs + deserializeMaidFileData 配对读取。
+            // 原先误用 readMaidFileDataList 会先读 VarInt 当长度、吃掉 GZIP 魔数 0x1F，报 Not in GZIP format。
+            List<MaidFileData> dataList = new java.util.ArrayList<>();
+            for (byte[] blob : MaidFilePackets.readMaidDataBlobs(buf, MaidFilePackets.MAX_EXPORT_IDS)) {
+                MaidFileData one = MaidFilePackets.deserializeMaidFileData(blob);
+                if (one != null) {
+                    dataList.add(one);
+                }
+            }
             client.execute(() -> {
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
                 if (h != null) {
                     h.onExportResultReceived(dataList);
                 }
             });
+            } catch (Throwable t) {
+                Constants.LOG.error("[maid_file_manager] S2C 包处理失败，已隔离（不影响网络线程）: {}", t.toString(), t);
+            }
         });
 
         // OP 统一导出：收到服务端收集的所有在线玩家女仆分组列表
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_SERVER_EXPORT_LIST, (client, handler, buf, responseSender) -> {
+            try {
             List<IMaidFileNetwork.PlayerMaidGroup> groups = MaidFilePackets.readPlayerMaidGroups(buf);
             client.execute(() -> {
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
@@ -96,10 +163,14 @@ public class MaidFileModFabricClient implements ClientModInitializer {
                     h.onServerExportListReceived(groups);
                 }
             });
+            } catch (Throwable t) {
+                Constants.LOG.error("[maid_file_manager] S2C 包处理失败，已隔离（不影响网络线程）: {}", t.toString(), t);
+            }
         });
 
         // 服务端配置同步：不依赖 Screen，收到即更新客户端缓存并回发同意状态
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_SERVER_CONFIG_SYNC, (client, handler, buf, responseSender) -> {
+            try {
             boolean allowImport = buf.readBoolean();
             boolean allowBaubles = buf.readBoolean();
             boolean allowAdvancements = buf.readBoolean();
@@ -121,10 +192,14 @@ public class MaidFileModFabricClient implements ClientModInitializer {
                     baubleStripAttributes, baubleBlockedList, baubleBlacklist, baubleWhitelist, baubleManaged,
                     baubleBlockedNamespaces, baubleBlockedCuriosSlots,
                     baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots, baubleWhitelistEnforced));
+            } catch (Throwable t) {
+                Constants.LOG.error("[maid_file_manager] S2C 包处理失败，已隔离（不影响网络线程）: {}", t.toString(), t);
+            }
         });
 
         // 女仆档案视图：服务端校验归属后返回，交由当前活跃界面展示
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_MAID_PROFILE, (client, handler, buf, responseSender) -> {
+            try {
             MaidProfileView view = MaidFilePackets.readMaidProfileView(buf);
             client.execute(() -> {
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
@@ -132,10 +207,14 @@ public class MaidFileModFabricClient implements ClientModInitializer {
                     h.onMaidProfileReceived(view);
                 }
             });
+            } catch (Throwable t) {
+                Constants.LOG.error("[maid_file_manager] S2C 包处理失败，已隔离（不影响网络线程）: {}", t.toString(), t);
+            }
         });
 
         // 备份管理：服务端回传的备份列表（已按权限过滤），交由当前活跃界面展示
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_BACKUP_LIST, (client, handler, buf, responseSender) -> {
+            try {
             List<IMaidFileNetwork.BackupOwner> owners = MaidFilePackets.readBackupOwners(buf);
             client.execute(() -> {
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
@@ -143,10 +222,14 @@ public class MaidFileModFabricClient implements ClientModInitializer {
                     h.onBackupListReceived(owners);
                 }
             });
+            } catch (Throwable t) {
+                Constants.LOG.error("[maid_file_manager] S2C 包处理失败，已隔离（不影响网络线程）: {}", t.toString(), t);
+            }
         });
 
         // 备份管理：服务端回传的单条备份数据，客户端据此写入本地 maid_exports/
         ClientPlayNetworking.registerGlobalReceiver(MaidFilePackets.ID_BACKUP_EXPORT_RESULT, (client, handler, buf, responseSender) -> {
+            try {
             int len = MaidFilePackets.checkSize(buf.readVarInt(),
                     MaidFilePackets.MAX_SINGLE_FILE_BYTES, "backup_export_result");
             byte[] blob = new byte[len];
@@ -158,6 +241,9 @@ public class MaidFileModFabricClient implements ClientModInitializer {
                     h.onBackupExportReceived(data);
                 }
             });
+            } catch (Throwable t) {
+                Constants.LOG.error("[maid_file_manager] S2C 包处理失败，已隔离（不影响网络线程）: {}", t.toString(), t);
+            }
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {

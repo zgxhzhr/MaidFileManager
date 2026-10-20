@@ -45,6 +45,15 @@ public interface IMaidFileNetwork {
      * @param payload 完整负载字节
      */
     void sendChunkedUpload(String kind, byte[] payload);
+    /**
+     * 「导出并移除」的写盘回执：客户端写盘成功后通知服务端删除女仆。
+     *
+     * <p>默认空实现，便于各端分步接入；未接入的端不会因此编译失败（但该端不会删女仆，安全侧）。
+     *
+     * @param success true=文件已成功落盘
+     */
+    default void sendExportWriteAck(boolean success) {
+    }
 
     /** 请求服务端修改服务端配置（服务端校验 OP 权限后写文件并广播同步） */
     void sendSetServerConfig(String key, boolean value);
