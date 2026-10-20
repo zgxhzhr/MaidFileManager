@@ -152,7 +152,7 @@ public interface IPlatformHelper {
      * @param entity     女仆实体
      * @param effectsTag 效果 NBT（含 active_effects 键）
      */
-    void storeEffects(Entity entity, CompoundTag effectsTag);
+
 
     /**
      * 读取女仆实体上持久化的档案 NBT（自定义标签 {@code maid_file_manager:profile}），无则返回 null。
