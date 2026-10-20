@@ -154,6 +154,10 @@ public class MaidFileModFabric implements ModInitializer {
                 Constants.LOG.warn("[maid_file_manager] 分片上传处理失败: {}", e.toString());
             }
         });
+        // 导出写盘回执：客户端确认文件已落盘后才删除女仆（P2-10 数据安全）
+        registerC2SReceiver(MaidFilePackets.ID_EXPORT_WRITE_ACK, (server, player, buf) -> {
+            handleExportWriteAck(player, buf.readBoolean());
+        });
         registerC2SReceiver(MaidFilePackets.ID_CLIENT_CONSENT, (server, player, buf) -> {
             boolean allow = buf.readBoolean();
             MaidConfigManager.handleClientConsent(player.getUUID(), allow);

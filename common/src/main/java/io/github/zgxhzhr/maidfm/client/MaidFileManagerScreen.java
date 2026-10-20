@@ -1313,9 +1313,20 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             }
         } catch (Exception e) {
             Constants.LOG.error("[maid_file_manager] Failed to save export file locally", e);
+            // 写盘失败：必须回执 false，服务端据此放弃删除女仆
+            IMaidFileNetwork ackFail = IMaidFileNetwork.Holder.get();
+            if (ackFail != null) {
+                ackFail.sendExportWriteAck(false);
+            }
             // 异常原文可能含本地路径/内部类名，界面只给通用提示，细节看日志
             setFeedback(Component.translatable("maid_file_manager.export.fail.local_save"));
             return;
+        }
+
+        // 回执写盘结果：只有全部成功才让服务端删除女仆
+        IMaidFileNetwork ackNet = IMaidFileNetwork.Holder.get();
+        if (ackNet != null) {
+            ackNet.sendExportWriteAck(failed == 0);
         }
 
         Component fb;
