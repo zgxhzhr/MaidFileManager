@@ -111,6 +111,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private boolean serverExportMode;
     /** 统一导出异步结果正在等待：此期间网络回调 onFeedbackReceived 仅显示聊天栏，不覆盖主界面底部黄字（Fix 截图3「共成功0个」多余黄字） */
     private long serverExportSuppressFeedbackUntil = 0L;
+    /** 统一导出确认后：等服务端列表回包再全选并提交（否则 owner 映射为空，导出 0 条） */
+    private boolean pendingServerExport;
     /** 统一导出：服务端返回的玩家分组女仆列表 */
     private List<IMaidFileNetwork.PlayerMaidGroup> serverGroups = new ArrayList<>();
     /** 统一导出：收起的玩家（点击玩家行折叠/展开） */
@@ -1212,6 +1214,18 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
         setFeedback(Component.translatable("maid_file_manager.gui.server_export.list_loaded",
                 this.serverGroups.size(), maidList.size(), denied));
+        // 统一导出确认流程：列表已就绪（maidOwnerByEntityId 已填）→ 现在全选并提交才有意义
+        if (pendingServerExport) {
+            pendingServerExport = false;
+            selectAllState = true;
+            refreshSelectAllLabel();
+            onSelectAllToggled(true);
+            if (selectedMaidIds.isEmpty()) {
+                setFeedback(Component.translatable("maid_file_manager.gui.export.no_selection"));
+            } else {
+                onActionButtonClick(this.actionBtn);
+            }
+        }
     }
 
     @Override
@@ -2077,15 +2091,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             this.minecraft.setScreen(parent);
             // 强制切换到统一导出模式（确保切换数据源为在线玩家分组）
             if (!parent.serverExportMode) parent.toggleServerExportMode();
-            // 全选（默认全选所有在线玩家的所有女仆）
-            parent.selectAllState = true;
-            parent.onSelectAllToggled(true);
-            // 【v4-3Fix：开启 15s 反馈抑制 → 服务端异步 onFeedbackReceived 只写聊天栏，不覆盖"请求已发送"黄字】
-            parent.serverExportSuppressFeedbackUntil = System.currentTimeMillis() + 15000L;
-            // 直接调用主动作按钮（= 导出选中女仆 → 统一导出模式即为全员）
-            parent.onActionButtonClick(parent.actionBtn);
-            // 【Fix：消去多余"共成功 0 个"提示】统一导出为服务端异步，结果走聊天栏显示，主界面黄字强制覆盖为"请求已发送"提示
-            parent.setFeedback(Component.translatable("maid_file_manager.gui.server_export.request_sent"));
+            // 关键：此时 maidOwnerByEntityId 还是空的（列表要等服务端回包才有），
+            // 立刻全选+导出会全部落到空玩家名 → 服务端查不到玩家 → 导出 0 条。
+            // 因此只置标志并重新拉列表，真正的全选+导出由 onServerExportListReceived 触发。
+            parent.pendingServerExport = true;
+            parent.refreshCurrentTab();
+            parent.setFeedback(Component.translatable("maid_file_manager.gui.server_export.preparing"));
         }
 
         /** 留空打断默认泥土背景 + GUI blur shader（与主界面同一硬约束：不透明、无模糊） */
