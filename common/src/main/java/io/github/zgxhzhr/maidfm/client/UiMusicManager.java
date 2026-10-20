@@ -45,6 +45,9 @@ public final class UiMusicManager {
     /** 跨线程访问（主线程播放、定时线程停止），必须 volatile。 */
     private static volatile SoundInstance current;
 
+    /** tick() 的降频计数器（只在主线程读写）：避免每帧 stopPlaying 累加原版音乐的延迟 */
+    private static int quietTicks;
+
     private static ScheduledExecutorService timer;
     private static ScheduledFuture<?> pendingStop;
     private static boolean failureLogged;
@@ -105,6 +108,13 @@ public final class UiMusicManager {
         if (current == null) {
             return;
         }
+        // MusicManager.stopPlaying() 每次都会把内部的 nextSongDelay 再加 100（tick），
+        // 每帧调用会让原版音乐静默累积到约 20 分钟。改为每 10 tick（约 0.5 秒）压一次：
+        // 足够让原版音乐起不来，又把累积量压到 1/10。
+        if (++quietTicks < 10) {
+            return;
+        }
+        quietTicks = 0;
         try {
             Minecraft.getInstance().getMusicManager().stopPlaying();
         } catch (Throwable ignored) {
@@ -148,10 +158,19 @@ public final class UiMusicManager {
         if (instance == null) {
             return;
         }
+        // 本方法可能由定时线程调用（延迟停止），而 SoundManager/SoundEngine 不是线程安全的：
+        // 统一切回客户端主线程执行。
+        Runnable task = () -> {
+            try {
+                Minecraft.getInstance().getSoundManager().stop(instance);
+            } catch (Throwable ignored) {
+                // 声音已自然结束或声音系统已关闭：忽略
+            }
+        };
         try {
-            Minecraft.getInstance().getSoundManager().stop(instance);
-        } catch (Throwable ignored) {
-            // 声音已自然结束或声音系统已关闭：忽略
+            Minecraft.getInstance().execute(task);
+        } catch (Throwable t) {
+            // 客户端已退出或队列不可用：声音会随进程结束，无需处理
         }
     }
 }
