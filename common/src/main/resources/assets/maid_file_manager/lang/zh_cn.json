@@ -235,6 +235,8 @@
     "maid_file_manager.import.check.legacy_wire_too_large": "文件过大（%s KB）：1.20.x 的单包上限约 %s KB，导入会掉线。请减少一次导入的文件数，或在导出前移除女仆头像。",
     "maid_file_manager.gui.label.colon_value": "：%s",
     "maid_file_manager.gui.backup.world_row": "%s  (%s 位玩家)",
+    "maid_file_manager.gui.backup.uuid_offline": "（离线）",
+    "maid_file_manager.gui.backup.uuid_premium": "（正版）",
     "maid_file_manager.server.prefix": "[女仆档案管理] ",
     "maid_file_manager.protocol.mismatch": "协议版本不匹配：服务端 {0}，客户端 {1}。请把两端模组升级到同一版本（.maid 文件本身仍可互导）。",
     "maid_file_manager.server.export_chunked_disabled": "该女仆数据过大，需要分片传输，但分片通道仍在验证中。已中止导出（女仆已保留在原世界），请先在单人环境导出，或移除头像后重试。",

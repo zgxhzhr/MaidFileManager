@@ -392,9 +392,10 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
             if (seg.length < 3 || seg[2].isEmpty()) {
                 return "";
             }
+            // 返回翻译键而非硬编码文案：英文客户端也能正确显示
             return switch (seg[2].charAt(0)) {
-                case '3' -> "（离线）";
-                case '4' -> "（正版）";
+                case '3' -> "maid_file_manager.gui.backup.uuid_offline";
+                case '4' -> "maid_file_manager.gui.backup.uuid_premium";
                 default -> "";
             };
         } catch (Throwable t) {
@@ -734,7 +735,10 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
             graphics.drawString(this.font, Component.literal(text), listX + 4, top + 3, HEADER_COLOR, false);
         } else if (row.type == 1) {
             String name = row.owner.displayName != null ? row.owner.displayName : shortId(row.owner.uuid);
-            String text = name + "  (" + row.owner.maids.size() + ")";
+            // 主人行末尾标注 UUID 来源（正版 / 离线）：两者 UUID 不同源，排查「导入被判非本人」时是第一现场
+            String originKey = uuidOrigin(row.owner.uuid);
+            String origin = originKey.isEmpty() ? "" : Component.translatable(originKey).getString();
+            String text = name + origin + "  (" + row.owner.maids.size() + ")";
             graphics.drawString(this.font, Component.literal(text), listX + 14, top + 3, HEADER_COLOR, false);
         } else if (row.type == 2) {
             String arrow = row.maid.expanded ? "▼ " : "▶ ";
