@@ -34,6 +34,25 @@ public final class ChunkedUploadAssembler {
     /** 会话超时（毫秒）。 */
     private static final long TIMEOUT_MS = 60_000L;
 
+    /** 全局未完成会话数上限：防止恶意客户端开大量会话拖爆服务端堆。 */
+    private static final int MAX_SESSIONS = 64;
+
+    /** 单个玩家允许同时存在的未完成会话数上限。 */
+    private static final int MAX_SESSIONS_PER_PLAYER = 4;
+
+    /**
+     * 发送端预检：负载是否超过协议允许的整包上限。
+     *
+     * <p>{@link #MAX_TOTAL_BYTES} 原先只在接收端「收齐后」校验，发送端照样逐片发完才被丢弃 ——
+     * 8 MiB 的负载要发 342 片才失败，期间白占带宽、白占接收端内存，且客户端拿不到任何错误。
+     * 发送端应在切分前先问一句。
+     *
+     * @return true 表示超限，调用方应直接用反馈通道报错而不是发分片
+     */
+    public static boolean exceedsTotalLimit(byte[] payload) {
+        return payload != null && payload.length > MAX_TOTAL_BYTES;
+    }
+
     private static final Map<String, Session> SESSIONS = new ConcurrentHashMap<>();
 
     /** 传输负载类型，服务端据此决定交给哪个处理函数 */
@@ -70,10 +89,33 @@ public final class ChunkedUploadAssembler {
                 || index < 0 || index >= totalChunks) {
             return null;
         }
+        // 声明量先算一遍：totalChunks × CHUNK_BYTES 就是接收端最坏要占的内存。
+        // 原实现只在「收齐后」按实际字节校验 MAX_TOTAL_BYTES，而 512 × 24 KiB = 12 MiB
+        // 已经超过 8 MiB 上限 —— 等于允许客户端先把 12 MiB 堆起来再告诉他超了。
+        long declared = (long) totalChunks * CHUNK_BYTES;
+        if (declared > MAX_TOTAL_BYTES) {
+            Constants.LOG.warn("[maid_file_manager] 分片会话声明量超上限，已拒绝: player={} kind={} chunks={} declared={}",
+                    playerId, kind, totalChunks, declared);
+            return null;
+        }
         purgeExpired();
         String key = playerId + "|" + sessionId;
         Session session = SESSIONS.get(key);
         if (session == null) {
+            // 会话数上限：全局与单玩家各一道。此前完全无上限，单会话就能占 12 MiB，
+            // 恶意客户端连开几十个会话即可拖爆服务端堆。
+            if (SESSIONS.size() >= MAX_SESSIONS) {
+                Constants.LOG.warn("[maid_file_manager] 分片会话总数达上限({})，拒绝新会话: player={}",
+                        MAX_SESSIONS, playerId);
+                return null;
+            }
+            String playerPrefix = playerId + "|";
+            long mine = SESSIONS.keySet().stream().filter(k -> k.startsWith(playerPrefix)).count();
+            if (mine >= MAX_SESSIONS_PER_PLAYER) {
+                Constants.LOG.warn("[maid_file_manager] 玩家分片会话数达上限({})，拒绝新会话: player={}",
+                        MAX_SESSIONS_PER_PLAYER, playerId);
+                return null;
+            }
             Session created = new Session(kind, totalChunks);
             session = SESSIONS.computeIfAbsent(key, k -> created);
             if (session != created && (session.totalChunks != totalChunks || !session.kind.equals(kind))) {
