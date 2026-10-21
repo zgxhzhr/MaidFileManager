@@ -113,6 +113,11 @@ public class MultiLineEditBox extends EditBox {
         }
         if (filtered.length() > room) {
             filtered = filtered.substring(0, room);
+            // 不能把代理对劈开：maxLength 按 char 计，截断点可能正好落在高位代理之后，
+            // 直接 substring 会留下孤立的高位代理（非法字符串，渲染与网络编码都会出问题）。
+            if (!filtered.isEmpty() && Character.isHighSurrogate(filtered.charAt(filtered.length() - 1))) {
+                filtered = filtered.substring(0, filtered.length() - 1);
+            }
         }
         this.value = this.value.substring(0, this.cursor) + filtered + this.value.substring(this.cursor);
         this.cursor += filtered.length();
