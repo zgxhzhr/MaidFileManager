@@ -253,4 +253,5 @@
     "maid_file_manager.gui.server_export.list_failed": "Failed to fetch the unified export list (no permission or too large); this action was cancelled. Please retry.",
     "maid_file_manager.gui.profile.timeout": "Profile request timed out (the server may have rate-limited it); click again in a moment.",
     "maid_file_manager.gui.upload.too_large": "This data exceeds the per-transfer limit (%s KB > %s KB); sending was cancelled. Please retry in smaller batches.",
+    "maid_file_manager.import.fail.too_many": "At most %s files can be imported at once; %s are selected. Please reduce and retry.",
 }
