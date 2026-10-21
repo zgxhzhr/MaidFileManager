@@ -342,6 +342,29 @@ public final class MaidConfigManager {
         return serverCarryCurios;
     }
 
+    /**
+     * 按配置键读取**服务端**当前生效值（客户端缓存）。
+     *
+     * <p>界面里的服务端开关是「乐观切换 + 超时回滚」：点击时先翻转本地显示并置 pending，
+     * 若若干毫秒内没收到服务端配置同步，就用本方法取回权威值把开关复位。
+     * 未知键返回 {@code false}（调用方只在已知的服务端键上使用）。
+     */
+    public static boolean getServerConfigByKey(String key) {
+        if (key == null) {
+            return false;
+        }
+        return switch (key) {
+            case KEY_ALLOW_CLIENT_IMPORT -> isClientImportAllowed();
+            case KEY_ALLOW_BAUBLES -> isBaublesAllowed();
+            case KEY_ALLOW_ADVANCEMENTS -> isAdvancementsAllowed();
+            case KEY_ALLOW_EFFECTS -> isEffectsAllowed();
+            case KEY_ALLOW_INVULNERABLE -> isInvulnerableAllowed();
+            case KEY_BAUBLE_STRIP_ATTRIBUTES -> isBaubleStripAttributes();
+            case KEY_CARRY_CURIOS -> isCarryCurios();
+            default -> false;
+        };
+    }
+
     /** OP 维护的「按模组禁用携带」清单（不可变；同时作用于女仆自带饰品栏与 Curios 槽位） */
     public static List<String> getBaubleBlockedNamespaces() {
         return mergeLists(serverBaubleBlockedNamespaces, baubleImportBlockedNamespaces);
