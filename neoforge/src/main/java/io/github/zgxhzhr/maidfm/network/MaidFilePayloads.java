@@ -1402,6 +1402,11 @@ public final class MaidFilePayloads {
             // clientUuid() 已带缓存，仍在 netty 线程取一次即可。
             final java.util.UUID playerUuid = clientUuid();
             ctx.enqueueWork(() -> {
+                // 新会话开始时清掉本玩家残留的未完成分片会话：客户端从不主动 clear，
+                // 被中断的下载会占满 MAX_SESSIONS_PER_PLAYER(4)，之后 60s 内新导出首片即被拒且无提示（第六轮 N7）。
+                if (index == 0) {
+                    io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.clear(playerUuid);
+                }
                 byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
                         playerUuid, kind, sessionId, total, index, chunk);
                 if (full == null
