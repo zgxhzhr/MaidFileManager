@@ -66,10 +66,17 @@ public final class ModelNames {
         if (raw == null || raw.isEmpty()) {
             return "";
         }
-        // 文言/繁体：先用「英文模型名 → 中文名」反查（备份列表只有名字，没有模型 ID）
+        // 文言/繁体：备份 index.dat 的 Name 字段经 extractText 后是**翻译键**
+        // （model.<ns>.<path>.name），也可能已经是英文模型名，两种都要查中文表。
+        // 必须放在「当前语言翻译」之前：否则文言下翻译键会回退 en_us 拿到英文名，
+        // 而「返回值 != 键名」会被判成翻译成功，直接把英文名返回（此前备份列表显示
+        // Magical Wine Fox 就是这个原因）。
         if (isZhLikeLanguage()) {
             ensureModelNameTables();
-            String zh = zhByEn == null ? null : zhByEn.get(raw);
+            String zh = zhByKey == null ? null : zhByKey.get(raw);
+            if (zh == null) {
+                zh = zhByEn == null ? null : zhByEn.get(raw);
+            }
             if (zh != null && !zh.isEmpty()) {
                 return zh;
             }
