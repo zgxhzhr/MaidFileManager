@@ -82,10 +82,11 @@ public class NeoForgeNetwork implements IMaidFileNetwork {
         MaidFilePackets.writeMaidProfile(probe, profile);
         byte[] encoded = new byte[probe.readableBytes()];
         probe.getBytes(0, encoded);
-        if (MaidFilePackets.isLegacyPayloadLimit()
-                && encoded.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
-            // 1.20.x 真联机：单包 32767 上限，带照片的档案必然超限 —— 改走分片上传。
-            // 单人/局域网主机不走这里（isLegacyPayloadLimit 会返回 false）。
+        // 不用 isLegacyPayloadLimit()：那个判定只对 1.20.x 有意义（32767 单包上限），
+        // 在 1.21 上恒为 false，写在这里是死守卫 —— 与其他三端的分片条件不一致，
+        // 也让人误以为 1.21 不会走分片。1.21 的真实单包上限是 1 MiB，
+        // 超过 24 KiB 就走分片反而更省 peak 内存。
+        if (encoded.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
             sendChunkedUpload(io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_SAVE_PROFILE, encoded);
             return;
         }
