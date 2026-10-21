@@ -59,6 +59,10 @@ public class MaidFileModFabric implements ModInitializer {
         });
 
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_MAID_LIST, (server, player, buf) -> {
+            // 频次限制：这类请求在主线程同步跑，循环发包能把服务器卡死（不需 OP）
+            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "maid_list", 1000L)) {
+                return;
+            }
             List<MaidInfo> list = MaidTransferService.listOwnMaids(player);
             FriendlyByteBuf out = MaidPayload.buffer();
             MaidFilePackets.writeMaidInfoList(out, list);
@@ -264,6 +268,10 @@ public class MaidFileModFabric implements ModInitializer {
 
         // 请求女仆档案：非本人直接拒绝（不返回任何只读数据），本人则回发档案视图
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_MAID_PROFILE, (server, player, buf) -> {
+            // 频次限制：这类请求在主线程同步跑，循环发包能把服务器卡死（不需 OP）
+            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "maid_profile", 1000L)) {
+                return;
+            }
             int entityId = buf.readInt();
             Entity e = player.level().getEntity(entityId);
             if (!(e instanceof EntityMaid maid) || !maid.isOwnedBy(player)) {
@@ -304,6 +312,10 @@ public class MaidFileModFabric implements ModInitializer {
 
         // 备份管理：服务端按权限过滤后返回可浏览的自动备份列表（OP 见全部玩家，非 OP 仅自己）
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_BACKUP_LIST, (server, player, buf) -> {
+            // 频次限制：这类请求在主线程同步跑，循环发包能把服务器卡死（不需 OP）
+            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "backup_list", 5000L)) {
+                return;
+            }
             List<IMaidFileNetwork.BackupOwner> owners =
                     MaidBackupService.scan(server, player.getUUID(), player.hasPermissions(2));
             // 发送前按接收端解码维度预检：主人组数与总字节均需在上限内，超限只回执提示，
