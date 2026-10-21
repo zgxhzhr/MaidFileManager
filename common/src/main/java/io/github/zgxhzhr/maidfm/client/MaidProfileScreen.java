@@ -245,7 +245,6 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         releasePhotoTexture();
         super.removed();
     }
-
     @Override
     public void tick() {
         super.tick();
@@ -536,6 +535,7 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
             photoTexH = image.getHeight();
             // 照片存盘分辨率通常高于显示框，缩小绘制时必须用线性过滤，否则会出现严重锯齿
             photoTexture.setFilter(true, false);
+            // 1.20.x 使用双参构造器（1.21 起工厂方法才是唯一公开入口）
             photoRl = new ResourceLocation(Constants.MOD_ID, "profile_photo/preview");
             Minecraft.getInstance().getTextureManager().register(photoRl, photoTexture);
         } catch (Throwable t) {
@@ -634,25 +634,29 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         return mx >= x && mx <= x + w && my >= y && my <= y + h;
     }
 
-    /** 1.20.x 官方映射为三参 {@code mouseScrolled(mouseX, mouseY, delta)}，第三参即垂直量 */
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+        return handleScroll(mouseX, mouseY, amount);
+    }
+
+    private boolean handleScroll(double mouseX, double mouseY, double amount) {
         if (pickerOpen) {
             int listTop = pickerY + 20;
             int listBottom = pickerOpenBtnY - 6;
             int visibleRows = (listBottom - listTop) / PICKER_ROW_H;
             int maxScroll = Math.max(0, photoFiles.size() - visibleRows);
-            pickerScroll = Math.max(0, Math.min(maxScroll, pickerScroll + (delta > 0 ? -2 : 2)));
+            pickerScroll = Math.max(0, Math.min(maxScroll, pickerScroll + (amount > 0 ? -2 : 2)));
             return true;
         }
         // 把滚轮转发给鼠标所悬停的文本域：只读预览（导入界面的档案）下多行文本域不可编辑，
         // 键盘与光标导航被整体禁用，被截断的长文本（尤其背景故事）只能靠滚轮查看
         MultiLineEditBox[] fields = { storyField, noteField, prefField, occupationField, birthdayField, uuidField };
         for (MultiLineEditBox field : fields) {
-            if (field != null && field.handleScroll(mouseX, mouseY, delta)) {
+            if (field != null && field.handleScroll(mouseX, mouseY, amount)) {
                 return true;
             }
         }
+        // 不调用 super.mouseScrolled：其签名在 1.20.x（三参）与 1.21.x（四参）不一致，直接返回未消费
         return false;
     }
 
@@ -927,13 +931,12 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         graphics.drawString(this.font, label, x + (w - this.font.width(label)) / 2, y + (h - 8) / 2, TEXT_COLOR, false);
     }
 
-    /** 打断 Screen 默认的 renderBackground 调用链（1.20.x 会画泥土背景并触发背景模糊） */
+    /** 打断 Screen 默认的单参 renderBackground 调用链（1.20.x 会画泥土背景并触发背景模糊） */
     @Override
     public void renderBackground(GuiGraphics graphics) {
         // 全屏底色与面板统一在 render() 开头绘制
     }
 
-    /** 非暂停界面（1.20.x 官方映射方法名为 isPauseScreen） */
     @Override
     public boolean isPauseScreen() {
         return false;

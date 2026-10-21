@@ -1426,7 +1426,6 @@ public final class MaidTransferService {
 
     /**
      * 服务端收窄校验：仅保留车万本体/法术附属两命名空间内的物品 ID。
-     *
      * <p><b>仅用于 C2S 网络通道</b>（玩家提交的禁用清单可能被篡改；黑名单只能缩小可携带范围、
      * 绝不能扩大，故命名空间不符的 ID 一律剔除，并容忍空白项/重复项）。
      * <p>服务端配置（properties / 整合包 {@code bauble_import.json}）在读取时<b>不做</b>此收窄，

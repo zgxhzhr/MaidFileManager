@@ -276,7 +276,7 @@ public final class MaidConfigManager {
         return clientUiMusicVolume;
     }
 
-    /** 设置界面背景音乐开关并落盘 */
+    /** 设置界面背景音乐开关并落盘（供设置界面/调试使用） */
     public static synchronized void setClientUiMusic(boolean value) {
         clientUiMusic = value;
         saveClient();

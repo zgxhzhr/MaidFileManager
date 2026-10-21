@@ -395,10 +395,16 @@ public final class MaidFileIo {
     }
 
     /**
-     * 读取一个 GZIP 压缩的 NBT 文件（如 TLM 备份 .dat / index.dat），失败返回 null。
+     * 读取任意 GZIP 压缩 NBT 文件（如 TLM 备份 .dat / index.dat），失败返回 null。
      *
-     * <p>与 {@link #readMaidFile} 相同口径：手动复刻 GZIP→Buffered→DataInput 管线并给出
-     * 显式解压配额（{@link MaidFilePackets#MAX_NBT_DECOMPRESSED_BYTES}），防止损坏或恶意文件打爆内存。
+     * <p>与 {@link #readMaidFile(Path)} 共用同一解压管线与解压配额口径：
+     * 1.20.x 的 {@code NbtIo.readCompressed} 不收 NbtAccounter，这里手动复刻
+     * GZIP -> Buffered -> DataInput 管线并传入有界配额，防止 GZIP 炸弹打爆内存。
+     *
+     * <p>注意：返回的是原始 NBT，不做 {@link MaidFileData} 解析（TLM 备份为实体 NBT，结构不同）。
+     *
+     * @param file 目标文件
+     * @return 压缩 NBT 根标签；文件不存在/损坏返回 null
      */
     public static CompoundTag readCompressedNbt(Path file) {
         try (DataInputStream dis = new DataInputStream(new BufferedInputStream(

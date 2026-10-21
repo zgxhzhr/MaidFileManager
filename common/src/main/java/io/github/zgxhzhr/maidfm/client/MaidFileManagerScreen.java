@@ -180,7 +180,6 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
         super.removed();
     }
-
     @Override
     public void tick() {
         super.tick();

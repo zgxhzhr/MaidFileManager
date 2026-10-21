@@ -138,7 +138,6 @@ public class MaidBaubleImportScreen extends Screen {
         UiMusicManager.leave(this);
         super.removed();
     }
-
     @Override
     public void tick() {
         super.tick();

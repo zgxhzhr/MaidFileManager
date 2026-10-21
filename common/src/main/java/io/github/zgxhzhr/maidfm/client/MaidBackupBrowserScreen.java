@@ -187,7 +187,6 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         }
         super.removed();
     }
-
     @Override
     public void tick() {
         super.tick();
