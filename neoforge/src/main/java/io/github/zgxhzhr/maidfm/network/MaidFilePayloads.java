@@ -108,6 +108,10 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
+                    // 频次限制：这类请求在主线程同步跑，循环发包能把服务器卡死（不需 OP）
+                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "maid_list", 1000L)) {
+                        return;
+                    }
                     try {
                         var list = MaidTransferService.listOwnMaids(sp);
                         PacketDistributor.sendToPlayer(sp, new MaidListPayload(list));
@@ -611,6 +615,10 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
+                    // 频次限制：这类请求在主线程同步跑，循环发包能把服务器卡死（不需 OP）
+                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "maid_profile", 1000L)) {
+                        return;
+                    }
                     try {
                         EntityMaid maid = resolveOwnedMaid(sp, entityId);
                         MaidProfileView view = maid == null ? null : MaidProfileService.buildView(sp, maid);
@@ -689,6 +697,10 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
+                    // 频次限制：这类请求在主线程同步跑，循环发包能把服务器卡死（不需 OP）
+                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "backup_list", 5000L)) {
+                        return;
+                    }
                     try {
                         // 权限：OP 可见全部玩家备份，非 OP 仅可见自己名下的备份
                         List<IMaidFileNetwork.BackupOwner> owners =

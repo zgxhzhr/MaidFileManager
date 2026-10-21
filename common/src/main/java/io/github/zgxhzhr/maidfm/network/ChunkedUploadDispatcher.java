@@ -82,6 +82,8 @@ public final class ChunkedUploadDispatcher {
 
     /** 玩家断开：清掉其未完成的分片会话 */
     public static void onPlayerDisconnect(UUID playerId) {
+        // 顺带清掉该玩家的请求频次记录（不清也会被过期清理回收，这里只是及时释放）
+        RequestThrottle.forget(playerId);
         ChunkedUploadAssembler.clear(playerId);
     }
 
