@@ -624,7 +624,17 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         }
         loading = false;
         available = true;
-        applyServerOwners(list);
+        // 空结果不要塞「当前服务器」节点：applyServerOwners 无条件 worlds.add(world)，
+        // rebuildRows 至少产出 1 行（存档行），于是下面 rows.isEmpty() 那条「没有备份」
+        // 的提示永远不执行 —— 非 OP / 被权限过滤为空时界面只剩一个「当前服务器 (0)」，
+        // 玩家看不出是「权限不足」还是「确实没有备份」。
+        if (list == null || list.isEmpty()) {
+            worlds.clear();
+            nameRequested.clear();
+            setFeedback(Component.translatable("gui.maid_file_manager.backup.empty"), SUBTEXT_COLOR);
+        } else {
+            applyServerOwners(list);
+        }
         rebuildRows();
         refreshButtons();
         if (rows.isEmpty()) {
