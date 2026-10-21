@@ -580,6 +580,15 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
             if (e == null) {
                 continue;
             }
+            // 防御性校验：PENDING_REMOVAL 是服务端自己登记的，理论上玩家改不了，
+            // 但删除是不可逆操作，删前再确认一次「确实是女仆」且「确实归这个玩家」。
+            // 不校验类型的话，任何被塞进队列的非女仆实体都会被直接 discard。
+            if (!(e instanceof com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid maid)
+                    || !maid.isOwnedBy(player)) {
+                Constants.LOG.warn("[maid_file_manager] 待删实体校验未通过，跳过: entityId={} player={}",
+                        entityId, player.getName().getString());
+                continue;
+            }
             try {
                 MaidTransferService.unregisterMaidWorldData(e);
                 java.util.UUID photoUuid = e.getUUID();
