@@ -100,8 +100,9 @@ public final class FabricNetwork implements IMaidFileNetwork {
         MaidFilePackets.writeMaidProfile(probe, profile);
         byte[] encoded = new byte[probe.readableBytes()];
         probe.getBytes(0, encoded);
-        if (MaidFilePackets.isLegacyPayloadLimit()
-                && encoded.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
+        // 不需要 isLegacyPayloadLimit：那个判定在 1.21 上恒 false（只为 1.20.x 的 32767 上限存在），
+        // 写在这里是死守卫，且与 forge/neo 的分片条件不一致。1.21 单包上限 1 MiB，> 24 KiB 走分片更省峰值内存。
+        if (encoded.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
             // 1.20.x 真联机：单包 32767 上限，带照片的档案必然超限 —— 改走分片上传。
             // 单人/局域网主机不走这里（isLegacyPayloadLimit 会返回 false）。
             sendChunkedUpload(io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_SAVE_PROFILE, encoded);
