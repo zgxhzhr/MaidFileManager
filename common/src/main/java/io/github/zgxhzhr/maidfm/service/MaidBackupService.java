@@ -209,12 +209,27 @@ public final class MaidBackupService {
         return buildFileData(tag, ownerUuid, maidUuid);
     }
 
-    /** 备份相对路径合法性：目录名必须是 UUID、文件名必须是纯 .dat 名（拒绝路径穿越） */
+    /**
+     * 备份相对路径合法性：目录名必须是 UUID、文件名必须是纯 .dat 名（拒绝路径穿越）。
+     *
+     * <p>除了 {@code / \ ..}，还必须拒绝**冒号**与 NUL：Windows 上 `C:x.dat` 这类「盘符相对路径」
+     * 不含斜杠也不含 `..`，但 {@code root.resolve("C:x.dat")} 在 root 不在 C 盘时会被当成
+     * **绝对路径**解析，直接逃出备份目录。NUL 截断同理。
+     */
     private static boolean isValidBackupPath(String ownerUuid, String maidUuid, String fileName) {
-        return ownerUuid != null && maidUuid != null && fileName != null
-                && isUuid(ownerUuid) && isUuid(maidUuid)
-                && fileName.endsWith(".dat")
-                && !fileName.contains("/") && !fileName.contains("\\") && !fileName.contains("..");
+        if (ownerUuid == null || maidUuid == null || fileName == null
+                || !isUuid(ownerUuid) || !isUuid(maidUuid)
+                || !fileName.endsWith(".dat")) {
+            return false;
+        }
+        for (int i = 0; i < fileName.length(); i++) {
+            char c = fileName.charAt(i);
+            if (c == '/' || c == '\\' || c == ':' || c == '\0' || Character.isISOControl(c)) {
+                return false;
+            }
+        }
+        // ".." 单独拦一次：上面已排除分隔符，但 "..dat" 之类仍需兜底
+        return !fileName.contains("..");
     }
 
     /** 由备份实体 NBT 组装 .maid 文件数据（备份内容与 .maid 的 data 字段同构） */
