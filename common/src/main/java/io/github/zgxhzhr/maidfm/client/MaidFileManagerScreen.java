@@ -2204,7 +2204,9 @@ setScrollAmount(0);
             // 于是 onFeedbackReceived 里「异步期间只写聊天栏、不覆盖底部黄字」的分支是死的，
             // 服务端异步回执仍会盖掉主界面刚显示的「请求已发送」。15 秒后自动失效。
             parent.serverExportSuppressFeedbackUntil = System.currentTimeMillis() + 15_000L;
-            parent.refreshCurrentTab();
+            // 不再调 refreshCurrentTab()：上面 toggleServerExportMode() 内部末尾已经发过一次
+            // 统一导出列表请求，这里再发一次会让同一份内容发两个包；后到的回包把底部反馈
+            // 覆盖成「已加载 N 个玩家」，玩家看到「点了确认却显示加载成功」而非「正在导出」。
             parent.setFeedback(Component.translatable("maid_file_manager.gui.server_export.preparing"));
         }
 
