@@ -94,6 +94,39 @@ def verifyAssetsTask = tasks.register('verifyAssets') {
             }
         }
 
+        // 4) 语言文件键集一致性（以 zh_cn.json 为基准；缺键会让该语言整段回落英文）
+        def langDir = new File(rootDir, 'common/src/main/resources/assets/maid_file_manager/lang')
+        def baseLang = new File(langDir, 'zh_cn.json')
+        if (baseLang.isFile()) {
+            def slurper = new groovy.json.JsonSlurper()
+            def baseKeys = null
+            try {
+                baseKeys = slurper.parse(baseLang).keySet()
+            } catch (Exception e) {
+                problems << "zh_cn.json: JSON 解析失败（${e.message}）".toString()
+            }
+            if (baseKeys != null) {
+                langDir.listFiles({ f -> f.name.endsWith('.json') } as java.io.FileFilter)?.each { lf ->
+                    if (lf.name == 'zh_cn.json') { return }
+                    def keys = null
+                    try {
+                        keys = slurper.parse(lf).keySet()
+                    } catch (Exception e) {
+                        problems << "${lf.name}: JSON 解析失败（${e.message}）".toString()
+                        return
+                    }
+                    def missing = baseKeys - keys
+                    def extra = keys - baseKeys
+                    if (missing) {
+                        problems << "${lf.name}: 缺少 ${missing.size()} 个键（例：${missing.take(3).join(', ')}）".toString()
+                    }
+                    if (extra) {
+                        problems << "${lf.name}: 多出 ${extra.size()} 个键（例：${extra.take(3).join(', ')}）".toString()
+                    }
+                }
+            }
+        }
+
         if (!problems.isEmpty()) {
             throw new GradleException('离线静态校验失败:\n  - ' + problems.join('\n  - '))
         }
