@@ -29,9 +29,24 @@ public final class MaidMigrationRegistry {
         if (provider == null || provider.getId() == null) {
             return;
         }
-        for (MaidMigrationProvider p : PROVIDERS) {
-            if (p.getId().equals(provider.getId())) {
-                return;
+        final ResourceLocation newId;
+        try {
+            newId = provider.getId();
+        } catch (Throwable t) {
+            // 第三方 provider 的 getId() 抛异常时不能让注册整体崩掉（硬约束：附属模组异常必须隔离）
+            io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                    "[maid_file_manager] 迁移 provider 的 getId() 抛异常，已跳过注册: {}", t.toString());
+            return;
+        }
+        for (int i = 0; i < PROVIDERS.size(); i++) {
+            MaidMigrationProvider p = PROVIDERS.get(i);
+            try {
+                if (newId.equals(p.getId())) {
+                    return;
+                }
+            } catch (Throwable t) {
+                io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                        "[maid_file_manager] 已注册 provider 的 getId() 抛异常，跳过第 {} 个: {}", i, t.toString());
             }
         }
         PROVIDERS.add(provider);
@@ -63,9 +78,16 @@ public final class MaidMigrationRegistry {
         if (id == null) {
             return null;
         }
-        for (MaidMigrationProvider p : PROVIDERS) {
-            if (p.getId().equals(id)) {
-                return p;
+        for (int i = 0; i < PROVIDERS.size(); i++) {
+            MaidMigrationProvider p = PROVIDERS.get(i);
+            try {
+                if (id.equals(p.getId())) {
+                    return p;
+                }
+            } catch (Throwable t) {
+                // 按 id 匹配时某个 provider 的 getId() 抛异常，不能让整条导入打挂
+                io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                        "[maid_file_manager] 迁移 provider 的 getId() 抛异常，跳过第 {} 个: {}", i, t.toString());
             }
         }
         return null;
