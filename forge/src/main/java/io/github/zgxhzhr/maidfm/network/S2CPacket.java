@@ -87,6 +87,12 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                             io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES);
                     var localPlayer = net.minecraft.client.Minecraft.getInstance().player;
                     if (localPlayer != null) {
+                        // 新会话开始时清掉本玩家残留的未完成分片会话：
+                        // 客户端从不主动 clear，被中断的下载会把 MAX_SESSIONS_PER_PLAYER(4) 占满，
+                        // 之后 60 秒内的新导出在首片就被「会话数达上限」拒收且无提示（第六轮 N7）。
+                        if (index == 0) {
+                            io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.clear(localPlayer.getUUID());
+                        }
                         byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
                                 localPlayer.getUUID(), kind, sessionId, total, index, chunk);
                         if (full != null
