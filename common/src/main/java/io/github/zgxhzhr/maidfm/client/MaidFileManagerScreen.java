@@ -944,9 +944,18 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         graphics.fill(0, 0, this.width, this.height, SCREEN_BG);
         // ② 主面板 + 标题 + Tab 下划线
         drawPanel(graphics, panelX, panelY, panelW, panelH);
-        drawCenteredStringNoShadow(graphics, this.font,
-                Component.translatable("maid_file_manager.gui.title"),
-                this.width / 2, panelY + 10, HEADER_COLOR);
+        // 标题居中于「面板左内边距 ~ 备份按钮左侧」这段可用宽度，窄屏先截断再加省略号：
+        // 否则 341 宽（1024×768 + GUI scale 3）下标题会与右边三个小按钮重叠 32px。
+        Component titleComp = Component.translatable("maid_file_manager.gui.title");
+        String titleStr = titleComp.getString();
+        int titleLeft = panelX + 10;
+        int titleRight = (backupBtn != null ? backupBtn.getX() : panelX + panelW - 10) - 6;
+        int titleAvail = Math.max(20, titleRight - titleLeft);
+        if (this.font.width(titleStr) > titleAvail) {
+            titleStr = this.font.plainSubstrByWidth(titleStr, Math.max(1, titleAvail - this.font.width("…"))) + "…";
+        }
+        drawCenteredStringNoShadow(graphics, this.font, Component.literal(titleStr),
+                (titleLeft + titleRight) / 2, panelY + 10, HEADER_COLOR);
         Button activeTab = currentTab == Tab.EXPORT ? exportTabBtn : importTabBtn;
         graphics.fill(activeTab.getX(), activeTab.getY() + activeTab.getHeight(),
                 activeTab.getX() + activeTab.getWidth(), activeTab.getY() + activeTab.getHeight() + 2,
@@ -965,9 +974,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         if (!feedbackMsg.getString().isEmpty() && System.currentTimeMillis() < feedbackExpireAt) {
             int fbX = panelX + panelW / 2;
             int startY = panelY + panelH - LIST_BOTTOM_PAD + 6;
-            // 最小 fallback：GUI 极矮屏时，若首行冲进列表内容顶部（< listTop+12）就落列表顶+6（正常 GUI 完全不触发）
-            int listTopV = maidListWidget.listTop;
-            if (startY < listTopV + 12) startY = listTopV + 6;
+            // 反馈起点必须落在列表**下方**。原先的 fallback 是「若冲进列表顶部就落到 listTop+6」，
+            // 那是「更靠列表内」—— 矮屏（341×256）下列表被 clamp 得更矮时，这行黄字会被画进
+            // 列表矩形里，压住唯一可见的那几行。
+            int listBottomV = maidListWidget.listBottom;
+            if (startY < listBottomV + 2) startY = listBottomV + 2;
             int btnTop = (actionBtn != null && actionBtn.getY() > 0) ? actionBtn.getY() : startY + 4 * 9;
             int maxLines = Math.max(1, (btnTop - startY) / 9);
             List<String> lines = wrapFeedback(feedbackMsg.getString(), Math.max(80, panelW - 16), maxLines);
