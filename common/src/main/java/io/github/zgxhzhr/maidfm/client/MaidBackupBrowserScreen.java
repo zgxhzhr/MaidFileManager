@@ -92,6 +92,11 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     private boolean initialScanDone;
     /** 超时后是否已经自动重试过一次（避免无限重试） */
     private boolean scanRetriedAfterTimeout;
+
+    /** 网络实现暂不可用时的自动重试（第六轮 A4）：最多 3 次、每次间隔 1s */
+    private boolean netRetryPending;
+    private long netRetryAt;
+    private int netRetryCount;
     private int scrollOffset;
 
     private final List<WorldNode> worlds = new ArrayList<>();
@@ -188,6 +193,12 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         super.tick();
         // 界面期间每帧压住原版背景音乐（其 MusicManager 会自动重播，单次停止无效）
         UiMusicManager.tick();
+        // 网络实现暂不可用的自动重试（第六轮 A4）
+        if (netRetryPending && System.currentTimeMillis() >= netRetryAt) {
+            netRetryPending = false;
+            netRetryCount++;
+            scanBackups();
+        }
         // 服务端不回包时不能让「加载中」永久挂着：超时后放开并给出可读提示。
         if (loading && loadingSince > 0L
                 && System.currentTimeMillis() - loadingSince > LOADING_TIMEOUT_MS) {
@@ -281,9 +292,19 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
             loadingSince = System.currentTimeMillis();
             IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
             if (net == null) {
-                available = false;
-                loading = false;
-                setFeedback(Component.translatable("maid_file_manager.gui.error.network_unavailable"), ERROR_COLOR);
+                // 不再永久置「备份功能不可用」：网络实现在界面刚打开时可能尚未就绪，
+                // 原先只能关屏重开（第六轮 A4）。改为保可用状态 + 1s 后自动重试，最多 3 次。
+                if (netRetryCount >= 3) {
+                    loading = false;
+                    loadingSince = 0L;
+                    setFeedback(Component.translatable("maid_file_manager.gui.error.network_unavailable"), ERROR_COLOR);
+                } else {
+                    netRetryPending = true;
+                    // 排期重试期间不能挂着 loading：否则 tick 的「加载超时」会提前跳到失败分支
+                    loading = false;
+                    loadingSince = 0L;
+                    netRetryAt = System.currentTimeMillis() + 1000L;
+                }
                 return;
             }
             net.sendRequestBackupList();
