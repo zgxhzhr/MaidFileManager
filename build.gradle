@@ -17,3 +17,93 @@ allprojects {
     // 只禁 sourcesJar 时 loom 仍会把旧 sources jar 重映射进 build/libs，必须一并禁用
     tasks.matching { it.name in ['sourcesJar', 'remapSourcesJar'] }.configureEach { enabled = false }
 }
+
+// ============================================================
+// 离线静态校验（构建期自动执行；纯 JDK 实现，无外部依赖、无需联网）
+// 目的：把历史上「只有真跑才暴露」的几类错误变成构建失败——
+//   1) 资源 JSON 尾逗号 / 括号不配平 / 非 UTF-8
+//      （曾导致 Minecraft 整份跳过语言表，全界面显示原始 key）
+//   2) 协议版本常量异常 / 通道 ID 重复（曾导致混版互连失败、通道错位）
+//   3) 写盘关键路径 Files.move 缺失或被误注释（曾导致「导出不落盘却回报成功」）
+// 说明：没有用 JUnit —— 离线环境无 junit 制品；这些检查也不需要启动 MC。
+// ============================================================
+def verifyAssetsTask = tasks.register('verifyAssets') {
+    group = 'verification'
+    description = '离线静态校验：资源 JSON 严格性 / 协议常量 / 通道 ID 唯一性 / 写盘关键路径'
+    doLast {
+        def problems = []
+        def rootDir = rootProject.projectDir
+
+        fileTree(rootDir) {
+            include '*/src/main/resources/**/*.json'
+            exclude '**/build/**'
+        }.each { f ->
+            String text
+            try {
+                text = f.getText('UTF-8')
+            } catch (Exception e) {
+                problems << "${f.name}: 不是合法 UTF-8".toString()
+                return
+            }
+            // 去掉字符串字面量后再判结构性错误，避免值里出现 "}," 之类误报
+            def stripped = text.replaceAll(/(?s)"(?:\\.|[^"\\])*"/, '""')
+            if ((stripped =~ /,\s*[}\]]/).find()) {
+                problems << "${f.name}: 存在尾逗号（严格 JSON 解析会整份拒绝）".toString()
+            }
+            def ob = stripped.count('{')
+            def cb = stripped.count('}')
+            def os = stripped.count('[')
+            def cs = stripped.count(']')
+            if (ob != cb || os != cs) {
+                problems << "${f.name}: 括号不配平 {} ${ob}/${cb}，[] ${os}/${cs}".toString()
+            }
+        }
+
+        def pkt = new File(rootDir, 'common/src/main/java/io/github/zgxhzhr/maidfm/network/MaidFilePackets.java')
+        if (pkt.isFile()) {
+            def src = pkt.getText('UTF-8')
+            def vm = src =~ /PROTOCOL_VERSION\s*=\s*"([^"]+)"/
+            if (vm.find()) {
+                if (vm.group(1) != '2') {
+                    problems << "PROTOCOL_VERSION=\"${vm.group(1)}\"，期望 \"2\"".toString()
+                }
+            } else {
+                problems << 'MaidFilePackets: 找不到 PROTOCOL_VERSION 常量'.toString()
+            }
+            def counts = [:]
+            def im = src =~ /String\s+ID_[A-Z0-9_]+\s*=\s*"([^"]+)"/
+            while (im.find()) {
+                def v = im.group(1)
+                counts[v] = (counts[v] ?: 0) + 1
+            }
+            counts.each { k, v ->
+                if (v > 1) {
+                    problems << "通道 ID 重复: ${k}（${v} 次）".toString()
+                }
+            }
+        } else {
+            problems << '找不到 MaidFilePackets.java'.toString()
+        }
+
+        def ioFile = new File(rootDir, 'common/src/main/java/io/github/zgxhzhr/maidfm/data/MaidFileIo.java')
+        if (ioFile.isFile()) {
+            def hasLiveMove = ioFile.getText('UTF-8').readLines().any { line ->
+                line.contains('Files.move(') && !line.trim().startsWith('//') && !line.trim().startsWith('*')
+            }
+            if (!hasLiveMove) {
+                problems << 'MaidFileIo: 找不到生效的 Files.move( —— 导出写盘可能又被注释掉'.toString()
+            }
+        }
+
+        if (!problems.isEmpty()) {
+            throw new GradleException('离线静态校验失败:\n  - ' + problems.join('\n  - '))
+        }
+        logger.lifecycle('[verifyAssets] 通过：资源 JSON / 协议常量 / 通道 ID / 写盘关键路径')
+    }
+}
+
+allprojects {
+    tasks.matching { it.name == 'build' || it.name == 'check' }.configureEach {
+        dependsOn verifyAssetsTask
+    }
+}
