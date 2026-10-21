@@ -38,10 +38,10 @@
 
 | Loader | Minecraft 版本 | JAR 文件名 |
 |--------|---------------|-----------|
-| Forge | 1.20 / 1.20.1 | maid_file_manager-forge-1.20.1-1.6.4.jar |
-| NeoForge | 1.21 / 1.21.1 | maid_file_manager-neoforge-1.21.1-1.6.4.jar |
-| Fabric | 1.20 / 1.20.1 | maid_file_manager-fabric-1.20.1-1.6.4.jar |
-| Fabric | 1.21 / 1.21.1 | maid_file_manager-fabric-1.21.1-1.6.4.jar |
+| Forge | 1.20 / 1.20.1 | maid_file_manager-forge-1.20.1-1.6.5.jar |
+| NeoForge | 1.21 / 1.21.1 | maid_file_manager-neoforge-1.21.1-1.6.5.jar |
+| Fabric | 1.20 / 1.20.1 | maid_file_manager-fabric-1.20.1-1.6.5.jar |
+| Fabric | 1.21 / 1.21.1 | maid_file_manager-fabric-1.21.1-1.6.5.jar |
 
 > 注：自 v1.4.0 起同一大版本内的小版本合并为单一 JAR：Forge 版基于 1.20.1 构建、兼容 1.20（Forge Loader 46+）；Fabric 1.20 系与 1.21 系同理单 JAR 通吃两个小版本。NeoForge 版自 v1.4.3 起 Minecraft 依赖范围放宽为 1.21～1.22（不含），1.21 原版与 1.21.1 均可加载，实际兼容性以前置车万女仆本体对相应版本的支持为准。
 
@@ -201,6 +201,41 @@ EntityEvents.spawned('touhou_little_maid:maid', event => {
 
 > 已经把数据写在女仆实体 NBT（含 `getPersistentData()` 与随存档自动序列化的 Capability）里的附属**无需接入**——本模组用 `EntityMaid#saveWithoutId` 导出完整女仆 NBT，这部分数据会自动随女仆迁移。
 ## 版本历史
+
+### v1.6.5
+
+本版是 **1.6.4 之后的收尾版**：补齐全语言、升级构建可移植性、并给构建加了离线静态校验。
+
+#### 新增语言（六种）
+
+| 语言 | 文件 | 说明 |
+|---|---|---|
+| 简体中文 | `zh_cn.json` | 基准（248 键） |
+| English | `en_us.json` |  |
+| 繁體中文（台灣） | `zh_tw.json` | 台灣用語：網路／用戶端／重新整理／點擊 |
+| 繁體中文（香港） | `zh_hk.json` | 香港用語：網絡／客戶端／重新載入／按一下（與台版 22 条差异） |
+| 日本語 | `ja_jp.json` | メイド／ご主人様／テイム／実績／ポーション効果 |
+| 文言（華夏） | `lzh.json` | 繁体 + 文言：女僕案籍／錄出／納入／審而錄之（术语复用 MC 官方 lzh 译本：畢／罷／還／置設／生界／戲者／行囊／進程） |
+
+六个语言文件均为 **248 键**，键集与 `zh_cn` 完全一致、`%s` 占位符逐条核对一致。
+
+> 说明：语言文件只决定码位与用词，**字形由客户端字体渲染**。MC 中 `zh_hk` 与 `zh_tw` 共用同一套字体，模组层无法控制「七／黃」等字形差异；繁体两版的区别体现在用词上。
+
+#### 构建工程化
+
+- **`gradle.properties` 去掉写死的 JDK 路径白名单**：原先固定了三条绝对路径并关闭自动探测，换机器第一步就会失败。现改为自动探测（`auto-detect=true`），保留 `auto-download=false`（离线友好）。`org.gradle.java.home` 仍保留（ForgeGradle/NeoGradle 需要特定 JDK 运行），文件内已注明换机时如何覆盖。
+- **新增 `verifyAssets` 构建期校验**（纯 JDK 实现，零外部依赖、离线可跑，挂在 `build` 上）：
+  - 资源 JSON 尾逗号 / 括号不配平 / 非 UTF-8（对应第四轮那次「语言文件尾逗号让 MC 整份跳过语言表」）
+  - `PROTOCOL_VERSION` 必须为 `"2"`、通道 ID 不得重复
+  - `MaidFileIo` 中必须存在未被注释的 `Files.move(`（对应第五轮那次「导出不落盘却回报成功」）
+  - **语言键集一致性**：以 `zh_cn` 为基准，任一语言缺键或多键即构建失败（本次新增四门语言即受此保护）
+- **同代工程 common 漂移清零**：`forge ↔ fabric-1.20.1`、`neo ↔ fabric-1.21.1` 的 common 源码哈希差异归零（此前有 9 / 2 个文件差异，均为空白、注释或等价重构，无功能分叉）。
+- **修复 forge 端遗留诊断日志**：`C2SPacket` 的「S<-C RECV」仍为 `INFO`（注释自称排查完应改回 debug），现降为 `debug`，与两端 fabric 一致。
+- **新增根 `NOTICE`**：显式声明代码/文档为 MIT，但 `ui_music.ogg` 为「保留所有权利」的原创曲目，便于 CurseForge / Modrinth 合规审查。
+
+#### 兼容性
+
+`.maid` 格式仍为 v7；协议版本仍为 `"2"`（**1.6.3 与本版远程联机仍互拒**，单人世界不受影响）；四份 jar 直接替换即可。
 
 ### v1.6.4
 
