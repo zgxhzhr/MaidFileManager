@@ -1778,7 +1778,7 @@ setScrollAmount(0);
             public boolean isMouseOver(double mouseX, double mouseY) {
                 int rowX = MaidListWidget.this.listX;
                 int rowW = MaidListWidget.this.listW;
-                return mouseX >= rowX && mouseX <= rowX + rowW
+                return mouseX >= rowX && mouseX <= rowX + rowW - 5
                         && this.lastTop >= 0
                         && mouseY >= this.lastTop - 2
                         && mouseY <= this.lastTop + this.lastHeight + 2;
@@ -1945,7 +1945,7 @@ setScrollAmount(0);
             public boolean isMouseOver(double mouseX, double mouseY) {
                 int rowX = MaidListWidget.this.listX;
                 int rowW = MaidListWidget.this.listW;
-                return mouseX >= rowX && mouseX <= rowX + rowW
+                return mouseX >= rowX && mouseX <= rowX + rowW - 5
                         && this.lastTop >= 0
                         && mouseY >= this.lastTop - 2
                         && mouseY <= this.lastTop + this.lastHeight + 2;
@@ -2245,7 +2245,7 @@ setScrollAmount(0);
             public boolean isMouseOver(double mouseX, double mouseY) {
                 int rowX = FileListWidget.this.listX;
                 int rowW = FileListWidget.this.listW;
-                return mouseX >= rowX && mouseX <= rowX + rowW
+                return mouseX >= rowX && mouseX <= rowX + rowW - 5
                         && this.lastTop >= 0
                         && mouseY >= this.lastTop - 2
                         && mouseY <= this.lastTop + this.lastHeight + 2;
