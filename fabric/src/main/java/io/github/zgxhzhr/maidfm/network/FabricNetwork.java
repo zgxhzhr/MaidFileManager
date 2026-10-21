@@ -127,6 +127,10 @@ public final class FabricNetwork implements IMaidFileNetwork {
     private static void sendC2S(ResourceLocation id, FriendlyByteBuf buf) {
         try {
             ClientPlayNetworking.send(MaidPayload.of(id, buf));
+        } catch (Throwable t) {
+            // 编码/发送失败不得向上抛：调用点多在 UI 事件与网络回调里，抛出去会打断整条交互。
+            // 缓冲仍在 finally 里统一释放。
+            io.github.zgxhzhr.maidfm.Constants.LOG.warn("[maid_file_manager] C->S 发送失败: id={}", id, t);
         } finally {
             // Fabric API 不会替调用方释放 FriendlyByteBuf：发送完成后必须手动释放，否则每次发包泄漏一块池化内存
             buf.release();
