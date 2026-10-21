@@ -61,6 +61,12 @@ public final class MaidPhotoStore {
             if (bytes.length == 0) {
                 return null;
             }
+            // 磁盘上的 png 也可能被手工替换成「小文件 + 巨大声明尺寸」的炸弹：
+            // 读取方（客户端贴图）会按声明尺寸分配，所以出库前再校验一次。
+            if (!isValidProfilePhoto(bytes)) {
+                Constants.LOG.warn("[maid_file_manager] 档案照片文件非法（体积或像素超限），已拒绝读取: {}", file);
+                return null;
+            }
             return bytes;
         } catch (IOException e) {
             Constants.LOG.warn("[maid_file_manager] 读取档案照片失败: {}: {}", file, e.toString());

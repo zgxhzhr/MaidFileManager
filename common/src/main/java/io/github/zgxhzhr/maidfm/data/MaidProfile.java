@@ -107,8 +107,14 @@ public final class MaidProfile {
         p.photoCleared = tag.getBoolean("photo_cleared");
         if (tag.contains("photo", Tag.TAG_BYTE_ARRAY)) {
             byte[] bytes = tag.getByteArray("photo");
-            if (bytes.length > 0 && bytes.length <= Constants.PROFILE_PHOTO_MAX_BYTES) {
+            // 只限字节不够：PNG 头可以声明巨大的宽高而文件本身只有几十字节，
+            // 客户端贴图解码时按声明尺寸分配 → 直接撑爆堆。这里走与上传路径同一套
+            // isValidProfilePhoto（只解析 PNG IHDR，不整体解码，开销极小）。
+            if (bytes.length > 0 && MaidPhotoStore.isValidProfilePhoto(bytes)) {
                 p.photo = bytes;
+            }
+            else if (bytes.length > 0) {
+                Constants.LOG.warn("[maid_file_manager] .maid 内嵌档案照片非法（体积或像素超限），已忽略: bytes={}", bytes.length);
             }
         }
         p.occupation = tag.getString("occupation");
