@@ -122,6 +122,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private boolean exportInFlight;
     /** 置位时刻：服务端不回导出结果时用它超时自愈（否则导出按钮永久 busy） */
     private long exportInFlightSince;
+
+    /** 导入提交在途：读盘期间连点两次会重复提交 → 服务端重复生成女仆（第六轮 M3） */
+    private boolean importSubmitInFlight;
+    private long importSubmitSince;
+    /** 导入在途的最长等待 */
+    private static final long IMPORT_SUBMIT_TIMEOUT_MS = 60_000L;
     /** 等在途导出结束的最长时间 */
     private static final long EXPORT_IN_FLIGHT_TIMEOUT_MS = 60_000L;
     /** 统一导出：服务端返回的玩家分组女仆列表 */
@@ -198,6 +204,13 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             setFeedback(Component.translatable("maid_file_manager.gui.export.timeout"));
             Constants.LOG.warn("[maid_file_manager] 导出在途超时（60s 未收到结果），已放开重试");
         }
+
+            // 导入提交在途的超时自愈：后台读盘线程若因界面关闭被丢弃，标志会一直为真（第六轮 M3）。
+            if (this.importSubmitInFlight && this.importSubmitSince > 0L
+                    && System.currentTimeMillis() - this.importSubmitSince > IMPORT_SUBMIT_TIMEOUT_MS) {
+                this.importSubmitInFlight = false;
+                this.importSubmitSince = 0L;
+            }
     }
 
     @Override
@@ -877,6 +890,14 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                         MaidFilePackets.MAX_IMPORT_BATCH_FILES, selectedImportFileNames.size()));
                 return;
             }
+            // 在途守卫：读盘 + 上传期间再点一次会重复提交，服务端会重复生成女仆（第六轮 M3）。
+            if (importSubmitInFlight) {
+                setFeedback(Component.translatable("maid_file_manager.gui.import.batch_reading",
+                        selectedImportFileNames.size()));
+                return;
+            }
+            importSubmitInFlight = true;
+            importSubmitSince = System.currentTimeMillis();
             final List<String> readFileNames = new ArrayList<>(selectedImportFileNames);
             final boolean deleteAfterImport = deleteImportFileState;
             pendingImportFileNames.clear();
@@ -941,6 +962,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                     return;
                 }
                 this.minecraft.execute(() -> {
+                    importSubmitInFlight = false;
                     if (outError != null) {
                         setFeedback(Component.translatable(outError));
                         return;
