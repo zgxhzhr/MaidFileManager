@@ -232,7 +232,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         //   避让策略：Tab 组的最小左边界 = serverBtnX + serverBtnW + tabGap，如原来的居中 TabStartX 太小则整体右移，保持按钮不被挤压
         final int SERVER_EXPORT_BTN_W = 122;
         int serverExportBtnX = panelX + 10;
-        int tabMinX = serverExportBtnX + SERVER_EXPORT_BTN_W + tabGap;
+        // 非 OP 时「统一导出」按钮 visible=false，不该再为它预留 122+10=132px：
+        // 否则 341 宽下 Tab 组被推到 tabMinX=172，「导入」Tab 与刷新按钮仍重叠 17px
+        // （P2-25 只把总重叠从 49 缩到 17，根因就是这个预留宽度）。
+        boolean opUser = this.minecraft != null && this.minecraft.player != null
+                && this.minecraft.player.hasPermissions(2);
+        int tabMinX = opUser ? (serverExportBtnX + SERVER_EXPORT_BTN_W + tabGap) : (panelX + 10);
         // 一次性算定可用区间并允许收窄 Tab 宽度。原先是「居中 → clamp 到 tabMinX → 右移避让 →
         // 再 clamp 回 tabMinX」，最后那次 clamp 把避让整体撤销且不再复查右边界：
         // 341×192（1366×768 + scale 4）下 tabW=56、totalTabW=122、tabMinX=172，
