@@ -143,6 +143,8 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
 
     /** 照片选择覆盖层 */
     private boolean pickerOpen;
+    /** 界面是否已关闭：异步选图回来后据此判断要不要建纹理（否则没人释放 → 显存泄漏） */
+    private boolean screenClosed;
     private int pickerX;
     private int pickerY;
     private int pickerW;
@@ -255,6 +257,7 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
 
     @Override
     protected void init() {
+        screenClosed = false;
         UiMusicManager.enter(this);
         super.init();
         IMaidFileNetwork.ClientHandlerHolder.set(this);
@@ -481,7 +484,13 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
             }
             this.minecraft.execute(() -> {
                 if (outError != null) {
+                    // 浮层不关的话，它的不透明底色会把底部提示遮住 → 看起来「点了没反应」（第六轮 M7）。
+                    pickerOpen = false;
                     setFeedback(Component.translatable(outError), ERROR_COLOR);
+                    return;
+                }
+                // 界面已关闭：此时建纹理没人释放（onClose 已 release 过）→ 显存泄漏（第六轮 M6）。
+                if (screenClosed) {
                     return;
                 }
                 profile.setPhoto(outBytes);
@@ -952,6 +961,7 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
 
     @Override
     public void onClose() {
+        screenClosed = true;
         releasePhotoTexture();
         if (prevHandler != null) {
             IMaidFileNetwork.ClientHandlerHolder.set(prevHandler);
