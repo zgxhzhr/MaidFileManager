@@ -93,7 +93,12 @@ public class MaidConfigScreen extends Screen {
                 + 16 + ROW_H * 2   // 客户端区块标题 + 2 行（统一导出同意 / 移除二次确认）
                 + 12 + 20 + 10;   // 完成按钮 + 底部边距
         panelX = (this.width - PANEL_W) / 2;
-        panelY = Math.max(10, (this.height - panelH) / 2);
+        // 面板高度 clamp 到屏幕内：480×270（1080p + GUI scale 4）下算出来约 298 会超出屏幕，
+        // 底部「完成」按钮直接出屏、设置无法保存。clamp 后内容仍按原布局排（可能略挤），但按钮始终可见。
+        if (panelH > this.height - 16) {
+            panelH = this.height - 16;
+        }
+        panelY = Math.max(4, (this.height - panelH) / 2);
 
         int labelX = panelX + 20;
         int switchX = panelX + PANEL_W - 20 - SWITCH_W;
