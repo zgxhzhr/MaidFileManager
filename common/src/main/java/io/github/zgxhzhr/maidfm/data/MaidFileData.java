@@ -196,10 +196,13 @@ public class MaidFileData {
         // v6 短暂存在过的 source_health_base/source_attack_base 字段已废弃：
         // 属性 base 导入时无条件回到 TLM 白板值，旧文件含这两个键时直接忽略。
         // 旧 v4 文件可能含 spell_maid 键，同样忽略（向后兼容）。
-        // TLM 备份壳容错（TouhouLittleMaid 自动备份直接产出 .maid 格式）：
-        // data_version 缺失时兜底读取 Minecraft 原生版本号根键 DataVersion
+        // 注意：**不能**用根键 DataVersion（Minecraft 世界数据版本，如 3465）兜底 data_version。
+        // dataVersion 是本模组**内部格式版本**（当前 7），两者量纲完全不同：
+        // 把 3465 写进去会让 NbtMigration 判定为「远高于当前版本」，走错升级/降级分支。
+        // 缺 data_version 时保持默认值（当前格式版本）即可 —— 旧文件本就按最新格式解析。
         if (!root.contains("data_version", Tag.TAG_INT) && root.contains("DataVersion", Tag.TAG_INT)) {
-            data.dataVersion = root.getInt("DataVersion");
+            Constants.LOG.debug("[maid_file_manager] .maid 缺 data_version，忽略根键 DataVersion={}（与内部格式版本无关）",
+                    root.getInt("DataVersion"));
         }
         // model_id 缺失时从实体 NBT 回退（1.21+ 为 model_id，1.20.x 为 ModelId），
         // 仅用于展示与命名兜底；导入实体模型仍由 data 内的模型键经 maid.load 恢复
