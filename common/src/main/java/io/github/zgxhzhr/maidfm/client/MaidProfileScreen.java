@@ -453,10 +453,9 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
     }
 
     private void choosePhoto(String fileName) {
-        if (io.github.zgxhzhr.maidfm.network.MaidFilePackets.isLegacyPayloadLimit()) {
-            setFeedback(Component.translatable("gui.maid_file_manager.profile.photo_manual_only"), ERROR_COLOR);
-            return;
-        }
+        // 不再按版本拦截：带照片的档案保存会走 save_profile 的分片通道（超 24 KiB 自动分片），
+        // 1.20.x 真联机也能正常发送。此前这里挡着，导致 1.20.x 玩家选不了照片。
+        // （clearPhoto 的同类守卫已在 P2-18 移除，这里补齐另一半。）
         Path dir = MaidPhotoUtil.photosDir(this.minecraft.gameDirectory.toPath());
         Path file = dir.resolve(fileName);
         try {
