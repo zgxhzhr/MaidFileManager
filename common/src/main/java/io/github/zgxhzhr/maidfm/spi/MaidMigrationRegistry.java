@@ -26,7 +26,10 @@ public final class MaidMigrationRegistry {
      * @param provider 要注册的 provider
      */
     public static void register(MaidMigrationProvider provider) {
-        if (provider == null || provider.getId() == null) {
+        // 只判 provider 自身为空：不能在这一行里裸调 provider.getId() ——
+        // 第三方 getId() 抛异常会直接从守卫行逃逸，绕过下面的异常隔离（第六轮 D1），
+        // 而且这样 getId() 也会被调用两次。
+        if (provider == null) {
             return;
         }
         final ResourceLocation newId;
@@ -36,6 +39,9 @@ public final class MaidMigrationRegistry {
             // 第三方 provider 的 getId() 抛异常时不能让注册整体崩掉（硬约束：附属模组异常必须隔离）
             io.github.zgxhzhr.maidfm.Constants.LOG.warn(
                     "[maid_file_manager] 迁移 provider 的 getId() 抛异常，已跳过注册: {}", t.toString());
+            return;
+        }
+        if (newId == null) {
             return;
         }
         for (int i = 0; i < PROVIDERS.size(); i++) {
