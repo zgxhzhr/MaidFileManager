@@ -223,7 +223,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         panelX = (this.width - panelW) / 2;
         // 工具列按面板宽收窄（1024×768 + scale 3 → 逻辑宽 341、panelW=281）：
         // 固定 156 会把列表区挤到 ~103px，行内文字区只剩几像素、名字全变「…」。
-        sidebarW = Math.min(SIDEBAR_W, Math.max(64, panelW / 3));
+        // 下限 122：工具按钮统一宽 = sidebarW-12，最长标签「打开导入文件夹/导入后删除源文件」需要 ~108px；
+        // 下限 64 时 341 宽下 sidebarW=93、按钮只有 81px，标签溢出 27px（第六轮 M4，第五轮收窄引入）。
+        // 122 时按钮 110px 足够，列表区仍有 137px（文字区 115px，远超「全变…」的 4px 阈值）。
+        sidebarW = Math.min(SIDEBAR_W, Math.max(122, panelW / 3));
         panelY = MARGIN;
 
         // =============================================================
