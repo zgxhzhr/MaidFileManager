@@ -84,6 +84,10 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     private boolean available;
     /** 专业服务端：已发出列表请求、正在等待服务端回传 */
     private boolean loading;
+    /** loading 置真的时刻：服务端不回包时用它超时兜底（否则界面永久「加载中」） */
+    private long loadingSince;
+    /** 等服务端回包的最长时间（毫秒） */
+    private static final long LOADING_TIMEOUT_MS = 15_000L;
     /** 是否已完成首次扫描（init 会因 resize 被重复调用，避免反复全量扫描） */
     private boolean initialScanDone;
     private int scrollOffset;
@@ -181,6 +185,14 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         super.tick();
         // 界面期间每帧压住原版背景音乐（其 MusicManager 会自动重播，单次停止无效）
         UiMusicManager.tick();
+        // 服务端不回包时不能让「加载中」永久挂着：超时后放开并给出可读提示。
+        if (loading && loadingSince > 0L
+                && System.currentTimeMillis() - loadingSince > LOADING_TIMEOUT_MS) {
+            loading = false;
+            loadingSince = 0L;
+            setFeedback(Component.translatable("maid_file_manager.gui.error.network_unavailable"), ERROR_COLOR);
+            Constants.LOG.warn("[maid_file_manager] 备份列表请求超时（{} ms 未回包）", LOADING_TIMEOUT_MS);
+        }
     }
 
     @Override
@@ -255,6 +267,7 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
             // 专业服务端：备份在服务器磁盘，请求服务端按权限过滤后回传
             available = true;
             loading = true;
+            loadingSince = System.currentTimeMillis();
             IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
             if (net == null) {
                 available = false;
