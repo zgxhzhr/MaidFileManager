@@ -237,6 +237,9 @@ public final class MaidBackupService {
         MaidFileData data = new MaidFileData();
         // Curios 饰品：备份导出的 .maid 同样必须裁剪——备份里存的是实体 NBT，天然带着 Curios 载荷。
         // 用副本处理，避免污染服务端持有的备份数据本身。
+        // 备份导出同样不消费 Curios 批次统计（只有 sendExportResults 会取走），
+        // 先在入口清一次，避免这批统计串到下一个走 sendExportResults 的玩家提示里。
+        CuriosBaubleFilter.takeBatch();
         CompoundTag exportTag = tag.copy();
         CuriosBaubleFilter.Result backupCurios = CuriosBaubleFilter.strip(exportTag,
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.isCarryCurios(),

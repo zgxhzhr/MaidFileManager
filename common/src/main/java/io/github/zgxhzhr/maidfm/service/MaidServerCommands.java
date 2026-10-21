@@ -170,6 +170,10 @@ public final class MaidServerCommands {
                     requestedTotal, MAX_TOTAL_EXPORT_IDS);
         }
         Path exportRoot = Services.PLATFORM.get().getGameDir().toAbsolutePath().resolve(Constants.MAID_EXPORTS_DIR);
+        // 先清掉上一轮残留的 Curios 批次统计：CuriosBaubleFilter 的统计是 ThreadLocal，
+        // 而 exportall / OP 统一导出这条路径**不消费**它（只有 sendExportResults 会调
+        // curiosDropTip 取走），残留值会串到下一位玩家的提示里。
+        io.github.zgxhzhr.maidfm.data.CuriosBaubleFilter.takeBatch();
         int totalOk = 0;
         int totalFail = 0;
         List<Component> details = new ArrayList<>();
