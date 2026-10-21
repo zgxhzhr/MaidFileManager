@@ -87,6 +87,26 @@ public final class MaidFilePayloads {
             feedback(sp, Component.translatable("maid_file_manager.server.prefix").append(reject));
             return false;
         }
+        // 提前按整包体积预检（第六轮 N2）：原先只在 sendChunkedDownload 里判，
+        // 那时 blobs + buf + encoded 三份副本都已分配（最坏主线程瞬时占用数倍于负载）。
+        long declaredTotal = (long) blobs.size() * 4L;
+        for (byte[] oneBlob : blobs) {
+            declaredTotal += oneBlob.length;
+        }
+        if (declaredTotal > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES) {
+            Constants.LOG.warn("[maid_file_manager] 导出结果整包超上限，拒绝发送: player={} bytes={}",
+                    sp.getName().getString(), declaredTotal);
+            feedback(sp, Component.translatable(
+                    "maid_file_manager.server.export_too_large",
+                    declaredTotal / 1024, io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES / 1024));
+            return false;
+        }
+        // 导出侧没有独立上限，但导入侧 MAX_NBT_DECOMPRESSED_BYTES(4 MiB) 是硬闸门：
+        // 超过它的档案「导得出、导不回」，这里留一条 WARN 便于排查（第六轮 D4）。
+        if (declaredTotal > MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES) {
+            Constants.LOG.warn("[maid_file_manager] 导出数据 {} 字节超过导入侧 4 MiB 上限，该 .maid 可能无法再导入: player={}",
+                    declaredTotal, sp.getName().getString());
+        }
         byte[] encodedOut = ExportBatchResultPayload.encodeExportBatchResult(blobs);
         if (encodedOut.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
             if (!ChunkedDownloadPayload.sendChunks(sp,
