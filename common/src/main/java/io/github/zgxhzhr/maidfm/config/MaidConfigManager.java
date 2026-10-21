@@ -497,10 +497,14 @@ public final class MaidConfigManager {
      * （那是 OP 可自行增删的，界面正常可勾选/取消）。
      */
     public static boolean isBaubleForcedBlocked(String id, String displayName) {
-        if (id != null && !id.isEmpty() && baubleImportBlacklist.contains(id)) {
+        String normId = id == null ? null : id.trim().toLowerCase(java.util.Locale.ROOT);
+        String normName = displayName == null ? null : displayName.trim().toLowerCase(java.util.Locale.ROOT);
+        // 清单装载时已 toLowerCase（parseSanitizedList），比较前必须同样归一化 ——
+        // 与 isBaubleWhitelistPass 口径一致，否则带大写的条目永不命中「强制禁用」标记。
+        if (normId != null && !normId.isEmpty() && baubleImportBlacklist.contains(normId)) {
             return true;
         }
-        if (displayName != null && !displayName.isEmpty() && baubleImportBlacklist.contains(displayName)) {
+        if (normName != null && !normName.isEmpty() && baubleImportBlacklist.contains(normName)) {
             return true;
         }
         return baubleWhitelistEnforced && !isBaubleWhitelistPass(id, displayName);
