@@ -1326,66 +1326,96 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             setFeedback(Component.translatable("maid_file_manager.export.fail.empty"));
             return;
         }
-        int success = 0;
-        int failed = 0;
-        String lastFileName = null;
+        // 写盘投递到后台线程：这个方法在网络回调（已回主线程）里逐条做同步磁盘 IO，
+        // 批量导出 64 只女仆 = 64 次 NBT 序列化 + 64 次文件写（每次还要探测重名），
+        // 单人世界里红石/刷怪塔在跑时主线程会明显卡顿。
+        // 注意：
+        //  - gameDir / dir / 显示名在主线程先算好（显示名要读语言表，不能跨线程）；
+        //  - MaidFileData 只读，跨线程安全；MaidFileIo 全是静态纯 IO；
+        //  - 回执与 UI 更新必须回主线程。
+        final Path gameDir = this.minecraft.gameDirectory.toPath().toAbsolutePath();
+        final String playerName = this.minecraft.player != null ? this.minecraft.player.getName().getString() : "";
+        final Path dir;
         try {
-            Path gameDir = this.minecraft.gameDirectory.toPath().toAbsolutePath();
-            // 目录结构：maid_exports/<玩家名>/<女仆文件>
-            String playerName = this.minecraft.player != null ? this.minecraft.player.getName().getString() : "";
-            Path dir = MaidFileIo.resolvePlayerDir(MaidFileIo.ensureExportsDir(gameDir), playerName);
+            dir = MaidFileIo.resolvePlayerDir(MaidFileIo.ensureExportsDir(gameDir), playerName);
             Files.createDirectories(dir);
-            for (MaidFileData data : dataList) {
-                if (data == null) {
-                    failed++;
-                    continue;
-                }
-                // 服务端拿不到客户端语言表，getDisplayName 可能是裸翻译键：这里统一在客户端转换
-                String displayName = data.getDisplayName() != null
-                        ? ModelNames.displayModelId(data.getModelId())
-                        : (data.getModelId() != null ? ModelNames.displayModelId(data.getModelId()) : "unknown");
-                // 若有自定义名（命名牌所取），拼到模型名前面，便于在文件名中体现
-                displayName = MaidFileIo.composeDisplayName(data.getCustomName(), displayName);
-                String ownerUuid = data.getOwnerUuid();
-                String fileName = MaidFileIo.writeMaidFile(dir, displayName, data.getModelId(),
-                        ownerUuid, data, LocalDateTime.now());
-                lastFileName = fileName;
-                success++;
-                Constants.LOG.info("[maid_file_manager] Export saved locally: {}", dir.resolve(fileName));
-            }
         } catch (Exception e) {
-            Constants.LOG.error("[maid_file_manager] Failed to save export file locally", e);
-            // 写盘失败：必须回执 false，服务端据此放弃删除女仆（否则"女仆没了、文件也没有"）
+            Constants.LOG.error("[maid_file_manager] Failed to prepare export dir", e);
             IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
             if (net != null) {
                 net.sendExportWriteAck(false);
             }
-            // 异常原文可能含本地路径/内部类名，界面只给通用提示，细节看日志
             setFeedback(Component.translatable("maid_file_manager.export.fail.local_save"));
             return;
         }
-
-        // 回执写盘结果：只有全部成功才让服务端删除女仆
-        IMaidFileNetwork ackNet = IMaidFileNetwork.Holder.get();
-        if (ackNet != null) {
-            ackNet.sendExportWriteAck(failed == 0);
+        // 显示名必须在主线程算好（ModelNames 会读客户端语言表）
+        final java.util.List<String> displayNames = new java.util.ArrayList<>(dataList.size());
+        for (MaidFileData data : dataList) {
+            if (data == null) {
+                displayNames.add(null);
+                continue;
+            }
+            String dn = data.getDisplayName() != null
+                    ? ModelNames.displayModelId(data.getModelId())
+                    : (data.getModelId() != null ? ModelNames.displayModelId(data.getModelId()) : "unknown");
+            displayNames.add(MaidFileIo.composeDisplayName(data.getCustomName(), dn));
         }
-
-        Component fb;
-        if (failed == 0) {
-            String playerDirName = MaidFileIo.sanitizePlayerName(
-                    this.minecraft.player != null ? this.minecraft.player.getName().getString() : "");
-            fb = Component.translatable("maid_file_manager.gui.export.success_files",
-                    success, playerDirName, (success == 1 ? (lastFileName != null ? lastFileName : "") : "…"));
-            Constants.LOG.info("[maid_file_manager] Batch export SUCCESS: count={}, keep={}", success, keepMaidsInWorldState);
-        } else {
-            fb = Component.translatable("maid_file_manager.gui.export.partial", success, failed);
-            Constants.LOG.warn("[maid_file_manager] Batch export PARTIAL: ok={} fail={}", success, failed);
-        }
-        setFeedback(fb);
-        if (this.minecraft.player != null) {
-            this.minecraft.player.displayClientMessage(fb, false);
-        }
+        final Minecraft mc = this.minecraft;
+        Thread worker = new Thread(() -> {
+            int success = 0;
+            int failed = 0;
+            String lastFileName = null;
+            boolean cataclysm = false;
+            for (int i = 0; i < dataList.size(); i++) {
+                MaidFileData data = dataList.get(i);
+                String displayName = displayNames.get(i);
+                if (data == null || displayName == null) {
+                    failed++;
+                    continue;
+                }
+                try {
+                    String fileName = MaidFileIo.writeMaidFile(dir, displayName, data.getModelId(),
+                            data.getOwnerUuid(), data, LocalDateTime.now());
+                    lastFileName = fileName;
+                    success++;
+                    Constants.LOG.info("[maid_file_manager] Export saved locally: {}", dir.resolve(fileName));
+                } catch (Throwable t) {
+                    failed++;
+                    cataclysm = true;
+                    Constants.LOG.error("[maid_file_manager] Failed to save export file locally", t);
+                }
+            }
+            final int fSuccess = success;
+            final int fFailed = failed;
+            final String fLast = lastFileName;
+            final boolean fCatastrophic = cataclysm;
+            mc.execute(() -> {
+                IMaidFileNetwork ackNet = IMaidFileNetwork.Holder.get();
+                if (ackNet != null) {
+                    ackNet.sendExportWriteAck(fFailed == 0);
+                }
+                if (fCatastrophic && fSuccess == 0) {
+                    setFeedback(Component.translatable("maid_file_manager.export.fail.local_save"));
+                    return;
+                }
+                Component fb;
+                if (fFailed == 0) {
+                    String playerDirName = MaidFileIo.sanitizePlayerName(playerName);
+                    fb = Component.translatable("maid_file_manager.gui.export.success_files",
+                            fSuccess, playerDirName, (fSuccess == 1 ? (fLast != null ? fLast : "") : "…"));
+                    Constants.LOG.info("[maid_file_manager] Batch export SUCCESS: count={}, keep={}", fSuccess, keepMaidsInWorldState);
+                } else {
+                    fb = Component.translatable("maid_file_manager.gui.export.partial", fSuccess, fFailed);
+                    Constants.LOG.warn("[maid_file_manager] Batch export PARTIAL: ok={} fail={}", fSuccess, fFailed);
+                }
+                setFeedback(fb);
+                if (this.minecraft != null && this.minecraft.player != null) {
+                    this.minecraft.player.displayClientMessage(fb, false);
+                }
+            });
+        }, "maidfm-export-writer");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     @Override
