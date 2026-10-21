@@ -2309,29 +2309,57 @@ setScrollAmount(0);
             }
 
             /** 打开该导入文件内的档案快照（只读预览；文件无档案数据时提示） */
+            /** 打开该导入文件内的档案快照（只读预览；文件无档案数据时提示） */
             private void openOfflineProfile() {
-                try {
-                    Path gameDir = MaidFileManagerScreen.this.minecraft.gameDirectory.toPath().toAbsolutePath();
-                    Path dir = MaidFileIo.ensureImportsDir(gameDir);
-                    Path file = dir.resolve(fileName).normalize();
-                    if (!file.startsWith(dir)) {
-                        return;
-                    }
-                    MaidFileData data = MaidFileIo.readMaidFile(file);
-                    if (data == null) {
-                        return;
-                    }
-                    if (data.getProfile() == null) {
-                        MaidFileManagerScreen.this.setFeedback(
-                                Component.translatable("maid_file_manager.profile.not_in_file"));
-                        return;
-                    }
-                    MaidProfileView view = MaidProfileScreen.buildOfflineView(data);
-                    MaidFileManagerScreen.this.minecraft.setScreen(
-                            new MaidProfileScreen(MaidFileManagerScreen.this, view));
-                } catch (Throwable t) {
-                    Constants.LOG.warn("[maid_file_manager] 打开导入文件档案失败: {}", t.toString());
+                // readMaidFile 要解 GZIP + 解析 NBT，必须离开渲染线程（第六轮 M8）。
+                final Path snapGameDir = MaidFileManagerScreen.this.minecraft != null
+                        ? MaidFileManagerScreen.this.minecraft.gameDirectory.toPath().toAbsolutePath() : null;
+                final String snapFileName = fileName;
+                if (snapGameDir == null) {
+                    return;
                 }
+                Thread snapWorker = new Thread(() -> {
+                    MaidProfileView view = null;
+                    boolean noProfile = false;
+                    try {
+                        Path dir = MaidFileIo.ensureImportsDir(snapGameDir);
+                        Path file = dir.resolve(snapFileName).normalize();
+                        if (!file.startsWith(dir)) {
+                            return;
+                        }
+                        MaidFileData data = MaidFileIo.readMaidFile(file);
+                        if (data == null) {
+                            return;
+                        }
+                        if (data.getProfile() == null) {
+                            noProfile = true;
+                        } else {
+                            view = MaidProfileScreen.buildOfflineView(data);
+                        }
+                    } catch (Throwable t) {
+                        Constants.LOG.warn("[maid_file_manager] 打开导入文件档案失败: {}", t.toString());
+                        return;
+                    }
+                    if (MaidFileManagerScreen.this.minecraft == null) {
+                        return;
+                    }
+                    final MaidProfileView outView = view;
+                    final boolean outNoProfile = noProfile;
+                    MaidFileManagerScreen.this.minecraft.execute(() -> {
+                        if (outNoProfile) {
+                            MaidFileManagerScreen.this.setFeedback(
+                                    Component.translatable("maid_file_manager.profile.not_in_file"));
+                            return;
+                        }
+                        if (outView == null || MaidFileManagerScreen.this.minecraft == null) {
+                            return;
+                        }
+                        MaidFileManagerScreen.this.minecraft.setScreen(
+                                new MaidProfileScreen(MaidFileManagerScreen.this, outView));
+                    });
+                }, "maidfm-snapshot-read");
+                snapWorker.setDaemon(true);
+                snapWorker.start();
             }
 
             @Override
