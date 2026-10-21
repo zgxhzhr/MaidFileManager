@@ -304,7 +304,13 @@ public class MaidBaubleExtraBlockScreen extends Screen {
     }
 
     /** 依据当前标签与搜索内容重建可见列表 */
-    private void rebuildShown() {
+    private void rebuildShown() { rebuildShown(true); }
+
+    /**
+     * @param resort 是否按「已禁用置顶」重排。勾选瞬间必须传 false ——
+     *               否则该行会立刻跳到顶部，连续点击时第二次就落到别的模组上（第六轮 A5）。
+     */
+    private void rebuildShown(boolean resort) {
         shown.clear();
         String q = filterField == null ? "" : filterField.getValue().trim().toLowerCase(Locale.ROOT);
         if (tab == 0) {
@@ -321,7 +327,9 @@ public class MaidBaubleExtraBlockScreen extends Screen {
                     shown.add(modId);
                 }
             }
-            shown.sort((a, b) -> Boolean.compare(blockedNamespaces.contains(b), blockedNamespaces.contains(a)));
+            if (resort) {
+                shown.sort((a, b) -> Boolean.compare(blockedNamespaces.contains(b), blockedNamespaces.contains(a)));
+            }
         } else {
             for (String slot : slotEntries) {
                 if (q.isEmpty() || slot.toLowerCase(Locale.ROOT).contains(q)) {
@@ -433,7 +441,7 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         if (!blockedNamespaces.remove(modId)) {
             blockedNamespaces.add(modId);
         }
-        rebuildShown();
+        rebuildShown(false); // 勾选不重排
     }
 
     private void toggleSlot(String slot) {
@@ -443,7 +451,7 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         if (!blockedSlots.remove(slot)) {
             blockedSlots.add(slot);
         }
-        rebuildShown();
+        rebuildShown(false); // 勾选不重排
     }
 
     private void onSaveAndClose() {
