@@ -55,9 +55,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     Constants.LOG.warn("[maid_file_manager] C2S 包 {} 被丢弃：ctx.getSender() 返回 null", id);
                     return;
                 }
-                // 【诊断期】临时提到 INFO：用于确认服务端到底有没有收到 C2S 包。
-                // 排查完（包通道/握手问题）后应改回 debug。
-                Constants.LOG.info("[maid_file_manager] S<-C RECV: id={}, player={}", id,
+                // 每个 C2S 包一条收发记录：量很大（服务端每个包都打），因此保持 debug；
+                // 需要排查「服务端到底收没收到」时临时提到 INFO，排查完记得改回（本轮已从诊断期的 INFO 降回 debug）。
+                Constants.LOG.debug("[maid_file_manager] S<-C RECV: id={}, player={}", id,
                         player.getName().getString());
                 FriendlyByteBuf data = packet.data;
                 if (MaidFilePackets.ID_REQUEST_MAID_LIST.equals(id)) {
