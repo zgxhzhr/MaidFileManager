@@ -1641,7 +1641,10 @@ setScrollAmount(0);
                 this.lastTop = top;
                 this.lastHeight = height;
                 int rowX = MaidListWidget.this.listX;
-                int rowW = MaidListWidget.this.listW;
+                // 右侧留 5px 给自绘滚动条：滚动条画在 listX+listW-3..+2，完全落在行矩形内，
+                // 不剔除的话点滚动条会被判成点行（切换勾选），且命中即 return true，
+                // 父类 updateScrollingState() 永远拿不到点击 → 滚动条无法拖动。
+                int rowW = MaidListWidget.this.listW - 5;
                 if (hovering) {
                     graphics.fill(rowX, top - 1, rowX + rowW, top + height + 1, ROW_HOVER);
                 }
