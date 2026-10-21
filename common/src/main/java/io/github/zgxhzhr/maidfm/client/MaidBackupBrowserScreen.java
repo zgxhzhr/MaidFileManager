@@ -583,7 +583,13 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
             data.setOwnerName(ownerName);
             Path exportRoot = MaidFileIo.ensureExportsDir(this.minecraft.gameDirectory.toPath());
             Path playerDir = MaidFileIo.resolvePlayerDir(exportRoot, ownerName);
-            String written = MaidFileIo.writeMaidFile(playerDir, ModelNames.displayModelId(data.getModelId()), data.getModelId(),
+            // 文件名必须与普通导出一致：普通导出会拼自定义名（命名牌所取），
+            // 见 MaidFileManagerScreen / MaidServerCommands 都调 composeDisplayName。
+            // 原先这里直接传 displayModelId，带命名牌的女仆从备份导出时文件名会缺「自定义名_」段，
+            // 与上面那行注释宣称的「规则一致」不符。
+            String baseName = ModelNames.displayModelId(data.getModelId());
+            String displayName = MaidFileIo.composeDisplayName(data.getCustomName(), baseName);
+            String written = MaidFileIo.writeMaidFile(playerDir, displayName, data.getModelId(),
                     data.getOwnerUuid(), data, LocalDateTime.now());
             setFeedback(Component.translatable("gui.maid_file_manager.backup.exported", written), ACCENT);
         } catch (Throwable t) {
