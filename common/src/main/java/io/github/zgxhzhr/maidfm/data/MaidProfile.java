@@ -35,6 +35,14 @@ public final class MaidProfile {
 
     private int profileVersion = PROFILE_VERSION;
     private byte[] photo;
+
+    /**
+     * 玩家是否在界面上显式点了「清空头像」。
+     *
+     * <p>必须与服务端的「照片字段为空」区分开：1.20.x 保存档案时按协议不携带照片字节，
+     * 服务端若把「没有照片」当成「玩家要清空」，会误删已有头像。
+     */
+    private boolean photoCleared;
     private String occupation = "";
     private String birthday = "";
     private String personalNote = "";
@@ -62,6 +70,10 @@ public final class MaidProfile {
         tag.putInt("profile_version", profileVersion);
         if (includePhoto && photo != null && photo.length > 0) {
             tag.putByteArray("photo", photo);
+            // 显式清空标记：与「1.20.x 不携带照片字节」区分开，服务端据此才删头像文件
+            if (photoCleared) {
+                tag.putBoolean("photo_cleared", true);
+            }
         }
         putIfNotBlank(tag, "occupation", occupation);
         putIfNotBlank(tag, "birthday", birthday);
@@ -91,6 +103,8 @@ public final class MaidProfile {
         p.profileVersion = tag.contains("profile_version", Tag.TAG_INT)
                 ? tag.getInt("profile_version")
                 : PROFILE_VERSION;
+        // 显式清空标记：与「字段缺失」区分开（1.20.x 保存时不带照片字节）
+        p.photoCleared = tag.getBoolean("photo_cleared");
         if (tag.contains("photo", Tag.TAG_BYTE_ARRAY)) {
             byte[] bytes = tag.getByteArray("photo");
             if (bytes.length > 0 && bytes.length <= Constants.PROFILE_PHOTO_MAX_BYTES) {
@@ -130,7 +144,14 @@ public final class MaidProfile {
         return photo;
     }
 
+    /** 玩家是否显式点了「清空头像」（用于区分「照片字段缺失」与「主动清空」） */
+    public boolean isPhotoCleared() {
+        return photoCleared;
+    }
+
     public void setPhoto(byte[] photo) {
+        // 传 null 表示玩家显式清空（服务端据此删除 maid_photos 下的文件）
+        this.photoCleared = (photo == null || photo.length == 0);
         this.photo = photo;
     }
 

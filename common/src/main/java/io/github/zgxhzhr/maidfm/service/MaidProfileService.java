@@ -144,8 +144,16 @@ public final class MaidProfileService {
         }
         byte[] photo = profile.getPhoto();
         if (photo == null || photo.length == 0) {
-            // 不再把「照片为空」当成「玩家清空」：1.20.x 保存档案时按协议不携带照片，
-            // 在这里删除会把已有头像误删。清空头像改由玩家直接删除 maid_photos/<UUID>.png。
+            // 「照片为空」本身不代表玩家要清空：1.20.x 保存档案时按协议不携带照片字节。
+            // 只有客户端显式置了 photo_cleared 标记才删除，否则会把已有头像误删。
+            if (profile.isPhotoCleared()) {
+                try {
+                    io.github.zgxhzhr.maidfm.data.MaidPhotoStore.delete(gameDir(), uuid);
+                    Constants.LOG.info("[maid_file_manager] 玩家显式清空档案照片，已删除: maid={}", uuid);
+                } catch (Throwable t) {
+                    Constants.LOG.warn("[maid_file_manager] 删除档案照片失败: maid={} err={}", uuid, t.toString());
+                }
+            }
             return;
         }
         if (!MaidPhotoStore.isValidProfilePhoto(photo)) {
