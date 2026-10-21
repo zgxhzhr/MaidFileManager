@@ -61,6 +61,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private static final int PANEL_MAX_W = 430;
     /** 左侧工具列宽（竖排堆：全选 / 保留女仆 / 打开文件夹）—— 按钮统一宽 = SIDEBAR_W - 12 */
     private static final int SIDEBAR_W = 156;
+    /** 运行期实际工具列宽：窄屏（panelW 小）时收窄，把宽度让给列表 */
+    private int sidebarW = SIDEBAR_W;
     /** 列表行内「档案」按钮尺寸 */
     private static final int PROFILE_BTN_W = 34;
     private static final int PROFILE_BTN_H = 12;
@@ -194,6 +196,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         panelW = Math.min(PANEL_MAX_W, this.width - MARGIN * 2);
         panelH = this.height - MARGIN * 2;
         panelX = (this.width - panelW) / 2;
+        // 工具列按面板宽收窄（1024×768 + scale 3 → 逻辑宽 341、panelW=281）：
+        // 固定 156 会把列表区挤到 ~103px，行内文字区只剩几像素、名字全变「…」。
+        sidebarW = Math.min(SIDEBAR_W, Math.max(64, panelW / 3));
         panelY = MARGIN;
 
         // =============================================================
@@ -257,7 +262,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
         // ============= 左侧工具列（竖排 3 行：全选 / 保留 / 文件夹。UI无问题版模型=工具按钮透明叠在列表左上，最大化列表高度——核心解决"列表看不见了"） =============
         int sideX = panelX + 6;                            // UI无问题版：工具列左侧内边距
-        int sideBtnW = SIDEBAR_W - 12;                     // UI无问题版：工具按钮统一宽（156-12=144）
+        int sideBtnW = sidebarW - 12;                     // UI无问题版：工具按钮统一宽（156-12=144）
         int toolBtnH = 20;                                  // UI无问题版：工具按钮高 20
         int rowGap = 8;                                     // UI无问题版：行距 8
         // 三行工具按钮改为「从按钮区上方倒排」：原来 sideY1 恒为 panelY+66、第 3 行恒在
@@ -326,7 +331,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 .bounds(serverExportBtnX, tabY, SERVER_EXPORT_BTN_W, tabH).build();
 
         // ============= 右侧列表区（UI无问题版公式：最大化高度=核心解决"列表看不见了"。工具按钮透明叠在列表左上，不再避让！） =============
-        int listAreaX = sideX + SIDEBAR_W + INNER_GAP;     // UI无问题版：列表 X = 工具列右 + 内间距
+        int listAreaX = sideX + sidebarW + INNER_GAP;     // UI无问题版：列表 X = 工具列右 + 内间距
         int listAreaW = panelX + panelW - 8 - listAreaX;   // UI无问题版：列表宽 = 面板右端点（贴内右边距 8）- 列表左
         int listTop = panelY + HEADER_TOTAL_H;             // UI无问题版：列表顶 = Tab 下沿
         // 与反馈起点（面板底 - LIST_BOTTOM_PAD + 6）留 6px 间隔，避免反馈首行压住列表底
@@ -1332,8 +1337,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
         setFeedback(Component.translatable("maid_file_manager.gui.server_export.list_loaded",
                 this.serverGroups.size(), maidList.size(), denied));
+        // 消费点必须校验 15s 抑制窗口：确认屏的列表请求在「非 OP / 组数 >128 / 整包 >1 MiB」
+        // 三种情况下只回 ID_FEEDBACK 不回列表 → 标志残留；窗口到期后任何一次列表成功回包
+        //（例如点「刷新」）都会触发「全选 + 直接提交导出」，违背玩家意图。
         // 统一导出确认流程：列表已就绪（maidOwnerByEntityId 已填）→ 现在全选并提交才有意义
-        if (pendingServerExport) {
+        if (pendingServerExport && System.currentTimeMillis() < serverExportSuppressFeedbackUntil) {
             pendingServerExport = false;
             selectAllState = true;
             refreshSelectAllLabel();
@@ -1343,6 +1351,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             } else {
                 onActionButtonClick(this.actionBtn);
             }
+        }
+        else if (pendingServerExport) {
+            // 窗口已过：视为列表获取失败，丢弃待办并提示重试（不要静默全量导出）
+            pendingServerExport = false;
+            serverExportSuppressFeedbackUntil = 0L;
+            setFeedback(Component.translatable("maid_file_manager.gui.server_export.list_failed"));
         }
     }
 
@@ -1552,6 +1566,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
         /** 列表行基类：让女仆行 Entry 与玩家标题行 HeaderEntry 可共存于同一个列表 */
         abstract static class ListRow extends ObjectSelectionList.Entry<ListRow> {
+            /** 清掉上一帧记录的命中区：只有本帧真正渲染过的行才允许被点中 */
+            void resetHitArea() {
+            }
         }
 
         MaidListWidget(int listX, int listW, int listTop, int listBottom) {
@@ -1595,6 +1612,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             }
             int index = (int) ((mouseY - this.listTop - 4 + this.getScrollAmount()) / ROW_HEIGHT);
             java.util.List<ListRow> rows = this.children();
+            // 每帧先把所有行的命中区清成 -1：滚出视口的行不会重画，若保留上一帧的 lastTop，
+            // 它会停在滚动前的旧位置（仍在列表矩形内）且 children() 升序遍历时先命中，
+            // 于是点某一行会勾中「看不见的另一只女仆」（移除模式下可能误删）。
+            for (ListRow row : rows) {
+                row.resetHitArea();
+            }
             if (index < 0 || index >= rows.size()) {
                 return null;
             }
@@ -1711,6 +1734,12 @@ setScrollAmount(0);
             int lastTop = -1;
             int lastHeight = -1;
 
+            @Override
+            void resetHitArea() {
+                this.lastTop = -1;
+                this.lastHeight = -1;
+            }
+
             HeaderEntry(IMaidFileNetwork.PlayerMaidGroup group) {
                 this.group = group;
             }
@@ -1796,6 +1825,12 @@ setScrollAmount(0);
             int lastTop = -1;
             int lastHeight = -1;
 
+            @Override
+            void resetHitArea() {
+                this.lastTop = -1;
+                this.lastHeight = -1;
+            }
+
             Entry(MaidInfo info) {
                 this.info = info;
             }
@@ -1813,10 +1848,10 @@ setScrollAmount(0);
                     graphics.fill(rowX, top - 1, rowX + rowW, top + height + 1, ROW_HOVER);
                 }
                 // 勾选框 + 文字：rowX 对齐 LIST_BG 左边缘（框体手绘，避免 ☐/☑ 豆腐块）
-                drawCheckBox(graphics, rowX + 28, top + 4, selected);
-                int textLeft = rowX + 49;
+                drawCheckBox(graphics, rowX + (rowW < 190 ? 4 : 28), top + 4, selected);
+                int textLeft = rowX + (rowW < 190 ? 18 : 49);
                 // 右侧为「档案」按钮预留空间，文字区主动避让，避免被按钮压住
-                int contentRight = rowX + rowW - 10 - PROFILE_BTN_W - 6;
+                int contentRight = rowW < 190 ? rowX + rowW - 4 : rowX + rowW - 10 - PROFILE_BTN_W - 6;
                 int contentW = contentRight - textLeft;
                 net.minecraft.client.gui.Font font = MaidFileManagerScreen.this.font;
                 // 第一行：name 超长 → 截断+省略号…（不滚避免勾选框右晃动）
@@ -1874,6 +1909,10 @@ setScrollAmount(0);
                 if (MaidFileManagerScreen.this.serverExportMode) {
                     return;
                 }
+                // 窄屏（列表区放不下按钮+文字）时不画/不命中「档案」按钮
+                if (rowRight - MaidFileManagerScreen.this.panelX < 190) {
+                    return;
+                }
                 int bx = rowRight - PROFILE_BTN_W - 4;
                 int by = top + (height - PROFILE_BTN_H) / 2;
                 boolean hover = mouseX >= bx && mouseX <= bx + PROFILE_BTN_W
@@ -1892,6 +1931,10 @@ setScrollAmount(0);
                     return false;
                 }
                 int rowRight = MaidListWidget.this.listX + MaidListWidget.this.listW;
+                // 窄屏（列表区放不下按钮+文字）时不画/不命中「档案」按钮
+                if (rowRight - MaidFileManagerScreen.this.panelX < 190) {
+                    return false;
+                }
                 int bx = rowRight - PROFILE_BTN_W - 4;
                 int by = lastTop + (lastHeight - PROFILE_BTN_H) / 2;
                 return mouseX >= bx && mouseX <= bx + PROFILE_BTN_W
@@ -2089,10 +2132,10 @@ setScrollAmount(0);
                     graphics.fill(rowX, top - 1, rowX + rowW, top + height + 1, ROW_HOVER);
                 }
                 // 勾选框：rowX 对齐 LIST_BG 左边缘（框体手绘，避免 ☐/☑ 豆腐块）
-                drawCheckBox(graphics, rowX + 28, top + 4, selected);
-                int textLeft = rowX + 49;
+                drawCheckBox(graphics, rowX + (rowW < 190 ? 4 : 28), top + 4, selected);
+                int textLeft = rowX + (rowW < 190 ? 18 : 49);
                 // 右侧为「档案」按钮预留空间，文字区主动避让，避免被按钮压住
-                int contentRight = rowX + rowW - 10 - PROFILE_BTN_W - 6;
+                int contentRight = rowW < 190 ? rowX + rowW - 4 : rowX + rowW - 10 - PROFILE_BTN_W - 6;
                 int contentW = contentRight - textLeft;
                 net.minecraft.client.gui.Font font = MaidFileManagerScreen.this.font;
                 // 第一行：fileName 超长 → 左右跑马灯（文件名很长必须全显示）
@@ -2140,6 +2183,10 @@ setScrollAmount(0);
             /** 绘制行内「档案」按钮（导入列表用文件内档案快照预览） */
             private void drawProfileButton(GuiGraphics graphics, int rowRight, int top, int height,
                                            int mouseX, int mouseY) {
+                // 窄屏（列表区放不下按钮+文字）时不画/不命中「档案」按钮
+                if (rowRight - MaidFileManagerScreen.this.panelX < 190) {
+                    return;
+                }
                 int bx = rowRight - PROFILE_BTN_W - 4;
                 int by = top + (height - PROFILE_BTN_H) / 2;
                 boolean hover = mouseX >= bx && mouseX <= bx + PROFILE_BTN_W
@@ -2158,6 +2205,10 @@ setScrollAmount(0);
                     return false;
                 }
                 int rowRight = FileListWidget.this.listX + FileListWidget.this.listW;
+                // 窄屏（列表区放不下按钮+文字）时不画/不命中「档案」按钮
+                if (rowRight - MaidFileManagerScreen.this.panelX < 190) {
+                    return false;
+                }
                 int bx = rowRight - PROFILE_BTN_W - 4;
                 int by = lastTop + (lastHeight - PROFILE_BTN_H) / 2;
                 return mouseX >= bx && mouseX <= bx + PROFILE_BTN_W
