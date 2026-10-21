@@ -124,11 +124,15 @@ public class MultiLineEditBox extends EditBox {
         if (!canEdit()) {
             return;
         }
+        // 必须按**码点**而不是 char 删除：emoji 等增补平面字符在 Java 里是代理对（2 个 char），
+        // 按 ±1 删会把代理对劈成两半，留下无法渲染的孤立代理字符。
         if (dir < 0 && this.cursor > 0) {
-            this.value = this.value.substring(0, this.cursor - 1) + this.value.substring(this.cursor);
-            this.cursor--;
+            int from = prevCodePoint(this.cursor);
+            this.value = this.value.substring(0, from) + this.value.substring(this.cursor);
+            this.cursor = from;
         } else if (dir > 0 && this.cursor < this.value.length()) {
-            this.value = this.value.substring(0, this.cursor) + this.value.substring(this.cursor + 1);
+            int to = nextCodePoint(this.cursor);
+            this.value = this.value.substring(0, this.cursor) + this.value.substring(to);
         }
         ensureCursorVisible();
     }
@@ -170,11 +174,11 @@ public class MultiLineEditBox extends EditBox {
                 insertText("\n");
                 return true;
             case 263: // Left
-                this.cursor = Mth.clamp(this.cursor - 1, 0, this.value.length());
+                this.cursor = prevCodePoint(this.cursor);
                 ensureCursorVisible();
                 return true;
             case 262: // Right
-                this.cursor = Mth.clamp(this.cursor + 1, 0, this.value.length());
+                this.cursor = nextCodePoint(this.cursor);
                 ensureCursorVisible();
                 return true;
             case 268: // Home
@@ -345,6 +349,24 @@ public class MultiLineEditBox extends EditBox {
         return Math.max(1, this.width - PAD * 2 - (this.singleLine ? 0 : SCROLL_W));
     }
 
+    /** 光标左侧一个完整码点的起点（代理对算一个字符） */
+    private int prevCodePoint(int pos) {
+        if (pos <= 0) {
+            return 0;
+        }
+        int clamped = Math.min(pos, this.value.length());
+        return clamped - Character.charCount(this.value.codePointBefore(clamped));
+    }
+
+    /** 光标右侧一个完整码点的终点（代理对算一个字符） */
+    private int nextCodePoint(int pos) {
+        int len = this.value.length();
+        if (pos >= len) {
+            return len;
+        }
+        int clamped = Math.max(0, pos);
+        return clamped + Character.charCount(this.value.codePointAt(clamped));
+    }
     private void ensureCursorVisible() {
         List<DLine> lines = buildDisplayLines();
         int idx = 0;
