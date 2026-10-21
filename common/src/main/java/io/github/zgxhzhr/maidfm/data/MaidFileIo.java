@@ -374,7 +374,7 @@ public final class MaidFileIo {
     /** 读取 .maid 文件，失败返回 null（同时兜底 NBT 损坏抛出的运行时异常） */
     public static MaidFileData readMaidFile(Path file) {
         try {
-            // 本地文件虽是玩家自选，但同样给显式解压配额（与网络侧共用 16 MiB 口径），
+            // 本地文件虽是玩家自选，但同样给显式解压配额（与网络侧共用 4 MiB 口径 = MAX_NBT_DECOMPRESSED_BYTES），
             // 1.21+ NbtIo.readCompressed 接收 Path 并支持 NbtAccounter 配额
             CompoundTag root = NbtIo.readCompressed(file, NbtAccounter.create(MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES));
             if (root == null) {
