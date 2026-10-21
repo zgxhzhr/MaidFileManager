@@ -254,4 +254,5 @@
     "maid_file_manager.gui.profile.timeout": "档案读取超时（服务端可能限频丢弃了请求），请稍后再点一次",
     "maid_file_manager.gui.upload.too_large": "本次数据超过单次传输上限（%s KB > %s KB），已取消发送，请分批重试",
     "maid_file_manager.import.fail.too_many": "一次最多导入 %s 份文件，当前选中 %s 份，请减少后重试",
+    "maid_file_manager.gui.import.batch_reading": "正在读取 %s 份文件…",
 }
