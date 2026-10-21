@@ -57,7 +57,18 @@ public final class ChunkedUploadAssembler {
      * @return true 表示超限，调用方应直接用反馈通道报错而不是发分片
      */
     public static boolean exceedsTotalLimit(byte[] payload) {
-        return payload != null && payload.length > MAX_TOTAL_BYTES;
+        if (payload == null || payload.length == 0) {
+            return false;
+        }
+        if (payload.length > MAX_TOTAL_BYTES) {
+            return true;
+        }
+        // 必须与接收端同一口径：接收端按「声明量 = 片数 × CHUNK_BYTES」判上限
+        //（那是它最坏要占的内存），末尾不满一片也按整片计入。
+        // 只比 payload.length 会留下 MAX_TOTAL_BYTES-8191 .. MAX_TOTAL_BYTES 的 8 KiB 带：
+        // 发送端预检放行、接收端首片就拒收 → 表现为「导出/导入什么都没发生」（第六轮 N1）。
+        long chunks = (payload.length + (long) CHUNK_BYTES - 1) / CHUNK_BYTES;
+        return chunks * CHUNK_BYTES > MAX_TOTAL_BYTES;
     }
 
     private static final Map<String, Session> SESSIONS = new ConcurrentHashMap<>();

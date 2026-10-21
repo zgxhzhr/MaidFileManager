@@ -106,7 +106,9 @@ public class MaidFileModFabric implements ModInitializer {
                 return; // 数据体积超 1 MiB 负载上限，已回执明确失败原因（非静默），实体一律未删除
             }
             int removedCount = 0;
-            if (removeAfter) {
+            // 空批次绝不能登记待删：客户端对空结果**不发 ack**（onExportResultReceived 拿到空表直接返回），
+            // 登记项会一直占到 TTL 过期，期间下一次「导出并移除」被误报 remove_busy、静默降级成只导出（第六轮 N4）。
+            if (removeAfter && !exportedIds.isEmpty()) {
                 // 【P2-10】不再立刻 discard：服务端无法确认客户端写盘成功。
                 // 改为登记待删，等客户端回执 ID_EXPORT_WRITE_ACK 再删；不回执则永不删除。
                 // 同一玩家同一时刻只允许一笔待删登记。已有登记时不覆盖 —— 覆盖会让「旧回执」
