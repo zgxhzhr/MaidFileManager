@@ -262,6 +262,10 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
+                    // 频次限制：写盘/生成实体类 handler，原先只有只读请求有节流
+                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "export_batch", 1000L)) {
+                        return;
+                    }
                     try {
                         FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
                         List<Integer> ids = MaidFilePackets.readIntList(fbb);
@@ -359,6 +363,10 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
+                    // 频次限制：导入会生成实体并写盘，同 EXPORT_BATCH 一并纳入节流
+                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "import_batch", 1000L)) {
+                        return;
+                    }
                     try {
                         FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
                         List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(fbb);
@@ -788,6 +796,10 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
+                    // 频次限制：写盘/生成实体类 handler，原先只有只读请求有节流
+                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "backup_export", 2000L)) {
+                        return;
+                    }
                     try {
                         MaidFileData data = io.github.zgxhzhr.maidfm.service.MaidBackupService.readForExport(
                                 sp.server, sp.getUUID(), sp.hasPermissions(2), ownerUuid, maidUuid, fileName);
