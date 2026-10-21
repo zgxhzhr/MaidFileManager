@@ -631,7 +631,9 @@ public final class MaidConfigManager {
             // 其中含"禁止携带饰品"等管控项，属 fail-open。改为就地记录并保留已成功解析的部分。
             Constants.LOG.error("[maid_file_manager] 服务端配置存在非法转义，已忽略该文件并保留内置默认值: {}",
                     badEscape.toString());
-            props = new Properties();
+            // 不能用 props = new Properties() 把已解析的部分丢掉：原先注释写「保留已成功解析的部分」
+            // 但代码直接换了个空实例，等于整份回退内置默认值（含饰品管控项，属 fail-open）。
+            // Properties.load 是逐行推进的，抛异常前已读入的条目仍在 props 里，保留它们更安全。
         }
         serverAllowClientImport = parse(props, KEY_ALLOW_CLIENT_IMPORT, true);
         serverAllowBaubles = parse(props, KEY_ALLOW_BAUBLES, true);
@@ -800,7 +802,9 @@ public final class MaidConfigManager {
                     writer.write(kept);
                     writer.write(System.lineSeparator());
                 }
-                props.store(writer, comment);
+                // 第二个参数传 null：传 comment 会让 Properties.store 自己再写一行 "# comment"，
+                // 而下次保存时那行又被收集进 keptComments 再回放 —— 每次保存 +2 行，注释无限累积。
+                props.store(writer, null);
             }
             try {
                 Files.move(tmp, file, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
