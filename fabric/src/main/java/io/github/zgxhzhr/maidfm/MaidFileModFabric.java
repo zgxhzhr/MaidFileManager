@@ -376,6 +376,8 @@ public class MaidFileModFabric implements ModInitializer {
             MaidConfigManager.removeClientConsent(handler.player.getUUID());
             // 清掉该玩家未完成的分片会话：否则中途断线的分片累积器会一直留在内存里
             io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.onPlayerDisconnect(handler.player.getUUID());
+            // 同时清掉待删登记：回执不可能再来了，否则该玩家「导出并移除」会一直命中 remove_busy
+            MaidFileModFabric.clearPendingRemoval(handler.player.getUUID());
         });
 
         // /maidfile exportall 命令（仅 OP，权限校验在命令类内）

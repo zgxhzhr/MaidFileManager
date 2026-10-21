@@ -70,10 +70,12 @@ public final class MaidProfile {
         tag.putInt("profile_version", profileVersion);
         if (includePhoto && photo != null && photo.length > 0) {
             tag.putByteArray("photo", photo);
-            // 显式清空标记：与「1.20.x 不携带照片字节」区分开，服务端据此才删头像文件
-            if (photoCleared) {
-                tag.putBoolean("photo_cleared", true);
-            }
+        }
+        // photo_cleared 必须独立于 photo 字节块：setPhoto(null) 会同时把 photo 置 null、
+        // photoCleared 置 true，写在 photo 块内则外层条件恒 false，键永远写不出去 →
+        // 服务端 isPhotoCleared() 恒 false，头像文件永不删除（第四轮 P1-3 只加了字段没接上）。
+        if (includePhoto && photoCleared) {
+            tag.putBoolean("photo_cleared", true);
         }
         putIfNotBlank(tag, "occupation", occupation);
         putIfNotBlank(tag, "birthday", birthday);
