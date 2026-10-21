@@ -68,6 +68,9 @@ public class MaidBaubleExtraBlockScreen extends Screen {
     private static final int PAGER_Y = LIST_Y + LIST_H + 8;
     private static final int PANEL_H = PAGER_Y + 16 + 6 + 24;
 
+    /** 运行时实际面板高度（PANEL_H 按屏幕高度 clamp 后的值） */
+    private int panelH = PANEL_H;
+
     /** 硬禁槽位精确名单（与 MaidBaubleCarrierRegistry 保持一致；只读展示） */
     private static final List<String> HARD_BLOCKED_SLOTS = List.of(
             "back", "curio_back", "backpack", "backpacks", "ionocraft_backpack", "arrow_bag",
@@ -193,7 +196,10 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         });
 
         panelX = (this.width - PANEL_W) / 2;
-        panelY = Math.max(8, (this.height - PANEL_H) / 2);
+        // PANEL_H 是编译期常量（PAGER_Y + 16 + 6 + 24 ≈ 262），屏幕高度不足 278 时
+        // 翻页/完成/返回三个按钮会整体出屏。这里按可用高度收缩面板并抬高顶部。
+        panelH = Math.min(PANEL_H, this.height - 12);
+        panelY = Math.max(4, (this.height - panelH) / 2);
         listX = panelX + 20;
         listW = PANEL_W - 40;
 
@@ -249,10 +255,10 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         int doneW = 120;
         addRenderableWidget(Button.builder(Component.translatable("gui.maid_file_manager.config.done"),
                         b -> onSaveAndClose())
-                .bounds(panelX + PANEL_W / 2 - doneW - 4, panelY + PANEL_H - 22, doneW, 16).build());
+                .bounds(panelX + PANEL_W / 2 - doneW - 4, panelY + panelH - 22, doneW, 16).build());
         addRenderableWidget(Button.builder(Component.translatable("gui.maid_file_manager.config.bauble_extra_back"),
                         b -> onClose())
-                .bounds(panelX + PANEL_W / 2 + 4, panelY + PANEL_H - 22, doneW, 16).build());
+                .bounds(panelX + PANEL_W / 2 + 4, panelY + panelH - 22, doneW, 16).build());
 
         rebuildShown();
     }
@@ -479,8 +485,8 @@ public class MaidBaubleExtraBlockScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fill(0, 0, this.width, this.height, SCREEN_BG);
-        graphics.fill(panelX, panelY, panelX + PANEL_W, panelY + PANEL_H, PANEL_BG);
-        graphics.renderOutline(panelX, panelY, PANEL_W, PANEL_H, PANEL_BORDER);
+        graphics.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, PANEL_BG);
+        graphics.renderOutline(panelX, panelY, PANEL_W, panelH, PANEL_BORDER);
 
         graphics.drawString(this.font, this.title, listX, panelY + TITLE_Y, HEADER_COLOR, false);
         String hint = Component.translatable(tab == 0
