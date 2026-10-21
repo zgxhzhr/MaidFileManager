@@ -99,7 +99,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private Button deleteImportFileBtn;
     /** 标题栏设置入口（进入 MaidConfigScreen） */
     private Button settingsBtn;
-    /** 标题栏备份管理入口（进入 MaidBackupBrowserScreen） */
+    /** 标题栏备份管理入口（进入 MaidBackupBrowserScreen，浏览车万女仆自动备份并导出为 .maid） */
     private Button backupBtn;
     /** 等待服务端返回档案的女仆 entityId（收到不匹配的档案视图时忽略） */
     private int pendingProfileEntityId = Integer.MIN_VALUE;
