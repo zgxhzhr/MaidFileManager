@@ -57,6 +57,15 @@ public final class MaidPhotoStore {
             return null;
         }
         try {
+            // 先按文件大小挡一次：readAllBytes 会按文件长度一次性分配 byte[]，超大文件在走到
+            // isValidProfilePhoto 之前就可能抛 OutOfMemoryError —— 那是 Error 不是 IOException，
+            // 下面的 catch 接不住，会直接把调用线程干掉。
+            long onDiskSize = Files.size(file);
+            if (onDiskSize <= 0 || onDiskSize > Constants.PROFILE_PHOTO_MAX_BYTES) {
+                Constants.LOG.warn("[maid_file_manager] 档案照片文件体积异常（{} 字节，上限 {}），已拒绝读取: {}",
+                        onDiskSize, Constants.PROFILE_PHOTO_MAX_BYTES, file);
+                return null;
+            }
             byte[] bytes = Files.readAllBytes(file);
             if (bytes.length == 0) {
                 return null;
