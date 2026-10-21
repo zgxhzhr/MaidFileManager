@@ -432,6 +432,14 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
     private void switchTab(Tab tab) {
         if (currentTab == tab) return;
+        // 切 Tab 必须取消「等回包再全选导出」这条待办：消费点会走 onActionButtonClick，
+        // 而那个入口按**当前 Tab** 分派 —— 等待窗口内切到「导入」且已勾选文件时，
+        // 回包到达会把用户确认的「导出」执行成「批量导入」（凭空生成女仆，不可撤销）。
+        if (pendingServerExport) {
+            pendingServerExport = false;
+            serverExportSuppressFeedbackUntil = 0L;
+            setFeedback(Component.translatable("maid_file_manager.gui.server_export.preparing"));
+        }
         currentTab = tab;
         closeRemoveConfirm();
         updateListVisibility();
