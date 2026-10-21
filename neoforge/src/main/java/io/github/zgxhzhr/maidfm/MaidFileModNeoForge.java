@@ -3,7 +3,6 @@ package io.github.zgxhzhr.maidfm;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 import io.github.zgxhzhr.maidfm.network.MaidFilePayloads;
-import io.github.zgxhzhr.maidfm.network.NeoForgeNetwork;
 import io.github.zgxhzhr.maidfm.platform.NeoForgePlatformHelper;
 import io.github.zgxhzhr.maidfm.platform.Services;
 import io.github.zgxhzhr.maidfm.platform.services.IPlatformHelper;
@@ -31,8 +30,6 @@ public class MaidFileModNeoForge {
         Constants.LOG.info("[maid_file_manager] Mod constructor START (NeoForge)");
 
         Services.PLATFORM.loadService(IPlatformHelper.class, NeoForgePlatformHelper::new);
-        Services.NETWORK.loadService(IMaidFileNetwork.class, NeoForgeNetwork::new);
-        IMaidFileNetwork.Holder.set(Services.NETWORK.get());
         Constants.LOG.info("[maid_file_manager] Platform & Network services registered");
 
         modBus.addListener(this::registerPayloads);

@@ -69,6 +69,24 @@ public class ClientRegistration {
         private ModBus() {
         }
 
+        /**
+         * 客户端初始化：挂载客户端网络实现。
+         *
+         * <p>原先这一步在 {@code @Mod} 构造器里（双端执行）→ 专用服务端也会实例化 NeoForgeNetwork，
+         * 而该类在第五轮 3.5-3 加入了对 {@code net.minecraft.client.Minecraft} 的引用（超限提示），
+         * 服务端加载时会触发 NoClassDefFoundError（第六轮 P1-4）。
+         * 与 forge / fabric 三端对齐：都只在 Dist.CLIENT 专属类里初始化。
+         */
+        @SubscribeEvent
+        public static void onClientSetup(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent event) {
+            io.github.zgxhzhr.maidfm.platform.Services.NETWORK.loadService(
+                    io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.class,
+                    io.github.zgxhzhr.maidfm.network.NeoForgeNetwork::new);
+            io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.Holder.set(
+                    io.github.zgxhzhr.maidfm.platform.Services.NETWORK.get());
+            Constants.LOG.info("[maid_file_manager] client network impl registered");
+        }
+
         @SubscribeEvent
         public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
             event.register(MaidFileKeyMappings.OPEN_MANAGER);
