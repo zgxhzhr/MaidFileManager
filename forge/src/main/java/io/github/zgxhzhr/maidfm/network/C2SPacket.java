@@ -175,6 +175,8 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                 player, maidData, keepBaubles,
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleStripAttributes(),
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlockedList());
+        // 单条导入同样要消费 Curios 批次统计，否则残留到后续导出提示（第六轮 N5）。
+        MaidTransferService.curiosDropTip();
         sendFeedback(player, MaidTransferService.withBaubleDetails(result));
     }
 
@@ -258,6 +260,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
             results.add(MaidTransferService.importMaidFromData(
                     player, d, keepBaubles, stripAttributes, blockedList));
         }
+        // 导入路径同样会产生 Curios 批次统计（strip 时累加），必须在每次导入结束时消费掉；
+        // 否则统计会残留到**下一位玩家**走 sendExportResults 时被当成「导出丢弃」提示（第六轮 N5）。
+        MaidTransferService.curiosDropTip();
         Component summary = MaidTransferService.buildBatchSummary(results);
         if (deleteAfterImport) {
             // 请求删除源文件：回传逐项 spawned 标志（与请求顺序对齐），客户端只删成功的文件
