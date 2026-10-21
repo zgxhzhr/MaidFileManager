@@ -203,6 +203,16 @@ public final class CuriosBaubleFilter {
             if (!curiosInventory.contains(CURIOS_LIST_KEY, Tag.TAG_LIST)) {
                 continue;
             }
+            // 原实现直接 getList(..., TAG_COMPOUND)：元素类型不是 compound 时返回的是**空表**，
+            // 而后面会把 keptList 无条件回写 → 整个 Curios 列表被静默清空（不计数、不告警）。
+            // 先确认元素类型，不符就跳过该容器，绝不回写（第六轮 D5）。
+            Tag rawCurios = curiosInventory.get(CURIOS_LIST_KEY);
+            if (rawCurios instanceof ListTag rawCuriosList
+                    && !rawCuriosList.isEmpty() && !(rawCuriosList.get(0) instanceof CompoundTag)) {
+                io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                        "[maid_file_manager] Curios 列表元素类型异常，跳过该容器以免清空: container={}", containerKey);
+                continue;
+            }
             ListTag curiosList = curiosInventory.getList(CURIOS_LIST_KEY, Tag.TAG_COMPOUND);
             ListTag keptList = new ListTag();
             for (Tag element : curiosList) {
