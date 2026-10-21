@@ -766,10 +766,24 @@ public final class MaidConfigManager {
         }
     }
 
-    /** 读取 JSON 数组字段为去重后的字符串列表；字段缺失或类型不符返回空列表 */
+    /**
+     * 读取 JSON 数组字段为去重后的字符串列表。
+     *
+     * <p>字段**缺失**（或显式 null）返回空列表；字段存在但**类型不是数组**则抛
+     * {@link com.google.gson.JsonParseException}，由调用方的 catch 走「失败关闭」。
+     *
+     * <p>区分的理由：`"whitelist": "xxx"` 这类类型笔误若被当成「缺失」，白名单会静默变空
+     * → {@code baubleWhitelistEnforced} 变 false → 管控整体放宽，与文档承诺的
+     * 「字段类型不符 → 失败关闭」正好相反，而且现场只打一条正常的「白名单 0 项」INFO，
+     * 整合包作者根本发现不了。
+     */
     private static List<String> readStringArray(JsonObject root, String key) {
-        if (root == null || !root.has(key) || !root.get(key).isJsonArray()) {
+        if (root == null || !root.has(key) || root.get(key).isJsonNull()) {
             return List.of();
+        }
+        if (!root.get(key).isJsonArray()) {
+            throw new com.google.gson.JsonParseException("字段 \"" + key
+                    + "\" 必须是字符串数组，实际是 " + root.get(key).getClass().getSimpleName());
         }
         List<String> out = new ArrayList<>();
         for (JsonElement element : root.getAsJsonArray(key)) {
