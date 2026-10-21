@@ -189,6 +189,13 @@ public final class PlayerNameResolver {
             listener.onNameResolved(uuid, cached);
             return;
         }
+        // 离线 UUID（v3，由 OfflinePlayer:name 派生）不排 Mojang 队列：
+        // 这个接口对离线 UUID 必然 404，排进去只会白占 60 秒队列配额（全局节流）。
+        // N 个离线主人的存档会让正版玩家名等上 N 分钟才出；失败又不入缓存，
+        // 下次进备份屏还得重排。离线名只能靠 usernamecache.json 或界面手输（onOfflineMatch 已覆盖）。
+        if (uuid.version() == 3) {
+            return;
+        }
         synchronized (QUEUE) {
             QUEUE.add(new Pending(uuid, listener));
             QUEUE.notifyAll();
