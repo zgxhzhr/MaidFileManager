@@ -165,10 +165,13 @@ public final class MaidPhotoUtil {
     }
 
     /** 源图单边像素上限（防构造超大宽高把内存打爆） */
-    private static final int MAX_SOURCE_SIDE = 8192;
+    // 源图上限按「档案照片最长边 512」的实际需求反推：4096² 已经给了 8 倍余量，
+    // 而原 8192×8192(67 Mpx) 解码后约 256 MB —— 一张图就能把客户端堆推满。
+    // 注意这只是**源图**上限，编码后的成品仍受 PROFILE_PHOTO_MAX_BYTES(128 KiB) 与 512 边长约束。
+    private static final int MAX_SOURCE_SIDE = 4096;
 
     /** 源图总像素上限（约 6700 万，足够 8K 图片） */
-    private static final long MAX_SOURCE_PIXELS = 67_000_000L;
+    private static final long MAX_SOURCE_PIXELS = 16_777_216L   // = 4096²;
 
     /**
      * 只读取图片头部的宽高，不分配像素缓冲。
