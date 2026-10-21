@@ -422,7 +422,9 @@ public class MaidFileModFabric implements ModInitializer {
         byte[] encoded = new byte[out.readableBytes()];
         out.getBytes(0, encoded);
         if (encoded.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
-            sendChunkedDownload(player, io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH, encoded);
+            if (!sendChunkedDownload(player, io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH, encoded)) {
+                return false;
+            }
         } else {
             ServerPlayNetworking.send(player, MaidPayload.of(MaidFilePackets.ID_EXPORT_BATCH_RESULT, out));
         }
@@ -524,9 +526,21 @@ public class MaidFileModFabric implements ModInitializer {
     }
 
     /** 分片下发（服务端 → 客户端）；1.20.x 的 32767 限制对 S2C 同样生效 */
-    private static void sendChunkedDownload(ServerPlayer player, String kind, byte[] payload) {
+    private static boolean sendChunkedDownload(ServerPlayer player, String kind, byte[] payload) {
         if (payload == null || payload.length == 0) {
-            return;
+            return true;
+        }
+
+        // 总量预检：接收端 ChunkedUploadAssembler 会在首片就按 declared > MAX_TOTAL_BYTES 拒收，
+        // 发送端照样发满几百片纯属浪费（且预检前已分配多份副本）。超限直接回执失败并返回 false ——
+        // 调用方据此不登记待删，避免「文件没发出去却删了女仆」。
+        if (payload.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES) {
+            Constants.LOG.warn("[maid_file_manager] 分片下发超总量上限，拒绝发送: player={} bytes={} limit={}",
+                    player.getName().getString(), payload.length, io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES);
+            sendFeedback(player, net.minecraft.network.chat.Component.translatable(
+                    "maid_file_manager.server.export_too_large",
+                    payload.length / 1024, io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES / 1024));
+            return false;
         }
         int chunkBytes = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES;
         int total = (payload.length + chunkBytes - 1) / chunkBytes;
@@ -545,6 +559,7 @@ public class MaidFileModFabric implements ModInitializer {
         }
         Constants.LOG.info("[maid_file_manager] 导出结果分片下发: player={} bytes={} chunks={}",
                 player.getName().getString(), payload.length, total);
+        return true;
     }
 
     /** 待删除实体：玩家 UUID → 实体 ID 列表（等客户端写盘回执后才删） */

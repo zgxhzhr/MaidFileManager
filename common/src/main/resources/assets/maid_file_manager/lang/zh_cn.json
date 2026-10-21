@@ -249,4 +249,5 @@
     "maid_file_manager.server.remove_busy": "[女仆档案管理] 上一笔「导出并移除」还在等待客户端写盘回执，本次导出未执行移除（女仆已保留），请稍后重试",
     "maid_file_manager.gui.export.busy": "上一批导出仍在写入，请稍候再试",
     "maid_file_manager.gui.export.timeout": "导出等待超时（未收到服务端结果），已解除限制，可重试",
+    "maid_file_manager.server.export_too_large": "本次导出数据超过单次分片上限（%s KB > %s KB），请减少一次导出的女仆数量后重试",
 }
