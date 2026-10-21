@@ -116,6 +116,13 @@ public class NeoForgeNetwork implements IMaidFileNetwork {
                     "[maid_file_manager] 分片上传负载超上限，已拒绝发送: kind={} bytes={} limit={}",
                     kind, payload.length,
                     io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES);
+            // 只记日志玩家看不到任何反馈（导出会「什么都没发生」）：补一条聊天栏提示
+            net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+            if (mc != null && mc.player != null) {
+                mc.player.displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                        "maid_file_manager.gui.upload.too_large",
+                        payload.length / 1024, io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES / 1024), false);
+            }
             return;
         }
         int chunkBytes = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES;
