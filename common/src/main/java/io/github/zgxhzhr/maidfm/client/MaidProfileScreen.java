@@ -453,29 +453,46 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
     }
 
     private void choosePhoto(String fileName) {
-        // 不再按版本拦截：带照片的档案保存会走 save_profile 的分片通道（超 24 KiB 自动分片），
-        // 1.20.x 真联机也能正常发送。此前这里挡着，导致 1.20.x 玩家选不了照片。
-        // （clearPhoto 的同类守卫已在 P2-18 移除，这里补齐另一半。）
         Path dir = MaidPhotoUtil.photosDir(this.minecraft.gameDirectory.toPath());
         Path file = dir.resolve(fileName);
-        try {
-            if (MaidPhotoUtil.isSourceTooLarge(file)) {
-                setFeedback(Component.translatable("gui.maid_file_manager.profile.photo_source_too_large"), ERROR_COLOR);
+        // 解码 + 缩放 + PNG 重编码全是 CPU/IO 密集操作（4096² 的 BufferedImage 约 64 MB，
+        // 还要多轮 encodePng 才压到上限内）。原先在渲染线程同步做，选一张大图会明显卡帧。
+        // 改为丢到后台线程，结果回主线程再改界面状态（纹理创建必须回主线程）。
+        Thread worker = new Thread(() -> {
+            byte[] bytes = null;
+            String errorKey = null;
+            try {
+                if (MaidPhotoUtil.isSourceTooLarge(file)) {
+                    errorKey = "gui.maid_file_manager.profile.photo_source_too_large";
+                } else {
+                    bytes = MaidPhotoUtil.loadAndEncode(file, Constants.PROFILE_PHOTO_MAX_SIDE);
+                    if (bytes == null || bytes.length > Constants.PROFILE_PHOTO_MAX_BYTES) {
+                        errorKey = "gui.maid_file_manager.profile.photo_too_large";
+                    }
+                }
+            } catch (Throwable t) {
+                Constants.LOG.warn("[maid_file_manager] 读取档案照片失败: {}", t.toString());
+                errorKey = "gui.maid_file_manager.profile.photo_load_failed";
+            }
+            final byte[] outBytes = bytes;
+            final String outError = errorKey;
+            if (this.minecraft == null) {
                 return;
             }
-            byte[] bytes = MaidPhotoUtil.loadAndEncode(file, Constants.PROFILE_PHOTO_MAX_SIDE);
-            if (bytes.length > Constants.PROFILE_PHOTO_MAX_BYTES) {
-                setFeedback(Component.translatable("gui.maid_file_manager.profile.photo_too_large"), ERROR_COLOR);
-                return;
-            }
-            profile.setPhoto(bytes);
-            refreshPhotoTexture();
-            pickerOpen = false;
-            setFeedback(Component.translatable("gui.maid_file_manager.profile.photo_selected", fileName), SUBTEXT_COLOR);
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] 读取档案照片失败: {}", t.toString());
-            setFeedback(Component.translatable("gui.maid_file_manager.profile.photo_load_failed"), ERROR_COLOR);
-        }
+            this.minecraft.execute(() -> {
+                if (outError != null) {
+                    setFeedback(Component.translatable(outError), ERROR_COLOR);
+                    return;
+                }
+                profile.setPhoto(outBytes);
+                refreshPhotoTexture();
+                pickerOpen = false;
+                setFeedback(Component.translatable(
+                        "gui.maid_file_manager.profile.photo_selected", fileName), SUBTEXT_COLOR);
+            });
+        }, "maidfm-photo-encode");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     /** 打开档案照片投放目录（不存在则创建） */
