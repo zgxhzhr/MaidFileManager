@@ -50,6 +50,7 @@ public class MaidBaubleImportScreen extends Screen {
     private static final int HEADER_COLOR = 0xFFFFE082;
     private static final int TEXT_COLOR = 0xFFFFFFFF;
     private static final int SUBTEXT_COLOR = 0xFFB0B0B0;
+    private static final int ERROR_COLOR = 0xFFFF6B6B;
     private static final int LIST_BG = 0xFF181008;
     private static final int ROW_SELECTED = 0xFF2E3820;
     /** 木色按钮配色（与主面板同色系，替代原版灰底按钮） */
@@ -102,6 +103,8 @@ public class MaidBaubleImportScreen extends Screen {
     private final Set<String> blockedIds = new LinkedHashSet<>();
     /** 当前玩家是否为 OP：服务端配置仅 OP 可改，非 OP 只读（开关/勾选禁用） */
     private boolean canEdit;
+    /** 提交失败提示（非空时在列表下方画红字，且不关窗） */
+    private Component saveError;
     /** 是否存在整合包配置（bauble_import.json）：用于显示托管提示；整张列表并非只读 */
     private boolean managed;
     /** 物品 ID → 中文显示名（保存时判定整合包强制项需要，避免重复解析物品栈） */
@@ -299,7 +302,11 @@ public class MaidBaubleImportScreen extends Screen {
                 }
                 net.sendSetServerListConfig(MaidConfigManager.KEY_BAUBLE_BLOCKED_LIST, opBlocked);
             } else {
+                // 网络实现缺失：整包（丢弃属性 + 禁用清单）都没发出去。
+                // 不能直接关窗 —— 玩家会以为保存成功，下次进服才发现配置没变。
                 Constants.LOG.warn("[maid_file_manager] 网络实现缺失，饰品导入设置未提交服务端");
+                this.saveError = Component.translatable("gui.maid_file_manager.profile.save_failed");
+                return;
             }
         }
         onClose();
@@ -473,7 +480,12 @@ public class MaidBaubleImportScreen extends Screen {
         renderList(graphics, mouseX, mouseY);
         // ⑥ 子组件（滑动开关 / 搜索框 / 完成按钮）在面板之上正常绘制一次即可
         super.render(graphics, mouseX, mouseY, partialTick);
-        // ⑦ 悬停行 tooltip：显示完整物品 ID（名称可能重复，ID 唯一）
+        // ⑦ 提交失败提示：画在列表与「完成」按钮之间的 12px 间隙里（红字）
+        if (this.saveError != null) {
+            graphics.drawString(this.font, this.saveError,
+                    listX, listY + listH + 2, ERROR_COLOR, false);
+        }
+        // ⑧ 悬停行 tooltip：显示完整物品 ID（名称可能重复，ID 唯一）
         ItemEntry hovered = getHoveredRow(mouseX, mouseY);
         if (hovered != null) {
             graphics.renderTooltip(this.font, Component.literal(hovered.id), mouseX, mouseY);
