@@ -41,7 +41,6 @@
     "gui.maid_file_manager.config.bauble_extra_by_mod": "Mods",
     "gui.maid_file_manager.config.bauble_extra_by_slot": "Curios slots",
     "gui.maid_file_manager.config.bauble_extra_add": "Add",
-    "gui.maid_file_manager.config.bauble_extra_slot_hint": "Enter a slot name, then Add",
     "gui.maid_file_manager.config.bauble_extra_managed": "modpack enforced",
     "gui.maid_file_manager.config.bauble_extra_hard": "Always blocked",
     "gui.maid_file_manager.config.bauble_import_strip": "Strip bauble attributes on import (enchantments, durability, etc.), restoring fresh items",
@@ -146,7 +145,6 @@
     "gui.maid_file_manager.profile.photo_cleared": "Photo cleared",
     "gui.maid_file_manager.profile.photo_source_too_large": "Image too large (over 4 MB); please use a smaller image",
     "gui.maid_file_manager.profile.photo_too_large": "Photo still exceeds the limit (128 KiB) after scaling; please use a simpler image",
-    "gui.maid_file_manager.profile.photo_manual_only": "On 1.20.x the packet limit (~31 KB) cannot carry a photo. Replace the image file directly in the maid_photos directory.",
     "gui.maid_file_manager.profile.photo_load_failed": "Failed to read the photo; please make sure it is a valid image",
     "maid_file_manager.profile.not_in_file": "This file contains no maid profile data",
     "gui.maid_file_manager.backup.title": "Maid Backup Manager",
@@ -202,7 +200,6 @@
     "maid_file_manager.gui.server_export.player_row": "%s %s (%s maids)%s",
     "maid_file_manager.gui.server_export.list_loaded": "Bulk export list loaded: %s player(s), %s maid(s) (%s without consent; selecting their maids will be rejected by the server). Click a player row to expand/collapse.",
     "maid_file_manager.gui.server_export.preparing": "Fetching the unified export list...",
-    "maid_file_manager.gui.server_export.request_sent": "Bulk export request sent (the server handles it asynchronously); check chat / server logs for results.",
     "maid_file_manager.gui.server_export.confirm_title": "Confirm Bulk Export",
     "maid_file_manager.gui.server_export.confirm_header": "[ Bulk Export - Confirm ]",
     "maid_file_manager.gui.server_export.no_perm_line1": "Insufficient permission: only OPs (permission level 2+) can use this feature",
@@ -228,7 +225,6 @@
     "maid_file_manager.import.batch.blocked": ". Reason: the server forbids maid imports (an admin can enable \"allow client import\" in server settings)",
     "maid_file_manager.import.batch.baubles_stripped": ". Bauble import is disabled on the server, so no imported maid carried baubles",
     "maid_file_manager.import.batch.more_failures": " and %s more failures",
-    "maid_file_manager.list_separator.semicolon": "; ",
     "maid_file_manager.import.check.too_many_files": "At most %s maid file(s) per operation (currently %s); please split into batches",
     "maid_file_manager.import.check.file_too_large": "Maid file #%s is %s KB, over the %s KB per-file limit; trim that maid (inventory/baubles) and retry",
     "maid_file_manager.import.check.total_too_large": "Total data too large (%s KB > %s KB); reduce the count and split into batches",
@@ -238,8 +234,8 @@
     "maid_file_manager.gui.backup.uuid_offline": " (offline)",
     "maid_file_manager.gui.backup.uuid_premium": " (premium)",
     "maid_file_manager.server.prefix": "[Maid File Manager] ",
+
     "maid_file_manager.protocol.mismatch": "Protocol version mismatch: server %s, client %s. Please update both sides to the same version (.maid files remain interchangeable).",
-    "maid_file_manager.server.export_chunked_disabled": "This maid data is too large and needs chunked transfer, which is still under verification. Export aborted and the maid was kept in the world. Try exporting in singleplayer, or remove the photo and retry.",
     "maid_file_manager.server.handler_error": "[Maid File Manager] Server-side handling failed; check the server log (at: %s)",
     "maid_file_manager.server.serialize_failed": "[Maid File Manager] Failed to serialize export data; please retry. If it keeps failing, ask the server owner to check the log.",
     "maid_file_manager.server.unknown_config": "[Maid File Manager] Unknown config key; the change was rejected",
@@ -249,5 +245,4 @@
     "maid_file_manager.server.too_many_backup_owners": "[Maid File Manager] Too many backup owners (%s > %s); cannot list. Clean up backups and retry.",
     "maid_file_manager.server.backup_list_too_large": "[Maid File Manager] The backup list is too large (%s KB > %s KB); clean up backups and retry.",
     "maid_file_manager.server.backup_too_large": "[Maid File Manager] This backup is too large to export through the server",
-    "maid_file_manager.command.client_only": "Client-side only"
 }
