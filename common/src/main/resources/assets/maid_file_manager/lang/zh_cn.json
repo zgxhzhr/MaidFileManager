@@ -252,4 +252,5 @@
     "maid_file_manager.server.export_too_large": "本次导出数据超过单次分片上限（%s KB > %s KB），请减少一次导出的女仆数量后重试",
     "maid_file_manager.gui.server_export.list_failed": "统一导出列表获取失败（可能无权限或数据过大），已取消本次操作，请重试",
     "maid_file_manager.gui.profile.timeout": "档案读取超时（服务端可能限频丢弃了请求），请稍后再点一次",
+    "maid_file_manager.gui.upload.too_large": "本次数据超过单次传输上限（%s KB > %s KB），已取消发送，请分批重试",
 }
