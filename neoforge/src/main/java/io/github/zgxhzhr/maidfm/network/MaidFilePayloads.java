@@ -1229,15 +1229,11 @@ public final class MaidFilePayloads {
                 if (full == null) {
                     return;
                 }
-                if (io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_SAVE_PROFILE.equals(kind)) {
-                    processSaveProfileBytes(sp, full);
-                } else if (io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_IMPORT_BATCH.equals(kind)) {
-                    // 导入批次的分片分发尚未接入（下一步）：显式记录而不是静默丢弃
-                    Constants.LOG.warn("[maid_file_manager] 收到导入批次分片但尚未接入分发，已忽略: player={}",
-                            sp.getName().getString());
-                } else {
-                    Constants.LOG.warn("[maid_file_manager] 未知的分片负载类型: {}", kind);
-                }
+                // 统一交给共享分发器：SAVE_PROFILE / IMPORT_BATCH / EXPORT_BATCH 三种负载
+                // 与 Forge、Fabric 两端走同一份实现（此前只有 SAVE_PROFILE 接了，
+                // IMPORT_BATCH 落到一条 WARN 上——而带一张头像的 .maid 就超过 24 KiB，
+                // 该端的批量导入实际上基本全废）。
+                io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.dispatch(sp, kind, full);
             });
         }
     }

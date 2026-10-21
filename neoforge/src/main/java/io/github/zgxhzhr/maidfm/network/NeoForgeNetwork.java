@@ -32,7 +32,11 @@ public class NeoForgeNetwork implements IMaidFileNetwork {
         probe.writeBoolean(deleteAfterImport);
         byte[] encodedImport = new byte[probe.readableBytes()];
         probe.getBytes(0, encodedImport);
-        if (encodedImport.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
+        // 阈值与导出侧（MaidFilePayloads 的 CHUNK_BYTES 判定）对齐到 1.21 的真实单包上限，
+        // 而不是 24 KiB 的分片尺寸：24 KiB 会让任何带头像的 .maid 都改走分片，
+        // 白白多绕一圈网络与一次完整缓冲。
+        int wireLimit = MaidFilePackets.MAX_PACKET_BYTES - 1024;
+        if (encodedImport.length > wireLimit) {
             sendChunkedUpload(io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_IMPORT_BATCH, encodedImport);
             return;
         }        PacketDistributor.sendToServer(new MaidFilePayloads.ImportBatchPayload(
