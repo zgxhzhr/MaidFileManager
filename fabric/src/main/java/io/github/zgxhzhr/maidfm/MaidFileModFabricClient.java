@@ -133,6 +133,9 @@ public class MaidFileModFabricClient implements ClientModInitializer {
                 }
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
                 if (h == null) {
+                    // 管理器界面已关闭时结果无处投递：原先静默 return，该批导出彻底消失且无痕迹。
+                    // 至少留一条 WARN，便于从日志判断「导出为什么没反应」（第六轮 M10）。
+                    Constants.LOG.warn("[maid_file_manager] 导出结果被丢弃（管理器界面已关闭）: bytes={}", full.length);
                     return;
                 }
                 net.minecraft.network.FriendlyByteBuf fullBuf =
