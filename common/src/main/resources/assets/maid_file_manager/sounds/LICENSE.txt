@@ -1,4 +1,4 @@
-ui_music.ogg (MaidFileManager_v18) - Copyright (c) 2026 逐光星火_执火人. All Rights Reserved.
+ui_music.ogg (《不删档》 / BuShanDang) - Copyright (c) 2026 逐光星火_执火人. All Rights Reserved.
 
 This audio file is NOT covered by the project's MIT license.
 Permitted: redistribution as part of this mod, unmodified; normal in-game listening.
