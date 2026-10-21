@@ -1,7 +1,7 @@
-package io.github.zgxhzhr.maidfm.mixin;
+package io.github.zgxhzhr.maidfm.platform;
 
 /**
- * 女仆实体「导入产物」标记的持久化承载接口（由 {@link EntityMaidMixin} 实现）。
+ * 女仆实体「导入产物」标记的持久化承载接口（由 EntityMaidMixin 实现）。
  *
  * <p>Fabric 的原版实体没有 Forge/NeoForge 那样的持久化标签 API，因此在 {@code EntityMaid} 内
  * 通过 Mixin 新增一个布尔字段承载标记，并在 {@code addAdditionalSaveData/readAdditionalSaveData}

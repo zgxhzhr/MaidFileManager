@@ -124,12 +124,12 @@ public final class FabricNetwork implements IMaidFileNetwork {
     }
 
     private static void sendC2S(ResourceLocation id, FriendlyByteBuf buf) {
-        try {
-            ClientPlayNetworking.send(id, buf);
-        } finally {
-            // Fabric API 不会替调用方释放 FriendlyByteBuf：发送完成后必须手动释放，否则每次发包泄漏一块池化内存
-            buf.release();
-        }
+        // 不能在这里 release：ClientPlayNetworking.send 把同一个 buf 直接塞进
+        // ServerboundCustomPayloadPacket（fabric-api 不复制），真正的编码发生在 netty
+        // event-loop 线程；调用栈返回就 release 会让 refCnt 归零，编码器随后读到
+        // refCnt=0 → IllegalReferenceCountException → 通道关闭（该端所有 C2S 包全废）。
+        // 与同文件 S2C 方向的 ServerPlayNetworking.send 一致：都不由调用方释放。
+        ClientPlayNetworking.send(id, buf);
     }
 
     @Override
