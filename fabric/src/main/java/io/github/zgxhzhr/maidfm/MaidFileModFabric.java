@@ -101,9 +101,17 @@ public class MaidFileModFabric implements ModInitializer {
             if (removeAfter) {
                 // 【P2-10】不再立刻 discard：服务端无法确认客户端写盘成功。
                 // 改为登记待删，等客户端回执 ID_EXPORT_WRITE_ACK 再删；不回执则永不删除。
-                PENDING_REMOVAL.put(player.getUUID(), new ArrayList<>(exportedIds));
-                Constants.LOG.info("[maid_file_manager] 导出并移除：登记待删 {} 个实体，等待客户端写盘回执 player={}",
-                        exportedIds.size(), player.getName().getString());
+                // 同一玩家同一时刻只允许一笔待删登记。已有登记时不覆盖 —— 覆盖会让「旧回执」
+                // 删除**新批次**的女仆，而新批次文件可能根本没写成功，构成不可逆数据丢失。
+                if (PENDING_REMOVAL.putIfAbsent(player.getUUID(), new ArrayList<>(exportedIds)) != null) {
+                    Constants.LOG.warn("[maid_file_manager] 上一笔待删回执未到，本次导出不执行移除: player={}, 本批 {} 个",
+                            player.getName().getString(), exportedIds.size());
+                    sendFeedback(player, Component.translatable("maid_file_manager.server.remove_busy"));
+                } else {
+                    PENDING_REMOVAL_AT.put(player.getUUID(), System.currentTimeMillis());
+                    Constants.LOG.info("[maid_file_manager] 导出并移除：登记待删 {} 个实体，等待客户端写盘回执 player={}",
+                            exportedIds.size(), player.getName().getString());
+                }
             }
             Constants.LOG.debug("[maid_file_manager] EXPORT_BATCH: player={} sent={} removed={}",
                     player.getName().getString(), results.size(), removedCount);
@@ -537,10 +545,34 @@ public class MaidFileModFabric implements ModInitializer {
     private static final java.util.Map<java.util.UUID, List<Integer>> PENDING_REMOVAL =
             new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** 待删登记的写入时刻（毫秒）：客户端回执永远不来时用它判定超时 */
+    private static final java.util.Map<java.util.UUID, Long> PENDING_REMOVAL_AT =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * 待删登记存活时长。客户端崩溃/断线导致回执永远不来时不能让登记永久占位，
+     * 否则「导出并移除」会永久失效（女仆一直不删）且玩家无法察觉。
+     */
+    private static final long PENDING_REMOVAL_TTL_MS = 5 * 60 * 1000L;
+
+    /** 玩家断线时清掉其待删登记：回执不可能再来，留着只会阻塞后续导出 */
+    public static void clearPendingRemoval(java.util.UUID playerId) {
+        if (playerId != null) {
+            PENDING_REMOVAL.remove(playerId);
+            PENDING_REMOVAL_AT.remove(playerId);
+        }
+    }
+
     /** 客户端写盘回执：false 则放弃删除，女仆留在世界里 */
     private static void handleExportWriteAck(ServerPlayer player, boolean success) {
         List<Integer> ids = PENDING_REMOVAL.remove(player.getUUID());
+        Long pendingAt = PENDING_REMOVAL_AT.remove(player.getUUID());
         if (ids == null || ids.isEmpty()) {
+            return;
+        }
+        if (pendingAt != null && System.currentTimeMillis() - pendingAt > PENDING_REMOVAL_TTL_MS) {
+            Constants.LOG.warn("[maid_file_manager] 待删登记已超时（{} ms），丢弃: player={}",
+                    PENDING_REMOVAL_TTL_MS, player.getName().getString());
             return;
         }
         if (!success) {
