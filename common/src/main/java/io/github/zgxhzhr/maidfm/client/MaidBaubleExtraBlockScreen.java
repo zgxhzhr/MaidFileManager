@@ -89,6 +89,8 @@ public class MaidBaubleExtraBlockScreen extends Screen {
     private final Set<String> declared = new LinkedHashSet<>();
     private final List<String> slotEntries = new ArrayList<>();
 
+    /** init 在 resize 时会重跑，用它保证只从服务端缓存装载一次 */
+    private boolean loadedFromCache;
     private final Set<String> blockedNamespaces = new LinkedHashSet<>();
     /** 整合包强制禁用的模组 / 槽位（只读，游戏内不可取消） */
     private final Set<String> managedNamespaces = new LinkedHashSet<>();
@@ -129,14 +131,19 @@ public class MaidBaubleExtraBlockScreen extends Screen {
         this.canEdit = this.minecraft != null && this.minecraft.player != null
                 && this.minecraft.player.hasPermissions(2);
 
-        blockedNamespaces.clear();
-        blockedNamespaces.addAll(MaidConfigManager.cachedBaubleBlockedNamespaces());
-        blockedSlots.clear();
-        blockedSlots.addAll(MaidConfigManager.cachedBaubleBlockedCuriosSlots());
-        managedNamespaces.clear();
-        managedNamespaces.addAll(MaidConfigManager.cachedBaubleImportBlockedNamespaces());
-        managedSlots.clear();
-        managedSlots.addAll(MaidConfigManager.cachedBaubleImportBlockedCuriosSlots());
+        // 只在首次 init 时从服务端缓存装载：init() 在窗口 resize 时也会重跑，
+        // 无条件重读会把玩家已勾选但还没点「完成」的改动冲掉（导入屏不丢，这屏会）。
+        if (!loadedFromCache) {
+            loadedFromCache = true;
+            blockedNamespaces.clear();
+            blockedNamespaces.addAll(MaidConfigManager.cachedBaubleBlockedNamespaces());
+            blockedSlots.clear();
+            blockedSlots.addAll(MaidConfigManager.cachedBaubleBlockedCuriosSlots());
+            managedNamespaces.clear();
+            managedNamespaces.addAll(MaidConfigManager.cachedBaubleImportBlockedNamespaces());
+            managedSlots.clear();
+            managedSlots.addAll(MaidConfigManager.cachedBaubleImportBlockedCuriosSlots());
+        }
 
         declared.clear();
         declared.addAll(MaidBaubleCarrierRegistry.declaredNamespaces());
