@@ -114,6 +114,12 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                                 }
                             }
                             IMaidFileNetwork.ClientHandler clientHandler = IMaidFileNetwork.ClientHandlerHolder.get();
+                            // 管理器界面已关闭时结果无处投递：原先静默丢弃，该批导出彻底消失且无任何痕迹。
+                            // 至少留一条 WARN，便于玩家/维护者从日志判断「导出为什么没反应」（第六轮 M10）。
+                            if (clientHandler == null) {
+                                io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                                        "[maid_file_manager] 导出结果被丢弃（管理器界面已关闭）: 本批 {} 条", decoded.size());
+                            }
                             if (clientHandler != null) {
                                 clientHandler.onExportResultReceived(decoded);
                             }

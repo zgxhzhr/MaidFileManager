@@ -1978,7 +1978,7 @@ setScrollAmount(0);
                     return;
                 }
                 // 窄屏（列表区放不下按钮+文字）时不画/不命中「档案」按钮
-                if (rowRight - MaidFileManagerScreen.this.panelX < 190) {
+                if (listW < 190) {
                     return;
                 }
                 int bx = rowRight - PROFILE_BTN_W - 4;
@@ -2000,7 +2000,7 @@ setScrollAmount(0);
                 }
                 int rowRight = MaidListWidget.this.listX + MaidListWidget.this.listW;
                 // 窄屏（列表区放不下按钮+文字）时不画/不命中「档案」按钮
-                if (rowRight - MaidFileManagerScreen.this.panelX < 190) {
+                if (listW < 190) {
                     return false;
                 }
                 int bx = rowRight - PROFILE_BTN_W - 4;
@@ -2258,7 +2258,7 @@ setScrollAmount(0);
             private void drawProfileButton(GuiGraphics graphics, int rowRight, int top, int height,
                                            int mouseX, int mouseY) {
                 // 窄屏（列表区放不下按钮+文字）时不画/不命中「档案」按钮
-                if (rowRight - MaidFileManagerScreen.this.panelX < 190) {
+                if (listW < 190) {
                     return;
                 }
                 int bx = rowRight - PROFILE_BTN_W - 4;
@@ -2280,7 +2280,7 @@ setScrollAmount(0);
                 }
                 int rowRight = FileListWidget.this.listX + FileListWidget.this.listW;
                 // 窄屏（列表区放不下按钮+文字）时不画/不命中「档案」按钮
-                if (rowRight - MaidFileManagerScreen.this.panelX < 190) {
+                if (listW < 190) {
                     return false;
                 }
                 int bx = rowRight - PROFILE_BTN_W - 4;
