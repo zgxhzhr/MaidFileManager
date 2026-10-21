@@ -282,7 +282,11 @@ public class MaidFileModFabric implements ModInitializer {
 
         // 保存女仆档案：校验归属后写入实体并回执（复用 ID_FEEDBACK）
         registerC2SReceiver(MaidFilePackets.ID_SAVE_MAID_PROFILE, (server, player, buf) -> {
-            int entityId = buf.readInt();
+            // 必须与写端 FabricNetwork.sendSaveMaidProfile 的 writeVarInt 配对。
+            // 原为 readInt（读 4 字节定长），而写端只写了 VarInt（小 entityId 仅 1~2 字节）：
+            // 会把后续档案 NBT 的头部字节一起吃进 entityId，导致查找实体失败、
+            // 保存档案 100% 失败（forge 与 fabric-1.20.1 两端都是 readVarInt）。
+            int entityId = buf.readVarInt();
             MaidProfile profile = MaidFilePackets.readMaidProfile(buf);
             if (profile == null) {
                 sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.save_failed"));
