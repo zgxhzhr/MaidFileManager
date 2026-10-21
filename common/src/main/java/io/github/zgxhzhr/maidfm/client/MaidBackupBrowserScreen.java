@@ -384,6 +384,12 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
             worlds.add(world);
         }
         resolveAllNames();
+        // 本机扫描结果回来后必须重建列表：applyWorlds 只填了 worlds，
+        // 而唯一的 rebuildRows() 挂在「名字异步解析回调」里；
+        // 名字全部命中缓存时该回调不会触发 → 界面永远停在「未找到任何女仆备份」
+        //（服务端模式不受影响：其回调 onBackupListReceived 自己就 rebuildRows）。
+        rebuildRows();
+        refreshButtons();
     }
 
     /** 专业服务端：只有当前存档的数据，包成单个「当前服务器」节点展示 */
