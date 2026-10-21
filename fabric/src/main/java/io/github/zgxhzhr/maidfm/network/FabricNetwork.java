@@ -137,6 +137,15 @@ public final class FabricNetwork implements IMaidFileNetwork {
         if (payload == null || payload.length == 0) {
             return;
         }
+        // 发送前预检整包上限：接收端本来就会在收齐后丢弃超限负载，
+        // 但那时已经发了 342 片（8 MiB），白占带宽与接收端内存，客户端还拿不到错误。
+        if (io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.exceedsTotalLimit(payload)) {
+            io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                    "[maid_file_manager] 分片上传负载超上限，已拒绝发送: kind={} bytes={} limit={}",
+                    kind, payload.length,
+                    io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES);
+            return;
+        }
         int chunkBytes = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES;
         int total = (payload.length + chunkBytes - 1) / chunkBytes;
         int sessionId = java.util.concurrent.ThreadLocalRandom.current().nextInt();
