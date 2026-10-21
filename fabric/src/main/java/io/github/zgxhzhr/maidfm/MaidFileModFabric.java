@@ -542,6 +542,13 @@ public class MaidFileModFabric implements ModInitializer {
             if (e == null) {
                 continue;
             }
+            // 防御性校验：删除不可逆，删前确认「确实是女仆」且「确实归这个玩家」
+            if (!(e instanceof com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid maid)
+                    || !maid.isOwnedBy(player)) {
+                Constants.LOG.warn("[maid_file_manager] 待删实体校验未通过，跳过: entityId={} player={}",
+                        entityId, player.getName().getString());
+                continue;
+            }
             try {
                 MaidTransferService.unregisterMaidWorldData(e);
                 java.util.UUID photoUuid = e.getUUID();
