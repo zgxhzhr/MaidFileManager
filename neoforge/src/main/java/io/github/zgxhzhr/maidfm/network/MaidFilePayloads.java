@@ -89,8 +89,10 @@ public final class MaidFilePayloads {
         }
         byte[] encodedOut = ExportBatchResultPayload.encodeExportBatchResult(blobs);
         if (encodedOut.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
-            ChunkedDownloadPayload.sendChunks(sp,
-                    io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH, encodedOut);
+            if (!ChunkedDownloadPayload.sendChunks(sp,
+                    io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH, encodedOut)) {
+                return false;
+            }
         } else {
             PacketDistributor.sendToPlayer(sp, new ExportBatchResultPayload(encodedOut));
         }
@@ -1330,9 +1332,21 @@ public final class MaidFilePayloads {
         }
 
         /** 服务端调用：把负载切片逐片发给玩家 */
-        static void sendChunks(ServerPlayer player, String kind, byte[] payload) {
+        static boolean sendChunks(ServerPlayer player, String kind, byte[] payload) {
             if (player == null || payload == null || payload.length == 0) {
-                return;
+                return true;
+            }
+
+            // 总量预检：客户端 ChunkedUploadAssembler 会在首片就按 declared > MAX_TOTAL_BYTES 拒收，
+            // 发送端照样发满几百片纯属浪费。超限直接回执失败并返回 false ——
+            // 调用方据此不登记待删，避免「文件没发出去却删了女仆」。
+            if (payload.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES) {
+                Constants.LOG.warn("[maid_file_manager] 分片下发超总量上限，拒绝发送: player={} bytes={} limit={}",
+                        player.getName().getString(), payload.length, io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES);
+                feedback(player, net.minecraft.network.chat.Component.translatable(
+                        "maid_file_manager.server.export_too_large",
+                        payload.length / 1024, io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES / 1024));
+                return false;
             }
             int chunkBytes = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES;
             int total = (payload.length + chunkBytes - 1) / chunkBytes;
@@ -1346,6 +1360,7 @@ public final class MaidFilePayloads {
             }
             Constants.LOG.info("[maid_file_manager] 导出结果分片下发: player={} bytes={} chunks={}",
                     player.getName().getString(), payload.length, total);
+        return true;
         }
 
         /** S2C 包：客户端收到后累积，收齐再交给 UI 回调 */
