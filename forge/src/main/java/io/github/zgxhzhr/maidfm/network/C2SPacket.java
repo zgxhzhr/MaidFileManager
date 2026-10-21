@@ -169,6 +169,11 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     }
 
     private static void handleExportBatch(ServerPlayer player, List<Integer> ids, boolean removeAfter) {
+        // 频次限制：这三个是写盘/生成实体类 handler，比只读请求更重；
+        // 原先只有 3 个只读 handler 有节流，批量导出/导入与备份导出可被循环刷。
+        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "export_batch", 1000L)) {
+            return;
+        }
         // 两阶段处理：先完成全部序列化并通过体积预检、确认结果包已发送，之后才允许删除实体。
         // 若边导出边删除，预检失败时女仆已被 discard 而文件未送达，构成不可逆数据丢失
         List<MaidFileData> results = new ArrayList<>(ids.size());
@@ -218,6 +223,11 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     }
 
     private static void handleImportBatch(ServerPlayer player, FriendlyByteBuf data) {
+        // 频次限制：这三个是写盘/生成实体类 handler，比只读请求更重；
+        // 原先只有 3 个只读 handler 有节流，批量导出/导入与备份导出可被循环刷。
+        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "import_batch", 1000L)) {
+            return;
+        }
         List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(data);
         boolean keepBaubles = data.readBoolean();
         boolean deleteAfterImport = data.readBoolean();
@@ -472,6 +482,11 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
 
     /** 备份管理：请求服务端导出某条备份（校验权限后读取并回传为 .maid 数据） */
     private static void handleRequestBackupExport(ServerPlayer player, FriendlyByteBuf data) {
+        // 频次限制：这三个是写盘/生成实体类 handler，比只读请求更重；
+        // 原先只有 3 个只读 handler 有节流，批量导出/导入与备份导出可被循环刷。
+        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "backup_export", 2000L)) {
+            return;
+        }
         String ownerUuid = data.readUtf(MaidFilePackets.MAX_TEXT_LEN);
         String maidUuid = data.readUtf(MaidFilePackets.MAX_TEXT_LEN);
         String fileName = data.readUtf(MaidFilePackets.MAX_TEXT_LEN);
