@@ -302,12 +302,22 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         int listAreaX = sideX + SIDEBAR_W + INNER_GAP;     // UI无问题版：列表 X = 工具列右 + 内间距
         int listAreaW = panelX + panelW - 8 - listAreaX;   // UI无问题版：列表宽 = 面板右端点（贴内右边距 8）- 列表左
         int listTop = panelY + HEADER_TOTAL_H;             // UI无问题版：列表顶 = Tab 下沿
-        int listBottom = panelY + panelH - LIST_BOTTOM_PAD; // 与反馈起点（面板底 - LIST_BOTTOM_PAD + 6）留 6px 间隔，避免反馈首行压住列表底
-        if (listBottom - listTop < 80) listBottom = listTop + 80; // UI无问题版：高度兜底 ≥ 80
+        // 与反馈起点（面板底 - LIST_BOTTOM_PAD + 6）留 6px 间隔，避免反馈首行压住列表底
+        int desiredBottom = panelY + panelH - LIST_BOTTOM_PAD;
         // 【Fix B 最小硬上限】：与 updateBottomButtonLayout btnY-4 同公式，防极矮屏兜底冲出按钮区
         int btnYFloor = panelY + panelH - 20 - 22 - 4;
-        if (listBottom > btnYFloor) listBottom = btnYFloor;
-        if (listBottom <= listTop) listBottom = listTop + 80; // 保底正高
+        // 三段兜底必须合成一个**不可能互相覆盖**的表达式。原先的顺序是：
+        //   if (listBottom - listTop < 80) listBottom = listTop + 80;   // 先顶到 listTop+80
+        //   if (listBottom > btnYFloor) listBottom = btnYFloor;         // 再压回按钮上沿
+        //   if (listBottom <= listTop) listBottom = listTop + 80;       // ← 又顶回，把上一步整条覆盖
+        // 当 btnYFloor <= listTop（panelH <= 110，即 height <= 170）时，列表会画出面板并压住
+        // 主动作按钮（按钮整条落在列表矩形内，点击先被列表接走 → 按钮失去点击能力）。
+        int minH = 40;   // 矮屏下宁可变矮，也别压按钮
+        int maxBottom = Math.min(btnYFloor, panelY + panelH - 20);
+        int listBottom = Math.max(listTop + minH, Math.min(maxBottom, desiredBottom));
+        if (listBottom > maxBottom) {
+            listBottom = maxBottom;   // 空间真不够时允许低于 minH，但绝不越过按钮
+        }
         maidListWidget = new MaidListWidget(listAreaX, listAreaW, listTop, listBottom);
         fileListWidget = new FileListWidget(listAreaX, listAreaW, listTop, listBottom);
         updateListVisibility();
