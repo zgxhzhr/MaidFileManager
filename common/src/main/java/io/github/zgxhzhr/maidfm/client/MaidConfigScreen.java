@@ -183,9 +183,13 @@ public class MaidConfigScreen extends Screen {
 
         // ===== 完成（返回管理界面） =====
         y += 12;
+        // 内容 y 是逐行累加出来的，而 panelH 被 clamp 到 height-16：矮屏（480×270）下
+        // 累加到「完成」按钮时已经越过面板底边，按钮会画到屏幕外、设置无法保存。
+        // 这里把按钮 y 钉在面板内（内容行仍按原布局，可能略挤）。
+        int doneY = Math.min(y + 12, panelY + panelH - 20 - 6);
         addRenderableWidget(Button.builder(Component.translatable("gui.maid_file_manager.config.done"),
                         b -> this.onClose())
-                .bounds(this.width / 2 - 60, y, 120, 20)
+                .bounds(this.width / 2 - 60, doneY, 120, 20)
                 .build());
     }
 
