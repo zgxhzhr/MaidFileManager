@@ -647,6 +647,42 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
 
     /** 一键全选被点击时，同步 selectedMaidIds 和每行的选中状态 */
+    /** 参与「全选」判定的女仆：排除已折叠分组（折叠组既不可见、也已从选中集移除） */
+    private List<MaidInfo> selectableMaids() {
+        if (collapsedPlayers.isEmpty()) {
+            return maidList;
+        }
+        List<MaidInfo> out = new ArrayList<>(maidList.size());
+        for (MaidInfo info : maidList) {
+            String owner = maidOwnerByEntityId.get(info.entityId());
+            if (owner != null && collapsedPlayers.contains(owner)) {
+                continue;
+            }
+            out.add(info);
+        }
+        return out;
+    }
+
+    /**
+     * 全选状态判定。
+     *
+     * <p>必须只看「可选（未折叠）」的女仆：折叠时会把该组从选中集移除，
+     * 若仍拿展平全集 maidList 比较，selectedMaidIds.size() 永远追不上 maidList.size()，
+     * 「全选」勾选状态与计数就永久不一致（第六轮 M5）。
+     */
+    private boolean computeAllSelected() {
+        List<MaidInfo> selectable = selectableMaids();
+        if (selectable.isEmpty()) {
+            return false;
+        }
+        for (MaidInfo info : selectable) {
+            if (!selectedMaidIds.contains(info.entityId())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private void onSelectAllToggled(boolean selected) {
         selectedMaidIds.clear();
         if (selected) {
@@ -673,7 +709,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             selectedMaidIds.remove(info.entityId());
         }
         // 同步全选按钮状态（若全选就打勾，反之取消）
-        boolean allSelected = !maidList.isEmpty() && selectedMaidIds.size() >= maidList.size();
+        boolean allSelected = computeAllSelected();
         if (selectAllState != allSelected) {
             selectAllState = allSelected;
             refreshSelectAllLabel();
@@ -1393,7 +1429,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         // 清理已失效的勾选（entityId 不在新列表里的移除）
         selectedMaidIds.removeIf(id -> list.stream().noneMatch(info -> info.entityId() == id));
         // 同步全选状态
-        boolean allSelected = !maidList.isEmpty() && selectedMaidIds.size() >= maidList.size();
+        boolean allSelected = computeAllSelected();
         if (selectAllState != allSelected) {
             selectAllState = allSelected;
             refreshSelectAllLabel();
@@ -1424,7 +1460,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             }
         }
         selectedMaidIds.removeIf(id -> !maidOwnerByEntityId.containsKey(id));
-        boolean allSelected = !maidList.isEmpty() && selectedMaidIds.size() >= maidList.size();
+        boolean allSelected = computeAllSelected();
         if (selectAllState != allSelected) {
             selectAllState = allSelected;
             refreshSelectAllLabel();
@@ -1901,9 +1937,14 @@ setScrollAmount(0);
                             break;
                         }
                     }
-                    MaidFileManagerScreen.this.selectAllState = false;
+                    // 折叠/展开后按「可选集合」重算，而不是硬置 false（否则展开回来也永远不显示已全选）
+                    MaidFileManagerScreen.this.selectAllState = MaidFileManagerScreen.this.computeAllSelected();
                     MaidFileManagerScreen.this.refreshSelectAllLabel();
                 }
+                // 展开后也要重算：展开意味着可选集合变大、新可见的女仆尚未选中，
+                // 原先只在折叠分支重算，展开回来仍显示「已全选」（第六轮 M5）。
+                MaidFileManagerScreen.this.selectAllState = MaidFileManagerScreen.this.computeAllSelected();
+                MaidFileManagerScreen.this.refreshSelectAllLabel();
                 MaidListWidget.this.refresh();
                 return true;
             }
