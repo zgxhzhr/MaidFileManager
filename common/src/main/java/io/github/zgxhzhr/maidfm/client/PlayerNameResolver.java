@@ -145,6 +145,9 @@ public final class PlayerNameResolver {
         }
     }
 
+    /** 串行化 saveCache 的写入（后台解析线程与主线程都会调） */
+    private static final Object saveCacheWriteLock = new Object();
+
     private static void saveCache() {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.gameDirectory == null) {
@@ -157,7 +160,20 @@ public final class PlayerNameResolver {
             for (Map.Entry<String, String> e : CACHE.entrySet()) {
                 obj.addProperty(e.getKey(), e.getValue());
             }
-            Files.writeString(file, new Gson().toJson(obj), StandardCharsets.UTF_8);
+            // 后台解析线程与主线程都会调 saveCache：原先直接 writeString 覆盖同一个文件，
+            // 并发时可能写出半截 JSON（下次读缓存解析失败、或读到空表）。
+            // 改为「同锁 + 临时文件 + 原子替换」，读者永远只会看到完整文件。
+            String json = new Gson().toJson(obj);
+            synchronized (saveCacheWriteLock) {
+                Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+                Files.writeString(tmp, json, StandardCharsets.UTF_8);
+                try {
+                    Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                            java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                    Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] 写入玩家名缓存失败: {}", t.toString());
         }
