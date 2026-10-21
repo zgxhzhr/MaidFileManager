@@ -35,7 +35,14 @@ public final class ChunkedUploadAssembler {
     private static final long TIMEOUT_MS = 60_000L;
 
     /** 全局未完成会话数上限：防止恶意客户端开大量会话拖爆服务端堆。 */
-    private static final int MAX_SESSIONS = 64;
+    /**
+     * 同时存在的分片会话上限。
+     *
+     * <p>**按总内存定，不按人数定**：单个会话的声明量上限是 {@link #MAX_TOTAL_BYTES}(8 MiB)，
+     * 原先 64 个会话的最坏常驻就是 64 × 8 MiB = **512 MiB** —— 几个玩家同时发大包就能把堆吃光。
+     * 收到 8 个会话时最坏 64 MiB，仍在安全区内；正常玩法下同时进行的导出/导入远小于 8。
+     */
+    private static final int MAX_SESSIONS = 8;
 
     /** 单个玩家允许同时存在的未完成会话数上限。 */
     private static final int MAX_SESSIONS_PER_PLAYER = 4;
