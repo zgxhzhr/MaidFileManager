@@ -1677,6 +1677,19 @@ setScrollAmount(0);
                 String name = group.playerName();
                 if (!collapsedPlayers.remove(name)) {
                     collapsedPlayers.add(name);
+                    // 折叠时把该组女仆从选中集移除：否则「全选」勾中的是展平全集（含不可见行），
+                    // 界面显示的勾选数比屏幕上能看到的行多很多，且 allSelected 判断永远算不出
+                    // 「已全选」，导出时那些看不见的条目仍会被提交。
+                    for (IMaidFileNetwork.PlayerMaidGroup g : MaidFileManagerScreen.this.serverGroups) {
+                        if (g.playerName().equals(name)) {
+                            for (MaidInfo info : g.maids()) {
+                                MaidFileManagerScreen.this.selectedMaidIds.remove(info.entityId());
+                            }
+                            break;
+                        }
+                    }
+                    MaidFileManagerScreen.this.selectAllState = false;
+                    MaidFileManagerScreen.this.refreshSelectAllLabel();
                 }
                 MaidListWidget.this.refresh();
                 return true;
