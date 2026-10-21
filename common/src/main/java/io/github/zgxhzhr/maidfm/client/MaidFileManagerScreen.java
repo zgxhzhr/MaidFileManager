@@ -1685,12 +1685,6 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             }
             int index = (int) ((mouseY - this.listTop - 4 + this.getScrollAmount()) / ROW_HEIGHT);
             java.util.List<ListRow> rows = this.children();
-            // 每帧先把所有行的命中区清成 -1：滚出视口的行不会重画，若保留上一帧的 lastTop，
-            // 它会停在滚动前的旧位置（仍在列表矩形内）且 children() 升序遍历时先命中，
-            // 于是点某一行会勾中「看不见的另一只女仆」（移除模式下可能误删）。
-            for (ListRow row : rows) {
-                row.resetHitArea();
-            }
             if (index < 0 || index >= rows.size()) {
                 return null;
             }
@@ -1773,6 +1767,12 @@ setScrollAmount(0);
             }
             this.renderListBackground(graphics);
             java.util.List<ListRow> rows = this.children();
+            // 每帧在**画行之前**清命中区：只有本帧真正画过的行才可命中。
+            // 不能放 hitRow()：它被 drawHoverTooltip 每帧调用，放那里会在帧末把所有行清成 -1，
+            // 导致行内「档案」按钮与 isMouseOver 永久拿不到 lastTop（第六轮 P1-1）。
+            for (ListRow row : rows) {
+                row.resetHitArea();
+            }
             int viewH = this.listBottom - this.listTop;
             int scroll = (int) this.getScrollAmount();
             graphics.enableScissor(this.listX, this.listTop, this.listX + this.listW, this.listBottom);
@@ -2155,6 +2155,12 @@ setScrollAmount(0);
             }
             this.renderListBackground(graphics);
             java.util.List<Entry> rows = this.children();
+            // 导入列表同样每帧清命中区（第五轮 P1-5 只修了导出列表 → 第六轮 P1-2）：
+            // 不清的话滚出视口的行保留旧 lastTop，点某文件会勾中看不见的另一个文件，
+            // 配合「导入后删除源文件」会删错文件。
+            for (Entry row : rows) {
+                row.resetHitArea();
+            }
             int viewH = this.listBottom - this.listTop;
             int scroll = (int) this.getScrollAmount();
             graphics.enableScissor(this.listX, this.listTop, this.listX + this.listW, this.listBottom);
@@ -2187,6 +2193,12 @@ setScrollAmount(0);
             // 修复 v1.1.2 UI bug：与 MaidListWidget.Entry 同款问题，isMouseOver 必须用 lastTop/lastHeight 限定 mouseY 范围
             int lastTop = -1;
             int lastHeight = -1;
+
+            /** 清掉上一帧记录的命中区（本类不继承 ListRow，故无 @Override） */
+            void resetHitArea() {
+                this.lastTop = -1;
+                this.lastHeight = -1;
+            }
 
             Entry(String fileName) {
                 this.fileName = fileName;
