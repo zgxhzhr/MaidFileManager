@@ -130,7 +130,7 @@ public class MaidFileModNeoForge {
                 MaidFilePayloads.BackupExportResultPayload.STREAM_CODEC,
                 MaidFilePayloads.BackupExportResultPayload::handle);
 
-        Constants.LOG.info("[maid_file_manager] CustomPayload handlers registered: 10 C2S + 10 S2C");
+        Constants.LOG.info("[maid_file_manager] CustomPayload handlers registered: 16 C2S + 10 S2C");
     }
 
     private void onRegisterCommands(RegisterCommandsEvent event) {

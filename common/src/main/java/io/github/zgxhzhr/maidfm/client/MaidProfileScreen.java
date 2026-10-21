@@ -948,7 +948,8 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         // 全屏底色与面板统一在 render() 开头绘制
     }
 
-    // 1.21 映射名 returnsPauseScreen / Parchment 映射名 isPauseScreen，两个都写一遍防止映射差异
+    // 真实 MC jar 取证（第六轮）：两版都**没有** returnsPauseScreen；1.20.x/1.21.x 的映射名都是 isPauseScreen。
+    // 保留 returnsPauseScreen 只是历史兼容的空方法（不会被调用），注释不要再写成「1.21 映射名」。
     @SuppressWarnings("unused")
     public boolean returnsPauseScreen() {
         return false;

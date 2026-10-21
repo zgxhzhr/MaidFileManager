@@ -59,7 +59,7 @@ public final class MaidFilePackets {
     public static final ResourceLocation ID_IMPORT_FILE = id("import_file");
     /** C2S：客户端请求修改服务端配置（body: utf key + boolean value，服务端校验 OP） */
     public static final ResourceLocation ID_SET_SERVER_CONFIG = id("set_server_config");
-    /** C2S：客户端提交「按模组/槽位禁用」清单（body: utf key + 字符串列表，服务端校验 OP） */
+    /** C2S：OP 修改「禁用携带的饰品 ID 列表」（body: 字符串列表，服务端校验 OP 后写文件并广播同步） */
     public static final ResourceLocation ID_SET_SERVER_BAUBLE_BLOCKED_LIST = id("set_server_bauble_blocked_list");
     /** C2S：客户端上报「允许服务端统一导出」同意状态（body: boolean） */
     public static final ResourceLocation ID_CLIENT_CONSENT = id("client_consent");
