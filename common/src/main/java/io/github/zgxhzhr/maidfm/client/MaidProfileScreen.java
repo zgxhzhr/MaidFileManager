@@ -625,16 +625,7 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         return mx >= x && mx <= x + w && my >= y && my <= y + h;
     }
 
-    /**
-     * 1.21.x 官方映射为四参 {@code mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)}，
-     * 滚轮只产生垂直量（第四参）；1.20.x 为三参（第三参即垂直量）。两个签名都写一遍共用同一实现。
-     */
-    @SuppressWarnings("unused")
-    public boolean mouseScrolled(double mouseX, double mouseY, double amount, double delta) {
-        return handleScroll(mouseX, mouseY, delta);
-    }
-
-    @SuppressWarnings("unused")
+    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
         return handleScroll(mouseX, mouseY, amount);
     }
@@ -937,13 +928,7 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         // 全屏底色与面板统一在 render() 开头绘制
     }
 
-    // 1.21 映射名 returnsPauseScreen / 1.20.1 映射名 isPauseScreen，两个都写一遍防止映射差异
-    @SuppressWarnings("unused")
-    public boolean returnsPauseScreen() {
-        return false;
-    }
-
-    @SuppressWarnings("unused")
+    @Override
     public boolean isPauseScreen() {
         return false;
     }
