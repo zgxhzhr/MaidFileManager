@@ -100,9 +100,18 @@ public final class MaidBackupService {
     /** 备份扫描上限：主线程同步扫描，设上限避免目录极多时长时间卡死 */
     private static final int MAX_SCAN_OWNER_DIRS = 200;
     private static final int MAX_SCAN_MAID_DIRS_PER_OWNER = 200;
+    /**
+     * 单次扫描的时间预算（毫秒）。
+     *
+     * <p>两个个数上限只能限制「目录条数」，挡不住单个目录里文件极多 / 磁盘极慢的情况：
+     * 200×200 个目录逐个 listFiles + 读 index.dat，在机械盘上仍可能占住主线程十几秒。
+     * 这里按墙钟时间兜底，超时即停并返回已扫到的部分（宁可少列，不可卡服）。
+     */
+    private static final long SCAN_TIME_BUDGET_MS = 1500L;
 
     private static List<IMaidFileNetwork.BackupOwner> scanRoot(Path root) {
         ensureUsernameCacheLoaded();
+        final long scanDeadline = System.currentTimeMillis() + SCAN_TIME_BUDGET_MS;
         List<IMaidFileNetwork.BackupOwner> owners = new ArrayList<>();
         if (root == null || !Files.isDirectory(root)) {
             return owners;
@@ -112,6 +121,12 @@ public final class MaidBackupService {
             return owners;
         }
         for (File ownerDir : ownerDirs) {
+            // 时间预算兜底：超过就停止扫描，返回已扫到的部分
+            if (System.currentTimeMillis() > scanDeadline) {
+                Constants.LOG.warn("[maid_file_manager] 备份扫描超过时间预算 {} ms，已提前结束（已扫 {} 个玩家目录）",
+                        SCAN_TIME_BUDGET_MS, owners.size());
+                break;
+            }
             String ownerUuid = ownerDir.getName();
             if (!isUuid(ownerUuid)) {
                 continue;
