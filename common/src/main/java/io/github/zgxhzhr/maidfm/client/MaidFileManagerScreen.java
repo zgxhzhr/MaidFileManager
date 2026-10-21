@@ -112,6 +112,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private long serverExportSuppressFeedbackUntil = 0L;
     /** 统一导出确认后：等服务端列表回包再全选并提交（否则 owner 映射为空，导出 0 条） */
     private boolean pendingServerExport;
+    /** 导出批次在途：从发请求到「写盘回执已发」期间为真，用于串行化导出 */
+    private boolean exportInFlight;
     /** 统一导出：服务端返回的玩家分组女仆列表 */
     private List<IMaidFileNetwork.PlayerMaidGroup> serverGroups = new ArrayList<>();
     /** 统一导出：收起的玩家（点击玩家行折叠/展开） */
@@ -447,6 +449,13 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
         Constants.LOG.info("[maid_file_manager] EXPORT START: count={}, removeAfter={}", ids.size(), removeAfter);
         setFeedback(Component.translatable("maid_file_manager.gui.export.exporting_multi", ids.size()));
+        // 串行化：上一批导出还没把写盘回执发回去时不许再发下一批，
+        // 否则服务端的待删登记与回执无法一一对应（P2-8 残余窗口）。
+        if (this.exportInFlight) {
+            setFeedback(Component.translatable("maid_file_manager.gui.export.busy"));
+            return;
+        }
+        this.exportInFlight = true;
         net.sendExportMaids(ids, removeAfter);
     }
 
@@ -1323,6 +1332,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     @Override
     public void onExportResultReceived(List<MaidFileData> dataList) {
         if (dataList == null || dataList.isEmpty()) {
+            this.exportInFlight = false;   // 空批次未登记待删，直接放开
             setFeedback(Component.translatable("maid_file_manager.export.fail.empty"));
             return;
         }
@@ -1344,6 +1354,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
             if (net != null) {
                 net.sendExportWriteAck(false);
+                this.exportInFlight = false;   // 已回执失败，允许重试
             }
             setFeedback(Component.translatable("maid_file_manager.export.fail.local_save"));
             return;
@@ -1393,6 +1404,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 IMaidFileNetwork ackNet = IMaidFileNetwork.Holder.get();
                 if (ackNet != null) {
                     ackNet.sendExportWriteAck(fFailed == 0);
+                    this.exportInFlight = false;   // 回执已发，允许下一批导出
                 }
                 if (fCatastrophic && fSuccess == 0) {
                     setFeedback(Component.translatable("maid_file_manager.export.fail.local_save"));
