@@ -66,6 +66,8 @@ public class MaidFileModFabric implements ModInitializer {
         });
 
         registerC2SReceiver(MaidFilePackets.ID_EXPORT_MAID, (server, player, buf) -> {
+            // 旧单发通道不能成为频控绕过口（第六轮 N3）
+            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "export_maid", 1000L)) { return; }
             int entityId = buf.readInt();
             MaidFileData data = MaidTransferService.exportMaidToData(player, entityId);
             if (data != null && !sendExportResults(player, List.of(data))) {
@@ -134,6 +136,8 @@ public class MaidFileModFabric implements ModInitializer {
         });
 
         registerC2SReceiver(MaidFilePackets.ID_IMPORT_FILE, (server, player, buf) -> {
+            // 旧单发通道不能成为频控绕过口（第六轮 N3）
+            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "import_file", 1000L)) { return; }
             MaidFileData maidData = MaidFilePackets.readMaidFileData(buf);
             boolean keepBaubles = buf.readBoolean();
             // 单文件通道与批量通道线格式保持一致（尾部为 deleteAfterImport）；

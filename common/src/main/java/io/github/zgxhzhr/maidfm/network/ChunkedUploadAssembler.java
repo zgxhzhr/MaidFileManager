@@ -152,7 +152,9 @@ public final class ChunkedUploadAssembler {
                 session.received++;
             }
             if (session.received < session.totalChunks) {
-                Constants.LOG.info("[maid_file_manager] 分片进度: player={} kind={} session={} {}/{}",
+                // 逐片只记 DEBUG：一次 8 MiB 传输是 342 片，批量导入期间 INFO 会线性刷屏，
+                // 把真正需要注意的 WARN/ERROR 淹掉（第六轮 N8）。
+                Constants.LOG.debug("[maid_file_manager] 分片进度: player={} kind={} session={} {}/{}",
                         playerId, kind, sessionId, session.received, session.totalChunks);
                 return null;
             }
