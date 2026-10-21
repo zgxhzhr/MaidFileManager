@@ -263,7 +263,7 @@ public final class MaidTransferService {
 
     /**
      * 统一导出（OP 代导）专用序列化入口。
-     * ownership 校验改为 ownerUUID 精确匹配，并使用「直接取 → 128 格搜索 → 全维度搜索」三级查找，
+     * ownership 校验改为 ownerUUID 精确匹配，并使用「直接取 → 128 格搜索」两级查找
      * 只负责序列化，永不移除世界实体。
      *
      * <p>这是**所有权约束的硬边界**：与 {@link #exportMaidToData} 的 {@code isOwnedBy(player)}
