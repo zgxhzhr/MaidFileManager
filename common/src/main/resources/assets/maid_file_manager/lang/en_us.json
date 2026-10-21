@@ -245,4 +245,5 @@
     "maid_file_manager.server.too_many_backup_owners": "[Maid File Manager] Too many backup owners (%s > %s); cannot list. Clean up backups and retry.",
     "maid_file_manager.server.backup_list_too_large": "[Maid File Manager] The backup list is too large (%s KB > %s KB); clean up backups and retry.",
     "maid_file_manager.server.backup_too_large": "[Maid File Manager] This backup is too large to export through the server",
+    "maid_file_manager.command.export.too_many": "Too many maids in one export request (%s, limit %s); request rejected",
 }
