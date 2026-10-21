@@ -78,6 +78,10 @@ public class MaidFileModFabric implements ModInitializer {
 
         // 批量导出：数据发回客户端写文件；removeAfter=true 时移除已导出的女仆
         registerC2SReceiver(MaidFilePackets.ID_EXPORT_BATCH, (server, player, buf) -> {
+            // 频次限制：写盘/生成实体类 handler，原先只有只读请求有节流
+            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "export_batch", 1000L)) {
+                return;
+            }
             List<Integer> ids = MaidFilePackets.readIntList(buf);
             boolean removeAfter = buf.readBoolean();
             // 两阶段处理：先完成全部序列化并通过体积预检、确认结果包已发送，之后才允许删除实体。
@@ -147,6 +151,10 @@ public class MaidFileModFabric implements ModInitializer {
 
         // 批量导入：成败统计只认 ImportResult.State 枚举，严禁反解中文展示文案
         registerC2SReceiver(MaidFilePackets.ID_IMPORT_BATCH, (server, player, buf) -> {
+            // 频次限制：写盘/生成实体类 handler，原先只有只读请求有节流
+            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "import_batch", 1000L)) {
+                return;
+            }
             List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(buf);
             boolean keepBaubles = buf.readBoolean();
             boolean deleteAfterImport = buf.readBoolean();
@@ -348,6 +356,10 @@ public class MaidFileModFabric implements ModInitializer {
 
         // 备份管理：服务端校验权限（OP 或该备份主人）后读取该备份并回传，客户端再写本地文件
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_BACKUP_EXPORT, (server, player, buf) -> {
+            // 频次限制：写盘/生成实体类 handler，原先只有只读请求有节流
+            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "backup_export", 2000L)) {
+                return;
+            }
             String ownerUuid = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
             String maidUuid = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
             String fileName = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
