@@ -420,14 +420,26 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         }
         if (nameRequested.add(uuidStr)) {
             PlayerNameResolver.resolve(uuid, (resolvedUuid, name) -> {
-                for (WorldNode world : worlds) {
-                    for (OwnerNode owner : world.owners) {
-                        if (owner.uuid.equals(resolvedUuid.toString()) && owner.displayName == null) {
-                            owner.displayName = name;
+                // 该回调在解析工作线程上执行：界面状态（displayName / rows）必须回主线程改，
+                // 否则既可能踩并发，也可能改了却没重绘。
+                if (this.minecraft == null) {
+                    return;
+                }
+                this.minecraft.execute(() -> {
+                    for (WorldNode world : worlds) {
+                        for (OwnerNode owner : world.owners) {
+                            // 回填条件必须是「当前仍显示短 UUID 占位」：
+                            // 原先写 owner.displayName == null 恒假（resolveDisplayName 末尾已用 shortId 填过），
+                            // 于是整条异步链路是死代码，非缓存玩家永远停在 8 位短 UUID（第六轮 P1-3）。
+                            if (owner.uuid.equals(resolvedUuid.toString())
+                                    && (owner.displayName == null
+                                        || owner.displayName.equals(shortId(owner.uuid)))) {
+                                owner.displayName = name;
+                            }
                         }
                     }
-                }
-                rebuildRows();
+                    rebuildRows();
+                });
             });
         }
         return shortId(uuidStr);
