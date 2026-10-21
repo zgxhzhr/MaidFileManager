@@ -141,6 +141,11 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     }
 
     private static void handleExportMaid(ServerPlayer player, int entityId) {
+        // 旧单发通道与批量通道做的是同一件重活（含生成实体/写盘），
+        // 批量通道已加频控，这条不能成为绕过口（第六轮 N3）。
+        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "export_maid", 1000L)) {
+            return;
+        }
         MaidFileData data = MaidTransferService.exportMaidToData(player, entityId);
         if (data != null) {
             sendExportResults(player, List.of(data));
@@ -150,6 +155,11 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     }
 
     private static void handleImportFile(ServerPlayer player, FriendlyByteBuf data) {
+        // 旧单发通道与批量通道做的是同一件重活（含生成实体/写盘），
+        // 批量通道已加频控，这条不能成为绕过口（第六轮 N3）。
+        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "import_file", 1000L)) {
+            return;
+        }
         MaidFileData maidData = MaidFilePackets.readMaidFileData(data);
         boolean keepBaubles = data.readBoolean();
         // 单文件通道与批量通道线格式保持一致（尾部为 deleteAfterImport）；
