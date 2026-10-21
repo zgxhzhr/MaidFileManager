@@ -461,7 +461,11 @@ public class MaidBaubleExtraBlockScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 0 && mouseX >= listX && mouseX <= listX + listW) {
+        // 非 OP 不能改：init() 里 canEdit = player.hasPermissions(2)，但点击路径原先不判它 ——
+        // 非 OP 点击会即时改本地集合、复选框变色（视觉上「已保存」），而 onSaveAndClose()
+        // 在 canEdit==false 时整段跳过发包 → 界面显示与服务端永久不一致，重开又变回去。
+        // 同屏的 addButton.active = canEdit && tab == 2 已经做了，这是漏写。
+        if (button == 0 && canEdit && mouseX >= listX && mouseX <= listX + listW) {
             int top = panelY + LIST_Y;
             if (mouseY >= top && mouseY <= top + LIST_H) {
                 int row = (int) ((mouseY - top) / ROW_H);
