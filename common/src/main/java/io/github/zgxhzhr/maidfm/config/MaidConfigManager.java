@@ -787,7 +787,9 @@ public final class MaidConfigManager {
         }
         List<String> out = new ArrayList<>();
         for (JsonElement element : root.getAsJsonArray(key)) {
-            if (element == null || !element.isJsonPrimitive()) {
+            // 只接受 JSON 字符串元素：文档承诺「数字/布尔元素被忽略」，而 isJsonPrimitive 对它们也返回 true，
+            // getAsString() 会把 123 / true 当字符串收下，得到一个永不匹配的「物品 id」。
+            if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
                 continue;
             }
             String value = element.getAsString();
