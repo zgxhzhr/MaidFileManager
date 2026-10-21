@@ -206,12 +206,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             Constants.LOG.warn("[maid_file_manager] 导出在途超时（60s 未收到结果），已放开重试");
         }
 
-            // 导入提交在途的超时自愈：后台读盘线程若因界面关闭被丢弃，标志会一直为真（第六轮 M3）。
-            if (this.importSubmitInFlight && this.importSubmitSince > 0L
-                    && System.currentTimeMillis() - this.importSubmitSince > IMPORT_SUBMIT_TIMEOUT_MS) {
-                this.importSubmitInFlight = false;
-                this.importSubmitSince = 0L;
-            }
+        // 导入提交在途的超时自愈：后台读盘线程若因界面关闭被丢弃，标志会一直为真（第六轮 M3）。
+        if (this.importSubmitInFlight && this.importSubmitSince > 0L
+                && System.currentTimeMillis() - this.importSubmitSince > IMPORT_SUBMIT_TIMEOUT_MS) {
+            this.importSubmitInFlight = false;
+            this.importSubmitSince = 0L;
+        }
     }
 
     @Override
