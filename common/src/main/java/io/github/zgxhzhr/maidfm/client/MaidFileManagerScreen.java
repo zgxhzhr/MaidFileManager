@@ -613,8 +613,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         deleteImportFileBtn.visible = showImport;
         deleteImportFileBtn.active = showImport;
         // 工具栏②（打开文件夹按钮）
-        openExportDirBtn.visible = showExport;
-        openExportDirBtn.active = showExport;
+        // 统一导出模式：文件写在**服务端**的 maid_exports/<玩家名>/，客户端这个目录是空的，
+        // 打开它只会让玩家以为「导出没生效」。该模式下隐藏此按钮。
+        openExportDirBtn.visible = showExport && !serverExportMode;
         openImportDirBtn.visible = showImport;
         openImportDirBtn.active = showImport;
         // 统一导出入口：仅导出 Tab 且 OP 可见
