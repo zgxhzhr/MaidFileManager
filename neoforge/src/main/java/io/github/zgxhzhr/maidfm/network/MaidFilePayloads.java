@@ -1387,17 +1387,21 @@ public final class MaidFilePayloads {
 
         /** S2C 包：客户端收到后累积，收齐再交给 UI 回调 */
         public void handle(IPayloadContext ctx) {
-            byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
-                    clientUuid(), kind, sessionId, total, index, chunk);
-            if (full == null
-                    || !io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH.equals(kind)) {
-                return;
-            }
-            var clientHandler = IMaidFileNetwork.ClientHandlerHolder.get();
-            if (clientHandler == null) {
-                return;
-            }
+            // 组装也移到主线程：accept 会做 ConcurrentHashMap 查找 + 多片拷贝，
+            // 放在 netty 事件循环上会占用该连接的所有收发线程（大包几百片时更明显）。
+            // clientUuid() 已带缓存，仍在 netty 线程取一次即可。
+            final java.util.UUID playerUuid = clientUuid();
             ctx.enqueueWork(() -> {
+                byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
+                        playerUuid, kind, sessionId, total, index, chunk);
+                if (full == null
+                        || !io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH.equals(kind)) {
+                    return;
+                }
+                var clientHandler = IMaidFileNetwork.ClientHandlerHolder.get();
+                if (clientHandler == null) {
+                    return;
+                }
                 FriendlyByteBuf fullBuf = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(full));
                 List<MaidFileData> decoded = new ArrayList<>();
                 for (byte[] blob : MaidFilePackets.readMaidDataBlobs(fullBuf, MaidFilePackets.MAX_EXPORT_IDS)) {
@@ -1413,15 +1417,34 @@ public final class MaidFilePayloads {
             });
         }
 
-        /** 客户端玩家族（服务端侧不该走到 handle，但反射避免静态引用客户端类） */
+        /**
+         * 客户端玩家族。
+         *
+         * <p>只在第一次成功解析后缓存：原先每收到一片都要做 4 次反射
+         * （Class.forName + getMethod("getInstance") + getMethod("getPlayer") + getMethod("getUUID")），
+         * 而一次导出可能有几百片 —— 且这些调用发生在 **netty 事件循环线程** 上，
+         * 反射的类查找开销会直接拖慢该连接的所有收发。
+         *
+         * <p>解析失败时**不缓存**（此时玩家可能还没就绪），返回零 UUID 供组装器按「无主」处理。
+         */
+        private static volatile java.util.UUID cachedClientUuid;
+
         private static java.util.UUID clientUuid() {
+            java.util.UUID cached = cachedClientUuid;
+            if (cached != null) {
+                return cached;
+            }
             try {
                 Object mc = Class.forName("net.minecraft.client.Minecraft").getMethod("getInstance").invoke(null);
                 Object player = mc.getClass().getMethod("getPlayer").invoke(mc);
                 if (player == null) {
                     return new java.util.UUID(0L, 0L);
                 }
-                return (java.util.UUID) player.getClass().getMethod("getUUID").invoke(player);
+                java.util.UUID resolved = (java.util.UUID) player.getClass().getMethod("getUUID").invoke(player);
+                if (resolved != null) {
+                    cachedClientUuid = resolved;
+                }
+                return resolved != null ? resolved : new java.util.UUID(0L, 0L);
             } catch (Throwable t) {
                 return new java.util.UUID(0L, 0L);
             }
