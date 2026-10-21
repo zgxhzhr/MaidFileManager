@@ -109,7 +109,9 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
         try {
             ((ItemStackHandler) maid.getMaidBauble()).setSize(slots);
         } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] NeoForge baubleResize 失败: {}", t.toString());
+            // 与另外三端保持一致：调用方靠异常判断「这次写入是否成功」，
+            // 只记 WARN 会让写失败仍被计为「已恢复」，静默吞掉数据问题。
+            throw new RuntimeException("baubleResize failed", t);
         }
     }
 
@@ -118,7 +120,8 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
         try {
             ((ItemStackHandler) maid.getMaidBauble()).setStackInSlot(slot, stack);
         } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] NeoForge baubleSetStack 失败: {}", t.toString());
+            // 同上：四端行为统一为抛异常，避免调用方把写失败当成成功。
+            throw new RuntimeException("baubleSetStack failed", t);
         }
     }
 
