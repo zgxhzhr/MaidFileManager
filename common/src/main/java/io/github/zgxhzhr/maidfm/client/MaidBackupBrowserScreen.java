@@ -90,6 +90,8 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     private static final long LOADING_TIMEOUT_MS = 15_000L;
     /** 是否已完成首次扫描（init 会因 resize 被重复调用，避免反复全量扫描） */
     private boolean initialScanDone;
+    /** 超时后是否已经自动重试过一次（避免无限重试） */
+    private boolean scanRetriedAfterTimeout;
     private int scrollOffset;
 
     private final List<WorldNode> worlds = new ArrayList<>();
@@ -191,6 +193,14 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
                 && System.currentTimeMillis() - loadingSince > LOADING_TIMEOUT_MS) {
             loading = false;
             loadingSince = 0L;
+            // 超时后先自动重试一次：initialScanDone 会挡住 init 重扫，
+            // 原先玩家只能关屏重开才能再拉一次列表。
+            if (!scanRetriedAfterTimeout) {
+                scanRetriedAfterTimeout = true;
+                loading = false;
+                scanBackups();
+                return;
+            }
             setFeedback(Component.translatable("maid_file_manager.gui.error.network_unavailable"), ERROR_COLOR);
             Constants.LOG.warn("[maid_file_manager] 备份列表请求超时（{} ms 未回包）", LOADING_TIMEOUT_MS);
         }
