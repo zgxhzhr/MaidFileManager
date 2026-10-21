@@ -85,6 +85,23 @@ public final class MaidProfile {
         return tag;
     }
 
+    /**
+     * 读文本字段并统一截断。
+     *
+     * <p>写侧 putIfNotBlank 已按 PROFILE_TEXT_MAX_LEN 截断，读侧原先没有：
+     * 手工构造（或旧版本写下）的超长 story_snapshot 会被原样读进 MaidProfile，
+     * 再写进 TLM 的 AI 人设，等于让 .maid 文件可以塞任意长度文本。
+     */
+    private static String readText(CompoundTag tag, String key) {
+        String value = tag.getString(key);
+        if (value == null) {
+            return "";
+        }
+        if (value.length() > io.github.zgxhzhr.maidfm.Constants.PROFILE_TEXT_MAX_LEN) {
+            return value.substring(0, io.github.zgxhzhr.maidfm.Constants.PROFILE_TEXT_MAX_LEN);
+        }
+        return value;
+    }
     private static void putIfNotBlank(CompoundTag tag, String key, String value) {
         if (value != null && !value.isEmpty()) {
             // 统一截断：客户端输入框有限制，但服务端收到的档案 NBT 可能来自构造包，
@@ -119,11 +136,11 @@ public final class MaidProfile {
                 Constants.LOG.warn("[maid_file_manager] .maid 内嵌档案照片非法（体积或像素超限），已忽略: bytes={}", bytes.length);
             }
         }
-        p.occupation = tag.getString("occupation");
-        p.birthday = tag.getString("birthday");
-        p.personalNote = tag.getString("personal_note");
-        p.preferences = tag.getString("preferences");
-        p.storySnapshot = tag.getString("story_snapshot");
+        p.occupation = readText(tag, "occupation");
+        p.birthday = readText(tag, "birthday");
+        p.personalNote = readText(tag, "personal_note");
+        p.preferences = readText(tag, "preferences");
+        p.storySnapshot = readText(tag, "story_snapshot");
         return p;
     }
 
