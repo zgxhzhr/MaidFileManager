@@ -871,6 +871,14 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 setFeedback(Component.translatable("maid_file_manager.gui.import.no_selection"));
                 return;
             }
+            // 数量上限必须在**读盘之前**挡：原先是在全部 readMaidFile 之后才校验，
+            // 「全选」会先在主线程同步读并解析目录内全部 .maid（每份都要解压 + NBT 解析），
+            // 超标时这些工作全白做，还会让客户端卡住数秒。
+            if (selectedImportFileNames.size() > MaidFilePackets.MAX_IMPORT_BATCH_FILES) {
+                setFeedback(Component.translatable("maid_file_manager.import.fail.too_many",
+                        MaidFilePackets.MAX_IMPORT_BATCH_FILES, selectedImportFileNames.size()));
+                return;
+            }
             List<MaidFileData> dataList = new ArrayList<>();
             pendingImportFileNames.clear();
             int skipped = 0;
