@@ -447,6 +447,17 @@ public class MaidBaubleExtraBlockScreen extends Screen {
                 net.sendSetServerListConfig(MaidConfigManager.KEY_BAUBLE_BLOCKED_CURIOS_SLOTS,
                         new ArrayList<>(blockedSlots));
             }
+            else {
+                // 网络实现缺失：两个禁用清单都没发出去。不能直接关窗 ——
+                // 玩家会以为已保存，下次进服才发现没生效。本屏没有行内提示位，
+                // 用聊天栏提示并保留窗口。
+                io.github.zgxhzhr.maidfm.Constants.LOG.warn("[maid_file_manager] 网络实现缺失，饰品禁用设置未提交服务端");
+                if (this.minecraft != null && this.minecraft.player != null) {
+                    this.minecraft.player.displayClientMessage(
+                            Component.translatable("gui.maid_file_manager.profile.save_failed"), false);
+                }
+                return;
+            }
         }
         onClose();
     }
