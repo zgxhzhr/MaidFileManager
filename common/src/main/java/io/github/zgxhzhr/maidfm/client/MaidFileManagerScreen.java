@@ -242,9 +242,20 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         int sideBtnW = SIDEBAR_W - 12;                     // UI无问题版：工具按钮统一宽（156-12=144）
         int toolBtnH = 20;                                  // UI无问题版：工具按钮高 20
         int rowGap = 8;                                     // UI无问题版：行距 8
-        int sideY1 = panelY + HEADER_TOTAL_H + 2;          // UI无问题版：第 1 行（全选）起始
-        int sideY2 = sideY1 + toolBtnH + rowGap;           // 第 2 行：保留女仆 / 打开导入文件夹
-        int sideY3 = sideY2 + toolBtnH + rowGap;           // 第 3 行：打开导出文件夹 / 导入后删除源文件
+        // 三行工具按钮改为「从按钮区上方倒排」：原来 sideY1 恒为 panelY+66、第 3 行恒在
+        // panelY+122..142，与 this.height 完全无关 —— height=192（1366×768 + scale 4）时
+        // 面板只有 30..162，第 3 行按钮 152..172 越出面板底；height=170 时直接出屏。
+        // 倒排保证三行永远落在列表可视区上方，且不会压住底部动作按钮。
+        int sideY3 = panelY + panelH - 20 - 22 - 4 - toolBtnH - 4;   // 第 3 行下沿对齐 btnYFloor-4
+        int sideY2 = sideY3 - toolBtnH - rowGap;
+        int sideY1 = sideY2 - toolBtnH - rowGap;
+        // 极端矮屏兜底：第 1 行不能被挤到 Tab 栏上面
+        int sideMinY = panelY + HEADER_TOTAL_H + 2;
+        if (sideY1 < sideMinY) {
+            sideY1 = sideMinY;
+            sideY2 = sideY1 + toolBtnH + rowGap;
+            sideY3 = sideY2 + toolBtnH + rowGap;
+        }
 
         // 行 1：全选（导出/导入 各一，共用 X/Y，Tab 切换 visible）
         // 勾选状态在 init 之间保留：从统一导出确认弹窗返回时不应丢掉用户已选的项
