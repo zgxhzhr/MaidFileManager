@@ -129,6 +129,11 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     }
 
     private static void handleRequestMaidList(ServerPlayer player) {
+        // 频次限制：同一玩家 1~5 秒内重复请求直接丢弃（这类请求在主线程同步跑，
+        // 循环发包能把服务器卡死，且不需要 OP 权限）
+        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "maid_list", 1000L)) {
+            return;
+        }
         List<MaidInfo> list = MaidTransferService.listOwnMaids(player);
         FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
         MaidFilePackets.writeMaidInfoList(buf, list);
@@ -372,6 +377,11 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
      * 归属校验在实体类型判断之外由 {@link MaidProfileService#buildView} 再兜底一次。
      */
     private static void handleRequestMaidProfile(ServerPlayer player, int entityId) {
+        // 频次限制：同一玩家 1~5 秒内重复请求直接丢弃（这类请求在主线程同步跑，
+        // 循环发包能把服务器卡死，且不需要 OP 权限）
+        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "maid_profile", 1000L)) {
+            return;
+        }
         Entity e = player.level().getEntity(entityId);
         if (!(e instanceof EntityMaid maid) || !maid.isOwnedBy(player)) {
             sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.no_permission"));
@@ -407,6 +417,11 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
 
     /** 备份管理：请求服务端返回可浏览的自动备份列表（按权限过滤后回发） */
     private static void handleRequestBackupList(ServerPlayer player) {
+        // 频次限制：同一玩家 1~5 秒内重复请求直接丢弃（这类请求在主线程同步跑，
+        // 循环发包能把服务器卡死，且不需要 OP 权限）
+        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "backup_list", 5000L)) {
+            return;
+        }
         // 权限：OP 可见全部玩家备份，非 OP 仅可见自己名下的备份
         List<IMaidFileNetwork.BackupOwner> owners =
                 io.github.zgxhzhr.maidfm.service.MaidBackupService.scan(
