@@ -114,6 +114,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private boolean pendingServerExport;
     /** 导出批次在途：从发请求到「写盘回执已发」期间为真，用于串行化导出 */
     private boolean exportInFlight;
+    /** 置位时刻：服务端不回导出结果时用它超时自愈（否则导出按钮永久 busy） */
+    private long exportInFlightSince;
+    /** 等在途导出结束的最长时间 */
+    private static final long EXPORT_IN_FLIGHT_TIMEOUT_MS = 60_000L;
     /** 统一导出：服务端返回的玩家分组女仆列表 */
     private List<IMaidFileNetwork.PlayerMaidGroup> serverGroups = new ArrayList<>();
     /** 统一导出：收起的玩家（点击玩家行折叠/展开） */
@@ -169,6 +173,16 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         super.tick();
         // 界面期间每帧压住原版背景音乐（其 MusicManager 会自动重播，单次停止无效）
         UiMusicManager.tick();
+        // 在途导出的超时自愈：服务端预检拒绝 / handler 抛异常 / 结果被别的界面吃掉时，
+        // 客户端收不到任何结果，exportInFlight 会一直为真 → 导出按钮永久 busy。
+        // 超过 EXPORT_IN_FLIGHT_TIMEOUT_MS 就放开，让玩家能重试。
+        if (this.exportInFlight && this.exportInFlightSince > 0L
+                && System.currentTimeMillis() - this.exportInFlightSince > EXPORT_IN_FLIGHT_TIMEOUT_MS) {
+            this.exportInFlight = false;
+            this.exportInFlightSince = 0L;
+            setFeedback(Component.translatable("maid_file_manager.gui.export.timeout"));
+            Constants.LOG.warn("[maid_file_manager] 导出在途超时（60s 未收到结果），已放开重试");
+        }
     }
 
     @Override
@@ -456,6 +470,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             return;
         }
         this.exportInFlight = true;
+        this.exportInFlightSince = System.currentTimeMillis();
         net.sendExportMaids(ids, removeAfter);
     }
 
