@@ -156,6 +156,8 @@ public class MaidFileModFabric implements ModInitializer {
                     player, maidData, keepBaubles,
                     MaidConfigManager.isBaubleStripAttributes(),
                     MaidConfigManager.getBaubleBlockedList());
+            // 单条导入同样要消费 Curios 批次统计（第六轮 N5）。
+            MaidTransferService.curiosDropTip();
             sendFeedback(player, MaidTransferService.withBaubleDetails(result));
         });
 
@@ -182,6 +184,8 @@ public class MaidFileModFabric implements ModInitializer {
                 results.add(MaidTransferService.importMaidFromData(
                         player, d, keepBaubles, stripAttributes, blockedList));
             }
+            // 导入路径同样会产生 Curios 批次统计，必须在每次导入结束时消费掉（第六轮 N5）。
+            MaidTransferService.curiosDropTip();
             Component summary = MaidTransferService.buildBatchSummary(results);
             if (deleteAfterImport) {
                 // 请求删除源文件：回传逐项 spawned 标志（与请求顺序对齐），客户端只删成功的文件

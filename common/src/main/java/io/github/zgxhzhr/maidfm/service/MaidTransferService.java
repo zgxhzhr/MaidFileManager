@@ -852,7 +852,16 @@ public final class MaidTransferService {
                 net.minecraft.resources.ResourceLocation rl =
                         net.minecraft.resources.ResourceLocation.tryParse(key);
                 MaidMigrationProvider p = MaidMigrationRegistry.get(rl);
-                if (p == null || !p.isAvailable()) {
+                // isAvailable() 必须包在 try 里：它是第三方模组实现，抛异常会从这里直接逃逸，
+                // 而此刻女仆**已经 addFreshEntity 入世界**了 → 调用方重试会产生重复女仆（第六轮 D2）。
+                boolean providerAvailable;
+                try {
+                    providerAvailable = p != null && p.isAvailable();
+                } catch (Throwable t) {
+                    Constants.LOG.warn("[maid_file_manager] provider {} 的 isAvailable() 抛异常，按不可用跳过: {}", key, t.toString());
+                    providerAvailable = false;
+                }
+                if (!providerAvailable) {
                     // 软依赖：对应 provider 未注册或模组未加载，跳过该段数据
                     continue;
                 }
