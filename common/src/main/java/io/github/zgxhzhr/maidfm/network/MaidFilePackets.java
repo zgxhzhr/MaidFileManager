@@ -130,7 +130,10 @@ public final class MaidFilePackets {
     // 单个 .maid 解压后的 NBT 树体积上限。
     // 原为 16 MiB —— 与 MAX_IMPORT_BATCH_FILES(64) 相乘最坏可达 1 GiB 常驻内存。
     // 实际档案 NBT 通常只有几十 KB 到数 MB，4 MiB 对正常档案绰绰有余，
-    // 整批最坏降到 64×4 MiB = 256 MiB，且这是「逐文件串行解压」的瞬时峰值上限而非同时驻留。
+    // 整批最坏 64×4 MiB = 256 MiB，而且**这些是同时驻留**的：readMaidFileDataList 会把 64 份解析结果
+    // 全部收进 List（每份内含 CompoundTag 树），并非「逐文件串行、压完即弃」。
+    // （第六轮 N6：原注释写「串行解压的瞬时峰值而非同时驻留」，与实现相反。）
+    // 要真正降峰值只能把导入改成流式逐份处理，属更大改动；当前先用 4 MiB 把最坏值压在 256 MiB。
     public static final int MAX_NBT_DECOMPRESSED_BYTES = 4 * 1024 * 1024;
     /**
      * 整个自定义负载的自定字节上限（1 MiB）——仅适用于 1.21+（其 C2S 载荷上限为 1 MiB）。
