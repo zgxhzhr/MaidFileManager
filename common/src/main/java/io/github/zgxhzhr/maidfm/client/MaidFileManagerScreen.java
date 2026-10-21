@@ -119,6 +119,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     /** 统一导出：entityId → 主人玩家名 */
     private final Map<Integer, String> maidOwnerByEntityId = new HashMap<>();
     /** 导出后是否保留原女仆在世界：true=保留（默认开启，友好），false=不保留 */
+    /** init() 会因 resize 重跑，用它避免把玩家已选的选项冲回默认 */
+    private boolean optionsInitialized;
+    private boolean deleteImportFileStateSet;
+
     private boolean keepMaidsInWorldState;
     /** 「不保留并导出」二次确认小弹窗是否正在显示 */
     private boolean removeConfirmVisible;
@@ -257,13 +261,21 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
 
         // 行 2（导出 Tab）：保留女仆开关
         int keepBtnW = sideBtnW;
-        keepMaidsInWorldState = true;
+        // 只在首次进入时给默认值：init() 在窗口 resize 时也会重跑，
+        // 无条件重置会把玩家已经点选的「保留女仆 / 导入后删文件」冲回默认。
+        if (!optionsInitialized) {
+            optionsInitialized = true;
+            keepMaidsInWorldState = true;
+        }
         keepMaidsBtn = Button.builder(keepMaidsLabel(keepMaidsInWorldState),
                         b -> { keepMaidsInWorldState = !keepMaidsInWorldState; refreshKeepMaidsLabel(); })
                 .bounds(sideX, sideY2, keepBtnW, toolBtnH).build();
 
         // 行 3（仅导入 Tab）：导入成功后删除源文件（默认关闭，危险操作；仅删除服务端确认生成成功的文件）
-        deleteImportFileState = false;
+        if (!deleteImportFileStateSet) {
+            deleteImportFileStateSet = true;
+            deleteImportFileState = false;
+        }
         deleteImportFileBtn = Button.builder(deleteImportFileLabel(deleteImportFileState),
                         b -> { deleteImportFileState = !deleteImportFileState; refreshDeleteImportFileLabel(); })
                 .bounds(sideX, sideY3, keepBtnW, toolBtnH).build();
