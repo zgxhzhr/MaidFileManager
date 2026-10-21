@@ -831,6 +831,13 @@ public final class MaidConfigManager {
                     for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
                         String trimmed = line.trim();
                         if (trimmed.startsWith("#") || trimmed.startsWith("!")) {
+                            // 跳过 Properties.store 自己写的日期行（形如 "#Mon Oct 21 11:01:41 CST 2026"）：
+                            // JDK 的 store0 无论 comment 是否为 null 都会写这一行，不跳过的话它下次会被
+                            // 收集进 keptComments 再回放 → 每次保存 +1 行，注释无限累积（P2-3 只把 +2 降到 +1）。
+                            if (trimmed.startsWith("#")
+                                    && trimmed.matches("^#.*\\d{2}:\\d{2}:\\d{2}.*\\d{4}\\s*$")) {
+                                continue;
+                            }
                             keptComments.add(line);
                         }
                     }

@@ -192,6 +192,16 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                 // 客户端不回执则永不删除——留着女仆的代价远小于丢数据。
                 // 同一玩家同一时刻只允许一笔待删登记。已有登记时不覆盖 —— 覆盖会让「旧回执」
                 // 删除**新批次**的女仆，而新批次文件可能根本没写成功，构成不可逆数据丢失。
+                // putIfAbsent 前先清掉已过 TTL 的陈旧登记：TTL 原先只在 ack 到达时判，
+                // 回执永远不来时该玩家会一直命中 putIfAbsent != null → 「导出并移除」永久失效。
+                Long prevPendingAt = PENDING_REMOVAL_AT.get(player.getUUID());
+                if (prevPendingAt != null
+                        && System.currentTimeMillis() - prevPendingAt > PENDING_REMOVAL_TTL_MS) {
+                    PENDING_REMOVAL.remove(player.getUUID());
+                    PENDING_REMOVAL_AT.remove(player.getUUID());
+                    Constants.LOG.warn("[maid_file_manager] 陈旧待删登记已过 TTL，清掉后重建: player={}",
+                            player.getName().getString());
+                }
                 if (PENDING_REMOVAL.putIfAbsent(player.getUUID(), new ArrayList<>(exportedIds)) != null) {
                     Constants.LOG.warn("[maid_file_manager] 上一笔待删回执未到，本次导出不执行移除: player={}, 本批 {} 个",
                             player.getName().getString(), exportedIds.size());
