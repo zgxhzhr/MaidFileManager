@@ -878,57 +878,83 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                         MaidFilePackets.MAX_IMPORT_BATCH_FILES, selectedImportFileNames.size()));
                 return;
             }
-            List<MaidFileData> dataList = new ArrayList<>();
+            final List<String> readFileNames = new ArrayList<>(selectedImportFileNames);
+            final boolean deleteAfterImport = deleteImportFileState;
             pendingImportFileNames.clear();
-            int skipped = 0;
-            try {
-                Path gameDir = this.minecraft.gameDirectory.toPath().toAbsolutePath();
-                Path dir = MaidFileIo.ensureImportsDir(gameDir);
-                for (String fileName : selectedImportFileNames) {
-                    Path file = dir.resolve(fileName).normalize();
-                    if (!file.startsWith(dir)) {
-                        skipped++;
-                        continue;
+            // 读盘 + NBT 解析 + 序列化全是 CPU/IO 密集操作（每份 .maid 都要解压 + 解析），
+            // 原先进口路径在渲染线程同步做完再发送，几十份就会明显卡帧。改到后台线程，
+            // 回到主线程再发包与更新界面。
+            setFeedback(Component.translatable("maid_file_manager.gui.import.batch_reading", readFileNames.size()));
+            Thread readWorker = new Thread(() -> {
+                List<MaidFileData> dataList = new ArrayList<>();
+                List<String> okNames = new ArrayList<>();
+                int skippedLocal = 0;
+                String errorKey = null;
+                String rejectMsg = null;
+                try {
+                    Path gameDir = this.minecraft.gameDirectory.toPath().toAbsolutePath();
+                    Path dir = MaidFileIo.ensureImportsDir(gameDir);
+                    for (String fileName : readFileNames) {
+                        Path file = dir.resolve(fileName).normalize();
+                        if (!file.startsWith(dir)) {
+                            skippedLocal++;
+                            continue;
+                        }
+                        MaidFileData data = MaidFileIo.readMaidFile(file);
+                        if (data == null || data.getData() == null) {
+                            skippedLocal++;
+                            continue;
+                        }
+                        dataList.add(data);
+                        okNames.add(fileName);
                     }
-                    MaidFileData data = MaidFileIo.readMaidFile(file);
-                    if (data == null || data.getData() == null) {
-                        skipped++;
-                        continue;
-                    }
-                    dataList.add(data);
-                    pendingImportFileNames.add(fileName);
+                } catch (Exception ex) {
+                    Constants.LOG.error("[maid_file_manager] Failed to batch read import files", ex);
+                    errorKey = "maid_file_manager.import.fail.local_read";
                 }
-            } catch (Exception e) {
-                Constants.LOG.error("[maid_file_manager] Failed to batch read import files", e);
-                // 异常原文可能含本地路径/内部类名，界面只给通用提示，细节看日志
-                setFeedback(Component.translatable("maid_file_manager.import.fail.local_read"));
-                return;
-            }
-            if (dataList.isEmpty()) {
-                setFeedback(Component.translatable("maid_file_manager.import.fail.empty"));
-                return;
-            }
-            // 发送前契约预检：严格镜像服务端解码上限（64 条/单文件 512 KiB/整包 1 MiB 自律红线），
-            // 任一维度不过就在本地明确提示，绝不发出会在服务端 netty 解码线程炸包断连的请求
-            List<byte[]> importBlobs = MaidFilePackets.serializeMaidDataBatch(dataList);
-            if (importBlobs == null) {
-                setFeedback(Component.translatable("maid_file_manager.import.fail.unserializable"));
-                return;
-            }
-            // 允许分片兜底：超瞬时上限时不再本地拒绝，改由 sendImportFiles 走分片上传
-            String importReject = MaidFilePackets.checkMaidDataBatchForWire(
-                    importBlobs, MaidFilePackets.MAX_IMPORT_BATCH_FILES, true);
-            if (importReject != null) {
-                setFeedback(Component.literal(importReject));
-                return;
-            }
-            setFeedback(Component.translatable("maid_file_manager.gui.import.batch_start",
-                    dataList.size(), skipped));
-            // 饰品是否随行统一由「设置 → 服务端设置 → 导入时允许携带饰品」控制：
-            // 此处恒上传 true，实际是否恢复由服务端双闸门（配置 + 导入端命名空间白名单）决定，杜绝非 OP 绕过
-            Constants.LOG.info("[maid_file_manager] BATCH IMPORT START: count={}, skipped={}, deleteAfter={}",
-                    dataList.size(), skipped, deleteImportFileState);
-            net.sendImportFiles(dataList, true, deleteImportFileState);
+                if (errorKey == null && dataList.isEmpty()) {
+                    errorKey = "maid_file_manager.import.fail.empty";
+                }
+                if (errorKey == null) {
+                    List<byte[]> importBlobs = MaidFilePackets.serializeMaidDataBatch(dataList);
+                    if (importBlobs == null) {
+                        errorKey = "maid_file_manager.import.fail.unserializable";
+                    } else {
+                        // 允许分片兜底：超瞬时上限时不本地拒绝，改由 sendImportFiles 走分片上传
+                        rejectMsg = MaidFilePackets.checkMaidDataBatchForWire(
+                                importBlobs, MaidFilePackets.MAX_IMPORT_BATCH_FILES, true);
+                    }
+                }
+                final List<MaidFileData> outData = dataList;
+                final List<String> outNames = okNames;
+                final int outSkipped = skippedLocal;
+                final String outError = errorKey;
+                final String outReject = rejectMsg;
+                if (this.minecraft == null) {
+                    return;
+                }
+                this.minecraft.execute(() -> {
+                    if (outError != null) {
+                        setFeedback(Component.translatable(outError));
+                        return;
+                    }
+                    if (outReject != null) {
+                        setFeedback(Component.literal(outReject));
+                        return;
+                    }
+                    pendingImportFileNames.clear();
+                    pendingImportFileNames.addAll(outNames);
+                    setFeedback(Component.translatable("maid_file_manager.gui.import.batch_start",
+                            outData.size(), outSkipped));
+                    // 饰品是否随行统一由「设置 → 服务端设置 → 导入时允许携带饰品」控制：
+                    // 此处恒上传 true，实际是否恢复由服务端双闸门决定，杜绝非 OP 绕过
+                    Constants.LOG.info("[maid_file_manager] BATCH IMPORT START: count={}, skipped={}, deleteAfter={}",
+                            outData.size(), outSkipped, deleteAfterImport);
+                    net.sendImportFiles(outData, true, deleteAfterImport);
+                });
+            }, "maidfm-import-read");
+            readWorker.setDaemon(true);
+            readWorker.start();
         }
     }
 
