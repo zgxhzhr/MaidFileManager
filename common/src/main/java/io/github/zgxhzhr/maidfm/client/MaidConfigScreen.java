@@ -1,7 +1,9 @@
 package io.github.zgxhzhr.maidfm.client;
 
+import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.Button;
@@ -59,6 +61,8 @@ public class MaidConfigScreen extends Screen {
     private int panelH;
     /** 非 widget 文字（区块标题/行标签），render 阶段统一绘制 */
     private final List<RowLabel> rowLabels = new ArrayList<>();
+    /** 服务端配置开关：用于「乐观切换 + 超时回滚」（见 tick） */
+    private final List<ToggleSwitch> serverSwitches = new ArrayList<>();
 
     public MaidConfigScreen(Screen parent) {
         super(Component.translatable("gui.maid_file_manager.config.title"));
@@ -77,12 +81,29 @@ public class MaidConfigScreen extends Screen {
         super.tick();
         // 界面期间每帧压住原版背景音乐（其 MusicManager 会自动重播，单次停止无效）
         UiMusicManager.tick();
+        // 服务端开关的「乐观切换」在这里收尾：服务端写入成功会广播配置同步，
+        // 缓存随即变成新值 → 开关确认；超过 ACK_TIMEOUT 仍未变化说明服务端
+        // 拒绝了（非 OP / 落盘失败）或网络层缺失 → 回滚到权威值并提示。
+        for (ToggleSwitch sw : serverSwitches) {
+            if (sw.confirmIfSynced()) {
+                continue;
+            }
+            if (sw.isAckTimedOut()) {
+                sw.rollback();
+                if (this.minecraft != null && this.minecraft.player != null) {
+                    this.minecraft.player.displayClientMessage(
+                            Component.translatable("gui.maid_file_manager.profile.save_failed"), false);
+                }
+                Constants.LOG.warn("[maid_file_manager] 服务端配置开关回滚（未见配置同步）: key={}", sw.configKey);
+            }
+        }
     }
 
     @Override
     protected void init() {
         UiMusicManager.enter(this);
         rowLabels.clear();
+        serverSwitches.clear();
         boolean hasServerPerm = this.minecraft != null && this.minecraft.player != null
                 && this.minecraft.player.hasPermissions(2);
 
@@ -176,6 +197,9 @@ public class MaidConfigScreen extends Screen {
         ToggleSwitch sw = new ToggleSwitch(switchX, y, initialState, serverConfig, configKey);
         sw.active = enabled;
         addRenderableWidget(sw);
+        if (serverConfig) {
+            serverSwitches.add(sw);
+        }
         return y + ROW_H;
     }
 
@@ -233,6 +257,10 @@ public class MaidConfigScreen extends Screen {
         private boolean state;
         /** 滑块动画进度：0=左（不允许），1=右（允许） */
         private float slide;
+        /** 已发请求但尚未收到服务端配置同步的时刻（0 表示无 pending） */
+        private long ackPendingSince;
+        /** 等服务端确认的最长时间 */
+        private static final long ACK_TIMEOUT_MS = 3000L;
 
         ToggleSwitch(int x, int y, boolean initialState, boolean serverConfig, String configKey) {
             super(x, y, SWITCH_W, SWITCH_H, Component.empty());
@@ -250,7 +278,18 @@ public class MaidConfigScreen extends Screen {
                 IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
                 if (net != null) {
                     net.sendSetServerConfig(this.configKey, this.state);
-                }
+                    // 乐观切换：先翻转显示，等服务端配置同步回来再确认；超时回滚
+                    this.ackPendingSince = System.currentTimeMillis();
+                } else {
+                    // 网络层缺失：发包根本没发出去，立刻回滚，别让玩家以为改成功了
+                    this.state = !this.state;
+                    this.slide = this.state ? 1.0F : 0.0F;
+                    Minecraft mc = Minecraft.getInstance();
+                    if (mc.player != null) {
+                        mc.player.displayClientMessage(
+                                Component.translatable("gui.maid_file_manager.profile.save_failed"), false);
+                    }
+                    }
             } else if (MaidConfigManager.KEY_ALLOW_SERVER_EXPORT.equals(this.configKey)) {
                 // 客户端本地配置：写本地文件并上报同意状态
                 MaidConfigManager.setClientAllowServerExport(this.state);
@@ -260,6 +299,31 @@ public class MaidConfigScreen extends Screen {
                 String worldKey = this.configKey.substring(MaidConfigManager.SKIP_REMOVE_CONFIRM_PREFIX.length());
                 MaidConfigManager.setSkipRemoveConfirm(worldKey, this.state);
             }
+        }
+
+        /** 服务端已同步成目标值 → 确认并清除 pending；返回是否已确认 */
+        boolean confirmIfSynced() {
+            if (this.ackPendingSince == 0L) {
+                return true;
+            }
+            if (MaidConfigManager.getServerConfigByKey(this.configKey) == this.state) {
+                this.ackPendingSince = 0L;
+                return true;
+            }
+            return false;
+        }
+
+        /** 等待超时（期间一直没等到配置同步） */
+        boolean isAckTimedOut() {
+            return this.ackPendingSince > 0L
+                    && System.currentTimeMillis() - this.ackPendingSince > ACK_TIMEOUT_MS;
+        }
+
+        /** 回滚到服务端当前生效值 */
+        void rollback() {
+            this.state = MaidConfigManager.getServerConfigByKey(this.configKey);
+            this.slide = this.state ? 1.0F : 0.0F;
+            this.ackPendingSince = 0L;
         }
 
         @Override
