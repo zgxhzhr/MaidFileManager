@@ -633,6 +633,13 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         selectedMaidIds.clear();
         if (selected) {
             for (MaidInfo info : maidList) {
+                // 折叠玩家下的女仆不在屏幕上：全选不应把它们加回选中集。
+                // 否则「已选 N」与可见行数不符，移除模式下还会删掉玩家看不见的对象
+                // （P2-31 只在折叠瞬间移除过，折叠之后再点全选又会被加回来）。
+                String owner = maidOwnerByEntityId.get(info.entityId());
+                if (owner != null && collapsedPlayers.contains(owner)) {
+                    continue;
+                }
                 selectedMaidIds.add(info.entityId());
             }
         }

@@ -62,7 +62,13 @@ public final class UiMusicManager {
         }
         ACTIVE.add(screen);
         cancelPendingStop();
-        if (!MaidConfigManager.isClientUiMusic() || current != null) {
+        // 关闭时不能只 return：已播放的实例会继续响（设置里关掉音乐后仍继续播）。
+        // 「已在播」才 return 的分支单独处理。
+        if (!MaidConfigManager.isClientUiMusic()) {
+            stop();
+            return;
+        }
+        if (current != null) {
             return;
         }
         startPlayback();
