@@ -2,6 +2,8 @@ package io.github.zgxhzhr.maidfm.mixin;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import io.github.zgxhzhr.maidfm.Constants;
+import io.github.zgxhzhr.maidfm.platform.MaidImportedHolder;
+import io.github.zgxhzhr.maidfm.platform.MaidProfileHolder;
 import net.minecraft.nbt.CompoundTag;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;

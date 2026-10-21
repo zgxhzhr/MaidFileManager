@@ -1,9 +1,9 @@
-package io.github.zgxhzhr.maidfm.mixin;
+package io.github.zgxhzhr.maidfm.platform;
 
 import net.minecraft.nbt.CompoundTag;
 
 /**
- * 女仆实体档案持久化承载接口（由 {@link EntityMaidMixin} 实现）。
+ * 女仆实体档案持久化承载接口（由 EntityMaidMixin 实现）。
  *
  * <p>Fabric 的原版实体没有 Forge/NeoForge 那样的持久化标签 API，档案 NBT 无法直接挂到
  * {@code Entity#getPersistentData()} 上。这里通过 Mixin 在 {@code EntityMaid} 内新增一个字段承载档案，

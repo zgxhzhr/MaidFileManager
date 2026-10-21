@@ -258,7 +258,7 @@ public class FabricPlatformHelper implements IPlatformHelper {
     @Override
     public CompoundTag readMaidProfile(Entity entity) {
         try {
-            if (entity instanceof io.github.zgxhzhr.maidfm.mixin.MaidProfileHolder holder) {
+            if (entity instanceof MaidProfileHolder holder) {
                 return holder.maidfm$getProfile();
             }
         } catch (Throwable t) {
@@ -273,7 +273,7 @@ public class FabricPlatformHelper implements IPlatformHelper {
     @Override
     public void writeMaidProfile(Entity entity, CompoundTag tag) {
         try {
-            if (entity instanceof io.github.zgxhzhr.maidfm.mixin.MaidProfileHolder holder) {
+            if (entity instanceof MaidProfileHolder holder) {
                 holder.maidfm$setProfile(tag);
             }
         } catch (Throwable t) {
@@ -289,7 +289,7 @@ public class FabricPlatformHelper implements IPlatformHelper {
     @Override
     public void markMaidImported(Entity entity) {
         try {
-            if (entity instanceof io.github.zgxhzhr.maidfm.mixin.MaidImportedHolder holder) {
+            if (entity instanceof MaidImportedHolder holder) {
                 holder.maidfm$setImported(true);
             }
         } catch (Throwable t) {
@@ -300,7 +300,7 @@ public class FabricPlatformHelper implements IPlatformHelper {
     @Override
     public boolean isMaidImported(Entity entity) {
         try {
-            if (entity instanceof io.github.zgxhzhr.maidfm.mixin.MaidImportedHolder holder) {
+            if (entity instanceof MaidImportedHolder holder) {
                 return holder.maidfm$isImported();
             }
         } catch (Throwable t) {

@@ -8,7 +8,6 @@
         "EntityMaidMixin"
     ],
     "injectors": {
-        "defaultRequire": 0,
-  "_comment_defaultRequire": "已知取舍：defaultRequire=0 表示注入失败不致命（该 mixin 只用于 Fabric 缺少 PersistentData 的兼容路径）。改为 1 会在注入失败时直接崩游戏，故保守保留 0；若将来该 mixin 变为必需，应改为 1。"
+        "defaultRequire": 0
     }
 }
