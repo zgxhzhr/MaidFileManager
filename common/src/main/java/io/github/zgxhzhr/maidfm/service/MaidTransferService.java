@@ -287,13 +287,11 @@ public final class MaidTransferService {
         if (!nearMaids.isEmpty()) {
             return doSerializeMaid(nearMaids.get(0));
         }
-        // 最后兜底：按实体 ID 在本维度世界边界范围内全量扫描。代价较高（分区实体逐个过谓词），
-        // 但谓词含 m.getId() == entityId，且前两级查找已覆盖 99% 场景，仅在玩家与女仆极端远离时才走到
-        for (EntityMaid m : level.getEntitiesOfClass(EntityMaid.class,
-                new AABB(-30000000, -30000000, -30000000, 30000000, 30000000, 30000000),
-                m -> m.isTame() && ownerUuid.equals(m.getOwnerUUID()) && m.getId() == entityId)) {
-            return doSerializeMaid(m);
-        }
+        // 不再做「全维度 AABB 兜底扫描」：它对本维度每个分区的实体逐个过谓词，代价极高。
+        // 放大点在于调用方 —— 一次导出请求最多带 128 组 × 512 个 entityId
+        // （MaidFilePackets.MAX_EXPORT_GROUPS / MAX_EXPORT_IDS），未命中的 id 会逐个触发全量扫描，
+        // 主线程能卡死几十秒。前两级（getEntity + 128 格 AABB）已覆盖实际场景：
+        // 导出列表本来就是「玩家附近的女仆」，超出 128 格的目标本该由客户端重新拉列表。
         Constants.LOG.warn("[maid_file_manager] exportMaidOwnedBy: 未找到 entityId={} owner={}",
                 entityId, expectedOwner.getName().getString());
         return null;
