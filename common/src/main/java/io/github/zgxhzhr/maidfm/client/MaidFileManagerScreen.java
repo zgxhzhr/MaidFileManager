@@ -2127,6 +2127,9 @@ setScrollAmount(0);
     /** 统一导出全员独立确认界面（按需求新增的独立界面；确认后回到主界面，切换到统一导出模式并自动执行导出） */
     public static class MaidServerExportScreen extends Screen {
         private final MaidFileManagerScreen parent;
+        /** 确认屏面板的理想高度（内容够用时用它；屏幕不够高时会被 clamp 到 height-16） */
+        private static final int CONFIRM_PANEL_H = 240;
+
         private final boolean hasPermission;
 
         public MaidServerExportScreen(MaidFileManagerScreen parent) {
@@ -2156,7 +2159,12 @@ setScrollAmount(0);
             int btnH = 20;
             // 【v4-3Fix 截图2：按钮从 height/2+30 下移到 height/2+96】
             //   说明文字渲染：标题 y=height/2-70，+26 标题底 + 9行×14 = h/2+82 最后一行文字底，再加 14px 间隙到 h/2+96。
-            int centerY = this.height / 2 + 96;
+            // 原为固定加性偏移 height/2+96（按 1080p+GUI scale 2 的说明文字行数推出）。
+            // 1366×768 + GUI scale 4 时逻辑分辨率仅 341×192，height/2+96 = 192 已贴屏幕底边，按钮整体出屏。
+            // 改为按「自适应后的面板底部」定位，与 render() 用同一公式。
+            int panelHForButtons = Math.min(CONFIRM_PANEL_H, this.height - 16);
+            int panelTopForButtons = (this.height - panelHForButtons) / 2;
+            int centerY = panelTopForButtons + panelHForButtons - btnH - 12;
             int gap = 20;
             int baseX = this.width / 2 - btnW - gap / 2;
             // 确认按钮（仅 OP 可用）
@@ -2205,8 +2213,9 @@ setScrollAmount(0);
             int cx = this.width / 2;
             // 单次绘制：全屏不透明深色底 + 居中面板 + 说明文字（renderBackground 已空实现，无需再盖色）
             graphics.fill(0, 0, this.width, this.height, SCREEN_BG);
-            int panelW = 380;
-            int panelH = 240;
+            int panelW = Math.min(380, this.width - 16);
+            // 面板高度自适应：与 init() 的按钮定位共用同一公式，避免两处不一致
+            int panelH = Math.min(CONFIRM_PANEL_H, this.height - 16);
             int px = (this.width - panelW) / 2;
             int py = (this.height - panelH) / 2;
             graphics.fill(px, py, px + panelW, py + panelH, PANEL_BG);
