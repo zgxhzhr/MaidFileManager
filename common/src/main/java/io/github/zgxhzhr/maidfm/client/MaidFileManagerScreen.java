@@ -1450,7 +1450,11 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             return;
         }
         // 只处理本次请求的返回，避免过期请求把玩家正在看的界面顶掉
-        if (pendingProfileEntityId != Integer.MIN_VALUE && view.entityId() != pendingProfileEntityId) {
+        // 条件必须是「没有待处理请求 **或** entityId 不匹配」都拒绝：pending == MIN_VALUE 表示
+        // 当前没有请求，此时任何回包都是迟到的（上次请求超时重发、服务端延迟送达），
+        // 不该 setScreen 把玩家正在看的界面（备份屏 / 正在输入）顶掉。
+        // 原写成 pending != MIN_VALUE && id != pending，等于「没有请求时接受一切」。
+        if (pendingProfileEntityId == Integer.MIN_VALUE || view.entityId() != pendingProfileEntityId) {
             return;
         }
         pendingProfileEntityId = Integer.MIN_VALUE;
