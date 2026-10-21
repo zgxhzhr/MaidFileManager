@@ -145,6 +145,16 @@ public interface IPlatformHelper {
      *
      * <p>用途：集成服务器与客户端之间是 {@code LocalServerConnection} 内存直连，数据不经过
      * {@code ServerboundCustomPayloadPacket} 序列化，因此 1.20.x 的 32767 字节上限**不生效**。
+     *
+     * <p><b>注意（第五轮审查 P2 3.3-8）</b>：本默认实现反射的是
+     * {@code MinecraftServer.getServer()}，而该方法在 vanilla 1.20.1 / 1.21.1 与 Forge 补丁里
+     * **都不存在** → 反射抛异常 → 恒返回 {@code false}。也就是说它**目前并不能识别单人/局域网主机**，
+     * 一律按「远程服」处理。
+     *
+     * <p>后果是保守方向的：单人世界里 {@code isLegacyPayloadLimit()} 会返回 true，
+     * 于是带照片的档案保存即使没超 32767 也走一次分片上传 —— 多一次往返，不影响正确性，
+     * 也不会丢数据。真要修准需要各平台各自的「当前集成服务器」API（Forge/Neo
+     * {@code ServerLifecycleHooks}、Fabric 的 client-side singleplayer server），属平台层改动。
      */
     default boolean isSingleplayer() {
         try {
