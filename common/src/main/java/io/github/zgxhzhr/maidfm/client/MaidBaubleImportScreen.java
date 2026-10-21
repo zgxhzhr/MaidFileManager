@@ -106,6 +106,9 @@ public class MaidBaubleImportScreen extends Screen {
     /** 物品 ID → 中文显示名（保存时判定整合包强制项需要，避免重复解析物品栈） */
     private final Map<String, String> nameById = new HashMap<>();
     /** 两命名空间全部饰品（id → 物品栈，供图标/名称显示） */
+    /** 全表扫描结果缓存（注册表启动后稳定，无需每次 init 重扫） */
+    private static List<ItemEntry> CACHED_ENTRIES;
+    private static Map<String, String> CACHED_NAMES;
     private final List<ItemEntry> entries = new ArrayList<>();
     /** 当前搜索结果（entries 按搜索关键字过滤后的子集，列表只渲染它） */
     private final List<ItemEntry> filtered = new ArrayList<>();
@@ -151,23 +154,34 @@ public class MaidBaubleImportScreen extends Screen {
         // 饰品物品本体（如 ItemDamageableBauble）并未实现 IMaidBauble——饰品行为对象
         // 是由 BaubleManager 以「物品 → 饰品行为」映射登记的（与游戏内饰品槽位校验同源），
         // 故不能对 Item 做 instanceof 判定，否则列表恒为空；工具/材料/书籍等非饰品物品不进禁用列表。
+        // 全表扫描 + 逐项反射判定很慢（物品注册表动辄数千项），而注册表在启动后是稳定的，
+        // 每次 init()（含每次窗口 resize）重扫一遍纯属浪费。首次算完缓存起来，后续直接复用。
+        if (CACHED_ENTRIES == null) {
+            List<ItemEntry> built = new ArrayList<>();
+            Map<String, String> names = new LinkedHashMap<>();
+            for (Item item : BuiltInRegistries.ITEM) {
+                ResourceLocation key = BuiltInRegistries.ITEM.getKey(item);
+                if (key == null) {
+                    continue;
+                }
+                // 不限命名空间：任何模组的"可佩戴女仆饰品"都要能被 OP 看到并禁用
+                // （判定仍以 TLM 饰品注册表为准，工具/材料等非饰品不会进列表）
+                ItemStack stack = item.getDefaultInstance();
+                if (!isBaubleItem(stack)) {
+                    continue;
+                }
+                built.add(new ItemEntry(key.toString(), stack));
+                names.put(key.toString(), stack.getHoverName().getString());
+            }
+            built.sort(Comparator.comparing(e -> e.id));
+            CACHED_ENTRIES = built;
+            CACHED_NAMES = names;
+            Constants.LOG.info("[maid_file_manager] 饰品导入列表已缓存: {} 项", built.size());
+        }
         entries.clear();
         nameById.clear();
-        for (Item item : BuiltInRegistries.ITEM) {
-            ResourceLocation key = BuiltInRegistries.ITEM.getKey(item);
-            if (key == null) {
-                continue;
-            }
-            // 不限命名空间：任何模组的"可佩戴女仆饰品"都要能被 OP 看到并禁用
-            // （判定仍以 TLM 饰品注册表为准，工具/材料等非饰品不会进列表）
-            ItemStack stack = item.getDefaultInstance();
-            if (!isBaubleItem(stack)) {
-                continue;
-            }
-            entries.add(new ItemEntry(key.toString(), stack));
-            nameById.put(key.toString(), stack.getHoverName().getString());
-        }
-        entries.sort(Comparator.comparing(e -> e.id));
+        entries.addAll(CACHED_ENTRIES);
+        nameById.putAll(CACHED_NAMES);
         rebuildFiltered();
 
         panelX = (this.width - PANEL_W) / 2;
