@@ -60,15 +60,11 @@ public final class ChunkedUploadAssembler {
         if (payload == null || payload.length == 0) {
             return false;
         }
-        if (payload.length > MAX_TOTAL_BYTES) {
-            return true;
-        }
-        // 必须与接收端同一口径：接收端按「声明量 = 片数 × CHUNK_BYTES」判上限
-        //（那是它最坏要占的内存），末尾不满一片也按整片计入。
-        // 只比 payload.length 会留下 MAX_TOTAL_BYTES-8191 .. MAX_TOTAL_BYTES 的 8 KiB 带：
-        // 发送端预检放行、接收端首片就拒收 → 表现为「导出/导入什么都没发生」（第六轮 N1）。
-        long chunks = (payload.length + (long) CHUNK_BYTES - 1) / CHUNK_BYTES;
-        return chunks * CHUNK_BYTES > MAX_TOTAL_BYTES;
+        // 发送端一律按**实际字节**判（第六轮 N1 的最终口径）：
+        // 接收端会按「声明量 = 片数 × CHUNK_BYTES」预占内存，但末尾不满一片是常态，
+        // 若这里也按填充后字节判，会把「实际 8 MiB - 1 字节」这种完全合法的负载误拒。
+        // 接收端的声明量校验已经放宽到 MAX_TOTAL_BYTES + CHUNK_BYTES - 1（一片填充余量），两侧自洽。
+        return payload.length > MAX_TOTAL_BYTES;
     }
 
     private static final Map<String, Session> SESSIONS = new ConcurrentHashMap<>();
@@ -110,8 +106,12 @@ public final class ChunkedUploadAssembler {
         // 声明量先算一遍：totalChunks × CHUNK_BYTES 就是接收端最坏要占的内存。
         // 原实现只在「收齐后」按实际字节校验 MAX_TOTAL_BYTES，而 512 × 24 KiB = 12 MiB
         // 已经超过 8 MiB 上限 —— 等于允许客户端先把 12 MiB 堆起来再告诉他超了。
+        // 声明量上限放宽一片填充：末片通常不满，totalChunks × CHUNK_BYTES 会比实际大最多 CHUNK_BYTES-1，
+        // 而真正要守的 8 MiB 是「实际字节」——收齐后仍会按实际总量再判一次（见下方 total 检查）。
+        // 只按 declared > MAX_TOTAL_BYTES 判，会把「实际刚好 8 MiB」的合法负载在首片就拒掉（第六轮 N1）。
+        long declaredLimit = MAX_TOTAL_BYTES + (long) CHUNK_BYTES - 1;
         long declared = (long) totalChunks * CHUNK_BYTES;
-        if (declared > MAX_TOTAL_BYTES) {
+        if (declared > declaredLimit) {
             Constants.LOG.warn("[maid_file_manager] 分片会话声明量超上限，已拒绝: player={} kind={} chunks={} declared={}",
                     playerId, kind, totalChunks, declared);
             return null;
