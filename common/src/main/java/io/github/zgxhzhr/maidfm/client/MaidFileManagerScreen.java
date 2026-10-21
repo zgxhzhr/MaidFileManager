@@ -2361,7 +2361,8 @@ setScrollAmount(0);
         @Override
         protected void init() {
             UiMusicManager.enter(this);
-            int btnW = 160;
+            // 两按钮总宽必须装进面板：341 宽时面板只有 325，160×2+20=340 会溢出
+            int btnW = Math.min(160, Math.max(60, (Math.min(380, this.width - 16) - 20 - 24) / 2));
             int btnH = 20;
             // 【v4-3Fix 截图2：按钮从 height/2+30 下移到 height/2+96】
             //   说明文字渲染：标题 y=height/2-70，+26 标题底 + 9行×14 = h/2+82 最后一行文字底，再加 14px 间隙到 h/2+96。
@@ -2466,9 +2467,20 @@ setScrollAmount(0);
                     Component.translatable("maid_file_manager.gui.server_export.rule_footer").getString()
                 };
             }
+            int panelWText = Math.min(380, this.width - 16);
+            int textMaxW = panelWText - 32;
+            // 说明文字必须按面板宽度换行：最长中文行 531px、英文约 870px，
+            // 341 宽屏下不换行会大段出屏两侧（原实现直接 drawCenteredNoShadow 整行）。
             for (String line : lines) {
-                drawCenteredNoShadow(graphics, line, cx, y, TEXT_COLOR);
-                y += 14;
+                if (line == null || line.isEmpty()) {
+                    y += 14;
+                    continue;
+                }
+                for (net.minecraft.util.FormattedCharSequence seq
+                        : this.font.split(Component.literal(line), textMaxW)) {
+                    graphics.drawString(this.font, seq, cx - this.font.width(seq) / 2, y, TEXT_COLOR, false);
+                    y += 10;
+                }
             }
         }
 
