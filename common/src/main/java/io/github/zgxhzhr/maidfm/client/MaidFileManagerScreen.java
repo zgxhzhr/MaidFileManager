@@ -191,9 +191,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         // =============================================================
         int tabY = panelY + 36;
         int tabH = 20;
-        int tabW = Math.min(86, panelW / 5);
         int tabGap = 10;
-        int totalTabW = tabW * 2 + tabGap;
         int refreshW = 58;
         int refreshX = panelX + panelW - refreshW - 8;
         // 【v4-3Fix 截图3：Tab 行左侧大按钮（🌐统一导出 / ↩返回单独导出）与 Tab 按钮同高对齐，视觉一体】
@@ -201,15 +199,16 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         final int SERVER_EXPORT_BTN_W = 122;
         int serverExportBtnX = panelX + 10;
         int tabMinX = serverExportBtnX + SERVER_EXPORT_BTN_W + tabGap;
-        int tabStartX = panelX + (panelW - totalTabW) / 2;
-        if (tabStartX < tabMinX) tabStartX = tabMinX;
-        // 避让：Tab 组贴太右就左移一点，避免和刷新按钮水平挤字
-        int tabEndX = tabStartX + totalTabW;
-        if (tabEndX > refreshX - 10) {
-            tabStartX -= (tabEndX - (refreshX - 10));
-            // 避让后不能又挤到左侧统一导出按钮
-            if (tabStartX < tabMinX) tabStartX = tabMinX;
-        }
+        // 一次性算定可用区间并允许收窄 Tab 宽度。原先是「居中 → clamp 到 tabMinX → 右移避让 →
+        // 再 clamp 回 tabMinX」，最后那次 clamp 把避让整体撤销且不再复查右边界：
+        // 341×192（1366×768 + scale 4）下 tabW=56、totalTabW=122、tabMinX=172，
+        // Tab 组占 172..294，其中「导入」页 238..294 与刷新按钮 245..303 重叠 49px。
+        int availW = (refreshX - 10) - tabMinX;
+        int tabW2 = Math.min(86, Math.max(40, (availW - tabGap) / 2));
+        int totalTabW2 = tabW2 * 2 + tabGap;
+        int tabStartX = tabMinX + Math.max(0, (availW - totalTabW2) / 2);
+        int tabW = tabW2;
+        int totalTabW = totalTabW2;
         exportTabBtn = Button.builder(Component.translatable("maid_file_manager.gui.tab.export"),
                         b -> switchTab(Tab.EXPORT))
                 .bounds(tabStartX, tabY, tabW, tabH).build();
