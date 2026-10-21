@@ -71,6 +71,14 @@ public final class NbtDowngrade {
             } else if (entry.contains("count", Tag.TAG_ANY_NUMERIC)) {
                 count = entry.getInt("count");
             }
+            // Count 是 byte 字段：count > 127 时 (byte) 强转会溢出成负数
+            //（1.21 模组物品允许 >127 堆叠时可达）→ 写出版本 1.20 侧无法表达的坏堆叠。
+            // 1.20 的上限本来就是 127，超出部分夹到 127 并告警（第六轮 D3）。
+            if (count > 127) {
+                io.github.zgxhzhr.maidfm.Constants.LOG.warn("[maid_file_manager] 物品堆叠数 {} 超出 1.20 byte 上限，已夹到 127: id={}",
+                        count, legacy.getString("id"));
+                count = 127;
+            }
             legacy.putByte("Count", (byte) Math.max(1, count));
 
             CompoundTag tag = new CompoundTag();

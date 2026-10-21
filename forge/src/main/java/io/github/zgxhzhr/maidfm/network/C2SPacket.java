@@ -190,7 +190,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         }
         if (sendExportResults(player, results)) {
             int removedCount = 0;
-            if (removeAfter) {
+            // 空批次绝不能登记待删：客户端对空结果**不发 ack**（onExportResultReceived 拿到空表直接返回），
+            // 登记项会一直占到 TTL 过期，期间下一次「导出并移除」被误报 remove_busy、静默降级成只导出（第六轮 N4）。
+            if (removeAfter && !exportedIds.isEmpty()) {
                 // 【P2-10】不再立刻 discard：服务端只能确认"包已发出"，无法确认客户端写盘成功。
                 // 若客户端写盘失败（磁盘满/权限/路径异常），立刻删除就是"女仆没了、文件也没了"的
                 // 不可逆数据丢失。改为登记待删，等客户端回执 ID_EXPORT_WRITE_ACK 再删；
