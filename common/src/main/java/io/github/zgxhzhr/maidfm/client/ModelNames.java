@@ -29,6 +29,131 @@ public final class ModelNames {
             new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
+     * 所有资源包 {@code zh_cn.json} 里以 {@code model.} 开头、{@code .name} 结尾的键。
+     *
+     * <p>用途：文言（lzh）与繁体中文（zh_tw / zh_hk）下，翻译键缺失时 Minecraft 会回退到
+     * {@code en_us}，模型名就会显示成英文（如 {@code Sta Bo}）。这几种语言要求仍显示中文，
+     * 所以这里把各模组 {@code zh_cn} 里的模型名收集成表，作为这几种语言的兜底。
+     *
+     * <p>懒加载一次、结果缓存；反射调用资源管理器与 Gson（common 模块不能编译期依赖
+     * 客户端类），任何一步失败都返回空表并保持原有行为。
+     */
+    private static java.util.Map<String, String> zhCnModelNames;
+    private static boolean zhCnModelNamesTried;
+
+    /** 当前客户端语言是否文言 / 各类中文（这些语言下模型名要回退到中文）。 */
+    private static boolean isZhLikeLanguage() {
+        try {
+            Object mc = Class.forName("net.minecraft.client.Minecraft").getMethod("getInstance").invoke(null);
+            if (mc == null) {
+                return false;
+            }
+            Object languageManager = mc.getClass().getMethod("getLanguageManager").invoke(mc);
+            if (languageManager == null) {
+                return false;
+            }
+            Object selected = languageManager.getClass().getMethod("getSelected").invoke(languageManager);
+            String code = String.valueOf(selected);
+            return "lzh".equals(code) || code.startsWith("zh_");
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    /** 依次查若干翻译键在「zh_cn 模型名表」里的中文值。 */
+    private static String zhCnModelName(String... keys) {
+        if (!zhCnModelNamesTried) {
+            zhCnModelNamesTried = true;
+            zhCnModelNames = buildZhCnModelNames();
+        }
+        if (zhCnModelNames == null || zhCnModelNames.isEmpty()) {
+            return null;
+        }
+        for (String key : keys) {
+            String value = zhCnModelNames.get(key);
+            if (value != null && !value.isEmpty()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    /** 遍历资源管理器里所有 {@code assets/<ns>/lang/zh_cn.json}，收集模型名键。 */
+    private static java.util.Map<String, String> buildZhCnModelNames() {
+        java.util.Map<String, String> out = new java.util.HashMap<>();
+        try {
+            Object mc = Class.forName("net.minecraft.client.Minecraft").getMethod("getInstance").invoke(null);
+            if (mc == null) {
+                return out;
+            }
+            Object resourceManager = mc.getClass().getMethod("getResourceManager").invoke(mc);
+            if (resourceManager == null) {
+                return out;
+            }
+            java.lang.reflect.Method listResources = null;
+            for (java.lang.reflect.Method m : resourceManager.getClass().getMethods()) {
+                if ("listResources".equals(m.getName()) && m.getParameterCount() == 2) {
+                    listResources = m;
+                    break;
+                }
+            }
+            if (listResources == null) {
+                return out;
+            }
+            java.util.function.Predicate<Object> filter = loc ->
+                    loc != null && String.valueOf(loc).endsWith(":lang/zh_cn.json");
+            Object listed = listResources.invoke(resourceManager, "lang", filter);
+            if (!(listed instanceof java.util.Map<?, ?> map)) {
+                return out;
+            }
+            for (Object resource : map.values()) {
+                if (resource == null) {
+                    continue;
+                }
+                java.io.InputStream in = null;
+                try {
+                    java.lang.reflect.Method open = null;
+                    for (java.lang.reflect.Method m : resource.getClass().getMethods()) {
+                        if ("open".equals(m.getName()) && m.getParameterCount() == 0) {
+                            open = m;
+                            break;
+                        }
+                    }
+                    if (open == null) {
+                        continue;
+                    }
+                    in = (java.io.InputStream) open.invoke(resource);
+                    String text = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                    com.google.gson.JsonElement root = com.google.gson.JsonParser.parseString(text);
+                    if (!root.isJsonObject()) {
+                        continue;
+                    }
+                    for (java.util.Map.Entry<String, com.google.gson.JsonElement> e
+                            : root.getAsJsonObject().entrySet()) {
+                        String key = e.getKey();
+                        if (key.startsWith("model.") && key.endsWith(".name")
+                                && e.getValue().isJsonPrimitive()) {
+                            out.putIfAbsent(key, e.getValue().getAsString());
+                        }
+                    }
+                } catch (Throwable ignored) {
+                    // 单个语言文件解析失败不影响其它
+                } finally {
+                    if (in != null) {
+                        try {
+                            in.close();
+                        } catch (Throwable ignored) {
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+            // 反射或资源管理器不可用：返回已收集到的部分（可能为空）
+        }
+        return out;
+    }
+
+    /**
      * 把模型 ID 或翻译键转成可读文本。
      *
      * @param raw 原始值，可能是翻译键、{@code namespace:path} 模型 ID，或已是可读名
@@ -86,6 +211,15 @@ public final class ModelNames {
                     }
                 } catch (Throwable ignored) {
                     // 试下一个键
+                }
+            }
+            // 文言 / 繁体中文下，翻译键会回退到 en_us（显示成英文模型名）。
+            // 这两种语言必须仍显示中文，因此先用「所有资源包的 zh_cn 表」兜底。
+            if (isZhLikeLanguage()) {
+                String zh = zhCnModelName("model." + namespace + "." + path + ".name",
+                        "model." + path + ".name");
+                if (zh != null && !zh.isEmpty()) {
+                    return zh;
                 }
             }
             // 自定义模型包：名字在包内 maid_model.json 里，没有翻译键，只能问客户端模型表
