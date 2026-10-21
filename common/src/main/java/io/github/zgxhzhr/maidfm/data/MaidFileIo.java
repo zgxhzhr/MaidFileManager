@@ -334,7 +334,11 @@ public final class MaidFileIo {
             try {
                 // 1.20.x 的 NbtIo 压缩读写接收 File 而非 Path
                 NbtIo.writeCompressed(root, tmp.toFile());
-                // 必须用「无选项的 move」：ATOMIC_MOVE 在 Windows 与 POSIX 上都是**覆盖**语义，                 // 目标已存在时会静默替换，FileAlreadyExistsException 分支永远不可达 —— 原注释                 // 声称的「冲突重试」实际从未生效，同名并发导出仍会互相覆盖。                 // Files.move 不带任何 CopyOption 时，目标已存在会抛 FileAlreadyExistsException。                 Files.move(tmp, target);
+                // 必须用「无选项的 move」：ATOMIC_MOVE 在 Windows 与 POSIX 上都是**覆盖**语义，
+                // 目标已存在时会静默替换，FileAlreadyExistsException 分支永远不可达 —— 原注释
+                // 声称的「冲突重试」实际从未生效，同名并发导出仍会互相覆盖。
+                // Files.move 不带任何 CopyOption 时，目标已存在会抛 FileAlreadyExistsException。
+                Files.move(tmp, target);
                 return target.getFileName().toString();
             } catch (java.nio.file.FileAlreadyExistsException conflict) {
                 lastConflict = conflict;
