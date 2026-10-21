@@ -142,10 +142,32 @@ public final class MaidServerCommands {
      *
      * @return 汇总反馈（成功数量、按玩家明细、跳过原因）
      */
+    /**
+     * 单次「统一导出」请求允许的实体 ID 总数上限。
+     *
+     * <p>协议层允许 128 组 x 512 个 id（MAX_PLAYER_GROUPS / MAX_EXPORT_IDS），
+     * 但每个 id 都要做一次实体查找 + NBT 序列化，65536 个足以让主线程卡死几十秒。
+     * 正常玩法下一次导出也就几十到几百只，2048 已是宽松上限。
+     */
+    private static final int MAX_TOTAL_EXPORT_IDS = 2048;
+
     public static Component exportForPlayers(MinecraftServer server,
                                              List<IMaidFileNetwork.PlayerExportRequest> requests) {
         if (server == null) {
             return Component.translatable("maid_file_manager.command.no_server");
+        }
+        // 先按总量拦一次：避免 128x512 的请求把主线程拖死
+        int requestedTotal = 0;
+        for (IMaidFileNetwork.PlayerExportRequest req : requests) {
+            if (req.entityIds() != null) {
+                requestedTotal += req.entityIds().size();
+            }
+        }
+        if (requestedTotal > MAX_TOTAL_EXPORT_IDS) {
+            Constants.LOG.warn("[maid_file_manager] 统一导出请求数量超限，已拒绝: {} > {}",
+                    requestedTotal, MAX_TOTAL_EXPORT_IDS);
+            return Component.translatable("maid_file_manager.command.export.too_many",
+                    requestedTotal, MAX_TOTAL_EXPORT_IDS);
         }
         Path exportRoot = Services.PLATFORM.get().getGameDir().toAbsolutePath().resolve(Constants.MAID_EXPORTS_DIR);
         int totalOk = 0;
