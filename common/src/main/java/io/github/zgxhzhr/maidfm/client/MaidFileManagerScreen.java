@@ -885,6 +885,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             // 原先进口路径在渲染线程同步做完再发送，几十份就会明显卡帧。改到后台线程，
             // 回到主线程再发包与更新界面。
             setFeedback(Component.translatable("maid_file_manager.gui.import.batch_reading", readFileNames.size()));
+            // 路径必须先在主线程取好：worker 内读 this.minecraft 属跨线程访问客户端对象，
+            // 且界面关闭后它可能已被置空（第六轮 M2）。
+            final java.nio.file.Path importGameDir = this.minecraft != null
+                    ? this.minecraft.gameDirectory.toPath().toAbsolutePath() : null;
             Thread readWorker = new Thread(() -> {
                 List<MaidFileData> dataList = new ArrayList<>();
                 List<String> okNames = new ArrayList<>();
@@ -892,7 +896,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 String errorKey = null;
                 String rejectMsg = null;
                 try {
-                    Path gameDir = this.minecraft.gameDirectory.toPath().toAbsolutePath();
+                    if (importGameDir == null) {
+                        errorKey = "maid_file_manager.import.fail.local_read";
+                    } else {
+                    Path gameDir = importGameDir;
                     Path dir = MaidFileIo.ensureImportsDir(gameDir);
                     for (String fileName : readFileNames) {
                         Path file = dir.resolve(fileName).normalize();
@@ -907,6 +914,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                         }
                         dataList.add(data);
                         okNames.add(fileName);
+                    }
                     }
                 } catch (Exception ex) {
                     Constants.LOG.error("[maid_file_manager] Failed to batch read import files", ex);
