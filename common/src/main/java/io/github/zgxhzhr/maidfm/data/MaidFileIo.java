@@ -331,14 +331,7 @@ public final class MaidFileIo {
             try {
                 // 1.21+ NbtIo.writeCompressed 直接接收 Path
                 NbtIo.writeCompressed(root, tmp);
-                try {
-                    // 不带 REPLACE_EXISTING：目标已存在时抛 FileAlreadyExistsException，
-                    // 由外层捕获后重新取名，避免静默覆盖别的线程刚写好的文件。
-                    Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE);
-                } catch (AtomicMoveNotSupportedException e) {
-                    // 个别文件系统不支持原子移动，退回普通移动（同样不带 REPLACE）
-                    Files.move(tmp, target);
-                }
+                // 必须用「无选项的 move」：ATOMIC_MOVE 在 Windows 与 POSIX 上都是**覆盖**语义，                 // 目标已存在时会静默替换，FileAlreadyExistsException 分支永远不可达 —— 原注释                 // 声称的「冲突重试」实际从未生效，同名并发导出仍会互相覆盖。                 // Files.move 不带任何 CopyOption 时，目标已存在会抛 FileAlreadyExistsException。                 Files.move(tmp, target);
                 return target.getFileName().toString();
             } catch (java.nio.file.FileAlreadyExistsException conflict) {
                 lastConflict = conflict;
