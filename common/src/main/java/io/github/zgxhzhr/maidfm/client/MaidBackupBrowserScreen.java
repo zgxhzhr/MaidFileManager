@@ -648,14 +648,27 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
             net.sendRequestBackupExport(selOwner, selMaid, selFile);
             return;
         }
-        // 本机：在游戏目录的全部存档中查找该备份并写入本地导出目录
-        MaidFileData data = MaidBackupService.readLocal(
-                this.minecraft.gameDirectory.toPath(), selOwner, selMaid, selFile);
-        if (data == null) {
-            setFeedback(Component.translatable("gui.maid_file_manager.backup.export_failed"), ERROR_COLOR);
-            return;
-        }
-        writeLocal(data);
+        // 本机：readLocal 要遍历全部存档目录、解 GZIP 并解析 NBT，必须离开渲染线程（第六轮 A1）。
+        final java.nio.file.Path backupGameDir = this.minecraft.gameDirectory.toPath();
+        final String backupSelOwner = selOwner;
+        final String backupSelMaid = selMaid;
+        final String backupSelFile = selFile;
+        setFeedback(Component.translatable("gui.maid_file_manager.backup.exporting"), SUBTEXT_COLOR);
+        Thread backupReadWorker = new Thread(() -> {
+            MaidFileData data = MaidBackupService.readLocal(backupGameDir, backupSelOwner, backupSelMaid, backupSelFile);
+            if (this.minecraft == null) {
+                return;
+            }
+            this.minecraft.execute(() -> {
+                if (data == null) {
+                    setFeedback(Component.translatable("gui.maid_file_manager.backup.export_failed"), ERROR_COLOR);
+                    return;
+                }
+                writeLocal(data);
+            });
+        }, "maidfm-backup-read");
+        backupReadWorker.setDaemon(true);
+        backupReadWorker.start();
     }
 
     /** 把一份备份数据写入客户端本地导出目录（文件名规则与普通导出一致） */
