@@ -225,6 +225,8 @@ public final class MaidFilePayloads {
                         ImportResult result = MaidTransferService.importMaidFromData(sp, data, keepBaubles,
                                 MaidConfigManager.isBaubleStripAttributes(),
                                 MaidConfigManager.getBaubleBlockedList());
+                        // 单条导入同样要消费 Curios 批次统计（第六轮 N5）。
+                        MaidTransferService.curiosDropTip();
                         feedback(sp, MaidTransferService.withBaubleDetails(result));
                     } catch (Throwable t) {
                         handleError(sp, "IMPORT_FILE", t);
@@ -395,6 +397,8 @@ public final class MaidFilePayloads {
                             results.add(MaidTransferService.importMaidFromData(sp, d, keepBaubles,
                                     stripAttributes, blocked));
                         }
+                        // 导入路径同样会产生 Curios 批次统计，必须在每次导入结束时消费掉（第六轮 N5）。
+                        MaidTransferService.curiosDropTip();
                         Component summary = MaidTransferService.buildBatchSummary(results);
                         if (deleteAfterImport) {
                             // 请求删除源文件：回传逐项 spawned 标志（与请求顺序对齐），客户端只删成功的文件
