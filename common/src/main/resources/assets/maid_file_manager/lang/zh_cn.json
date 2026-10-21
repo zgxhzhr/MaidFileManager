@@ -41,7 +41,6 @@
     "gui.maid_file_manager.config.bauble_extra_by_mod": "按模组",
     "gui.maid_file_manager.config.bauble_extra_by_slot": "按 Curios 槽位",
     "gui.maid_file_manager.config.bauble_extra_add": "添加",
-    "gui.maid_file_manager.config.bauble_extra_slot_hint": "输入槽位名后点添加",
     "gui.maid_file_manager.config.bauble_extra_managed": "整合包强制",
     "gui.maid_file_manager.config.bauble_extra_hard": "永久禁止",
     "gui.maid_file_manager.config.bauble_import_strip": "导入时丢弃饰品属性（附魔/耐久/无法破坏等），恢复为全新物品",
@@ -146,7 +145,6 @@
     "gui.maid_file_manager.profile.photo_cleared": "已清除照片",
     "gui.maid_file_manager.profile.photo_source_too_large": "图片过大（超过 4 MB），请换一张更小的图片",
     "gui.maid_file_manager.profile.photo_too_large": "照片缩放编码后仍超过上限（128 KiB），请换一张更简单的图片",
-    "gui.maid_file_manager.profile.photo_manual_only": "1.20.x 的单包上限（约 31 KB）无法传输头像，请直接替换 maid_photos 目录下的图片文件。",
     "gui.maid_file_manager.profile.photo_load_failed": "照片读取失败，请确认文件是有效图片",
     "maid_file_manager.profile.not_in_file": "该文件未包含女仆档案数据",
     "gui.maid_file_manager.backup.title": "女仆备份管理",
@@ -202,7 +200,6 @@
     "maid_file_manager.gui.server_export.player_row": "%s %s（%s 只女仆）%s",
     "maid_file_manager.gui.server_export.list_loaded": "统一导出列表已加载：%s 名玩家、共 %s 只女仆（%s 人未同意导出，选中其女仆将被服务端拒绝）。点击玩家行展开/收起。",
     "maid_file_manager.gui.server_export.preparing": "正在获取统一导出列表…",
-    "maid_file_manager.gui.server_export.request_sent": "统一导出请求已发送（服务端异步处理），结果请查看聊天栏 / 服务器日志。",
     "maid_file_manager.gui.server_export.confirm_title": "统一导出全员确认",
     "maid_file_manager.gui.server_export.confirm_header": "【统一导出全员 确认】",
     "maid_file_manager.gui.server_export.no_perm_line1": "权限不足：仅 OP（权限等级 2+）可使用此功能",
@@ -228,7 +225,6 @@
     "maid_file_manager.import.batch.blocked": "。失败原因：服务器已禁止导入女仆（管理员可在服务端设置中开启「允许客户端导入女仆」）",
     "maid_file_manager.import.batch.baubles_stripped": "。服务端未开启饰品导入，本次导入的女仆均未携带饰品",
     "maid_file_manager.import.batch.more_failures": "等共 %s 个失败",
-    "maid_file_manager.list_separator.semicolon": "；",
     "maid_file_manager.import.check.too_many_files": "单次最多处理 %s 个女仆文件（当前 %s 个），请分批操作",
     "maid_file_manager.import.check.file_too_large": "第 %s 个女仆文件体积 %s KB 超过单文件上限 %s KB，请精简该女仆（背包/饰品）后重试",
     "maid_file_manager.import.check.total_too_large": "数据总体积过大（%s KB > %s KB），请减少单次数量后分批操作",
@@ -238,8 +234,8 @@
     "maid_file_manager.gui.backup.uuid_offline": "（离线）",
     "maid_file_manager.gui.backup.uuid_premium": "（正版）",
     "maid_file_manager.server.prefix": "[女仆档案管理] ",
+
     "maid_file_manager.protocol.mismatch": "协议版本不匹配：服务端 %s，客户端 %s。请把两端模组升级到同一版本（.maid 文件本身仍可互导）。",
-    "maid_file_manager.server.export_chunked_disabled": "该女仆数据过大，需要分片传输，但分片通道仍在验证中。已中止导出（女仆已保留在原世界），请先在单人环境导出，或移除头像后重试。",
     "maid_file_manager.server.handler_error": "[女仆档案管理] 服务端处理失败，请联系服主查看日志（错误位置：%s）",
     "maid_file_manager.server.serialize_failed": "[女仆档案管理] 导出数据序列化失败，请重试；如反复失败请联系服主查看日志",
     "maid_file_manager.server.unknown_config": "[女仆档案管理] 未知配置项，修改已拒绝",
@@ -249,5 +245,4 @@
     "maid_file_manager.server.too_many_backup_owners": "[女仆档案管理] 备份主人数量超过上限（%s > %s），无法列出，请清理备份后重试",
     "maid_file_manager.server.backup_list_too_large": "[女仆档案管理] 备份列表数据过大（%s KB > %s KB），请清理备份后重试",
     "maid_file_manager.server.backup_too_large": "[女仆档案管理] 该备份体积过大，无法通过服务器导出",
-    "maid_file_manager.command.client_only": "仅客户端可用"
 }
