@@ -298,19 +298,31 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         int sideBtnW = sidebarW - 12;                     // UI无问题版：工具按钮统一宽（156-12=144）
         int toolBtnH = 20;                                  // UI无问题版：工具按钮高 20
         int rowGap = 8;                                     // UI无问题版：行距 8
-        // 三行工具按钮改为「从按钮区上方倒排」：原来 sideY1 恒为 panelY+66、第 3 行恒在
-        // panelY+122..142，与 this.height 完全无关 —— height=192（1366×768 + scale 4）时
-        // 面板只有 30..162，第 3 行按钮 152..172 越出面板底；height=170 时直接出屏。
-        // 倒排保证三行永远落在列表可视区上方，且不会压住底部动作按钮。
-        int sideY3 = panelY + panelH - 20 - 22 - 4 - toolBtnH - 4;   // 第 3 行下沿对齐 btnYFloor-4
-        int sideY2 = sideY3 - toolBtnH - rowGap;
-        int sideY1 = sideY2 - toolBtnH - rowGap;
-        // 极端矮屏兜底：第 1 行不能被挤到 Tab 栏上面
-        int sideMinY = panelY + HEADER_TOTAL_H + 2;
-        if (sideY1 < sideMinY) {
-            sideY1 = sideMinY;
-            sideY2 = sideY1 + toolBtnH + rowGap;
-            sideY3 = sideY2 + toolBtnH + rowGap;
+        // 三行工具按钮「顶部对齐」：紧贴 Tab 栏下方（恢复旧版观感）。
+        // 第四轮曾改成「从面板底部倒排」，结果窗口一高按钮就被推到面板下半部、
+        // 还会压住底部反馈文字（玩家截图反馈）；现在改为顶部对齐，
+        // 只在空间不足时压缩行距，极矮屏才退回底部倒排。
+        int sideTopY = panelY + HEADER_TOTAL_H + 2;
+        // 第 3 行下沿上限：不得侵占底部反馈区（反馈文字从 panelY+panelH-LIST_BOTTOM_PAD+6 起）
+        int sideBottomLimit = panelY + panelH - LIST_BOTTOM_PAD + 2;
+        int sideGap = rowGap;
+        while (sideGap > 2 && sideTopY + 2 * (toolBtnH + sideGap) + toolBtnH > sideBottomLimit) {
+            sideGap--;
+        }
+        int sideY1 = sideTopY;
+        int sideY2 = sideY1 + toolBtnH + sideGap;
+        int sideY3 = sideY2 + toolBtnH + sideGap;
+        if (sideY3 + toolBtnH > sideBottomLimit) {
+            // 极矮屏（原版 GUI 缩放下限 240 附近）顶部确实放不下：退回「贴着底部动作按钮倒排」，
+            // 与第四轮行为一致 —— 此时无论怎么排都要侵占一部分反馈区，优先保证三行都可见。
+            sideY3 = panelY + panelH - 20 - 22 - 4 - toolBtnH - 4;
+            sideY2 = sideY3 - toolBtnH - sideGap;
+            sideY1 = sideY2 - toolBtnH - sideGap;
+            if (sideY1 < panelY + HEADER_TOTAL_H + 2) {
+                sideY1 = panelY + HEADER_TOTAL_H + 2;
+                sideY2 = sideY1 + toolBtnH + sideGap;
+                sideY3 = sideY2 + toolBtnH + sideGap;
+            }
         }
 
         // 行 1：全选（导出/导入 各一，共用 X/Y，Tab 切换 visible）
