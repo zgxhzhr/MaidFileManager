@@ -248,4 +248,5 @@
     "maid_file_manager.command.export.too_many": "Too many maids in one export request (%s, limit %s); request rejected",
     "maid_file_manager.server.remove_busy": "[Maid File Manager] A previous export-and-remove is still awaiting the client write ack; removal skipped for this export (maids kept). Please retry later.",
     "maid_file_manager.gui.export.busy": "The previous export is still being written; please wait a moment.",
+    "maid_file_manager.gui.export.timeout": "Export timed out waiting for a server response; retry is now allowed.",
 }
