@@ -1,6 +1,18 @@
 package io.github.zgxhzhr.maidfm.client;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
+
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 模型/女仆名的显示转换。
@@ -14,34 +26,35 @@ import net.minecraft.network.chat.Component;
  * <p><b>文言（lzh）与繁体中文（zh_tw / zh_hk）必须仍显示中文名。</b>
  * 模型中文名来自翻译键，而 Minecraft 的翻译回退链是「当前语言 → en_us」——
  * 文言与繁体缺这些键时会回退到 en_us，于是显示成英文模型名（如 {@code Magical Wine Fox}）。
- * 因此这几门语言下改为优先查我们自己收集的「模型中文名表」，命中就用中文。
+ * 因此这几门语言下改为优先查我们自己收集的「模型中文名表」。
  *
- * <p>数据来源有两条（都要）：
+ * <p>数据来源两条：
  * <ol>
  *   <li>MC 资源管理器里各命名空间的 {@code lang/zh_cn.json}（模组内置模型名）；</li>
- *   <li>磁盘上 {@code <gameDir>/tlm_custom_pack/**} 的 {@code lang/zh_cn.json} 与
- *       {@code en_us.json}（第三方模型包）—— 这些包**不在** MC 资源管理器里，
- *       只能直接读盘。</li>
+ *   <li>磁盘上 {@code <gameDir>/tlm_custom_pack/**}{@code /lang/} 下的 {@code zh_cn.json}
+ *       与 {@code en_us.json}（第三方模型包）—— 这些包**不在** MC 资源管理器里，只能读盘。</li>
  * </ol>
  * 由两张表构成：{@code model.*.name → 中文} 与 {@code 英文名 → 中文}（后者用于备份列表，
  * 那里只有 TLM 备份 index 里存的英文名，没有模型 ID）。
+ *
+ * <p>本类位于 {@code client} 包，只在客户端代码路径被引用，服务端不会加载它，
+ * 因此这里可以直接引用 {@code net.minecraft.client.*}（TLM 的类仍用反射，因为它是可选依赖）。
  */
 public final class ModelNames {
 
-    /** 客户端模型表反射句柄的懒加载缓存（渲染路径每帧都会调，不能每次反射查找）。 */
+    /** 翻译键（{@code model.<ns>.<path>.name}）→ 中文名。 */
+    private static Map<String, String> zhByKey;
+    /** 英文模型名 → 中文名（备份列表只有名字、没有模型 ID 时用）。 */
+    private static Map<String, String> zhByEn;
+    private static boolean modelNamesLoaded;
+
+    /** TLM 客户端模型表反射句柄的懒加载缓存（渲染路径每帧都会调，不能每次反射查找）。 */
     private static boolean packLookupTried;
     private static Object packModels;
     private static java.lang.reflect.Method packGetInfo;
 
     /** 模型 ID → 可读名 的记忆表，避免同一行每帧重复反射 + 查表。 */
-    private static final java.util.Map<String, String> PACK_NAME_CACHE =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** 翻译键（{@code model.<ns>.<path>.name}）→ 中文名。 */
-    private static java.util.Map<String, String> zhByKey;
-    /** 英文模型名 → 中文名（备份列表只有名字、没有模型 ID 时用）。 */
-    private static java.util.Map<String, String> zhByEn;
-    private static boolean modelNamesLoaded;
+    private static final Map<String, String> PACK_NAME_CACHE = new ConcurrentHashMap<>();
 
     /**
      * 把模型 ID 或翻译键转成可读文本。
@@ -83,8 +96,8 @@ public final class ModelNames {
      * 从模型 ID（{@code namespace:path}）解析可读名。
      *
      * <p><b>顺序很重要</b>：文言/繁体下必须先查中文表。否则 {@code Component.translatable(key)}
-     * 会回退到 en_us 返回英文名，而「返回值 ≠ 键名」会被误判成翻译成功，直接就把英文名返回了
-     *（这正是此前文言界面显示英文的原因）。
+     * 会回退到 en_us 返回英文名，而「返回值 ≠ 键名」会被误判成翻译成功，直接把英文名返回
+     *（这正是文言界面显示英文的原因）。
      *
      * @param modelId 形如 {@code touhou_little_maid:motoori_kosuzu}
      * @return 中文名（命中中文表或翻译成功时），否则退回短名
@@ -100,7 +113,8 @@ public final class ModelNames {
             // ① 文言/繁体：先查中文模型名表（必须在翻译之前）
             if (isZhLikeLanguage()) {
                 ensureModelNameTables();
-                String zh = lookupZh("model." + namespace + "." + path + ".name", "model." + path + ".name");
+                String zh = lookupZh("model." + namespace + "." + path + ".name",
+                        "model." + path + ".name");
                 if (zh != null && !zh.isEmpty()) {
                     return zh;
                 }
@@ -158,17 +172,12 @@ public final class ModelNames {
     /** 当前客户端语言是否文言 / 各类中文（这些语言下模型名要回退到中文）。 */
     private static boolean isZhLikeLanguage() {
         try {
-            Object mc = Class.forName("net.minecraft.client.Minecraft").getMethod("getInstance").invoke(null);
-            if (mc == null) {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.getLanguageManager() == null) {
                 return false;
             }
-            Object languageManager = mc.getClass().getMethod("getLanguageManager").invoke(mc);
-            if (languageManager == null) {
-                return false;
-            }
-            Object selected = languageManager.getClass().getMethod("getSelected").invoke(languageManager);
-            String code = String.valueOf(selected);
-            return "lzh".equals(code) || code.startsWith("zh_");
+            String code = mc.getLanguageManager().getSelected();
+            return "lzh".equals(code) || (code != null && code.startsWith("zh_"));
         } catch (Throwable ignored) {
             return false;
         }
@@ -181,13 +190,13 @@ public final class ModelNames {
             return;
         }
         modelNamesLoaded = true;
-        java.util.Map<String, String> zh = new java.util.HashMap<>();
-        java.util.Map<String, String> en = new java.util.HashMap<>();
-        collectFromResourceManager(zh, en);
-        collectFromModelPackDir(zh, en);
+        Map<String, String> zh = new HashMap<>();
+        Map<String, String> en = new HashMap<>();
+        int fromResourcePack = collectFromResourceManager(zh, en);
+        int fromDisk = collectFromModelPackDir(zh, en);
         zhByKey = zh;
-        java.util.Map<String, String> byEn = new java.util.HashMap<>();
-        for (java.util.Map.Entry<String, String> e : zh.entrySet()) {
+        Map<String, String> byEn = new HashMap<>();
+        for (Map.Entry<String, String> e : zh.entrySet()) {
             String enName = en.get(e.getKey());
             String zhName = e.getValue();
             if (enName != null && !enName.isEmpty() && !enName.equals(zhName)) {
@@ -195,127 +204,118 @@ public final class ModelNames {
             }
         }
         zhByEn = byEn;
+        io.github.zgxhzhr.maidfm.Constants.LOG.info(
+                "[maid_file_manager] 模型中文名表已加载: lang={}, zhKey={}, enKey={}, en→zh={}, 资源包文件={}, 磁盘文件={}",
+                currentLanguageCode(), zh.size(), en.size(), byEn.size(), fromResourcePack, fromDisk);
     }
 
-    /** 来源一：MC 资源管理器里所有命名空间的 {@code lang/zh_cn.json} 与 {@code en_us.json}。 */
-    private static void collectFromResourceManager(java.util.Map<String, String> zh,
-                                                   java.util.Map<String, String> en) {
+    /** 当前语言代码（仅用于日志）。 */
+    private static String currentLanguageCode() {
         try {
-            Object mc = Class.forName("net.minecraft.client.Minecraft").getMethod("getInstance").invoke(null);
-            if (mc == null) {
-                return;
-            }
-            Object resourceManager = mc.getClass().getMethod("getResourceManager").invoke(mc);
-            if (resourceManager == null) {
-                return;
-            }
-            java.lang.reflect.Method listResources = null;
-            for (java.lang.reflect.Method m : resourceManager.getClass().getMethods()) {
-                if ("listResources".equals(m.getName()) && m.getParameterCount() == 2) {
-                    listResources = m;
-                    break;
-                }
-            }
-            if (listResources == null) {
-                return;
-            }
-            collectLangFiles(resourceManager, listResources, "zh_cn.json", zh);
-            collectLangFiles(resourceManager, listResources, "en_us.json", en);
+            Minecraft mc = Minecraft.getInstance();
+            return mc == null || mc.getLanguageManager() == null ? "?" : mc.getLanguageManager().getSelected();
         } catch (Throwable ignored) {
-            // 资源管理器不可用：跳过（磁盘模型包来源仍会执行）
+            return "?";
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private static void collectLangFiles(Object resourceManager, java.lang.reflect.Method listResources,
-                                         String fileName, java.util.Map<String, String> out) {
+    /** 来源一：MC 资源管理器里所有命名空间的 {@code lang/zh_cn.json} 与 {@code en_us.json}。 */
+    private static int collectFromResourceManager(Map<String, String> zh, Map<String, String> en) {
+        int count = 0;
         try {
-            java.util.function.Predicate<Object> filter = loc ->
-                    loc != null && String.valueOf(loc).endsWith(":lang/" + fileName);
-            Object listed = listResources.invoke(resourceManager, "lang", filter);
-            if (!(listed instanceof java.util.Map<?, ?> map)) {
-                return;
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null) {
+                return 0;
             }
-            for (Object resource : map.values()) {
-                if (resource == null) {
-                    continue;
-                }
-                try {
-                    mergeModelNames(readResource(resource), out);
+            ResourceManager rm = mc.getResourceManager();
+            if (rm == null) {
+                return 0;
+            }
+            count += collectLangFiles(rm, "zh_cn.json", zh);
+            count += collectLangFiles(rm, "en_us.json", en);
+        } catch (Throwable t) {
+            io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                    "[maid_file_manager] 从资源管理器收集模型名失败: {}", t.toString());
+        }
+        return count;
+    }
+
+    private static int collectLangFiles(ResourceManager rm, String fileName, Map<String, String> out) {
+        int count = 0;
+        try {
+            String suffix = "lang/" + fileName;
+            Map<ResourceLocation, Resource> map = rm.listResources("lang",
+                    loc -> loc.getPath().endsWith(suffix) || loc.getPath().equals(suffix));
+            for (Resource resource : map.values()) {
+                try (InputStream in = resource.open()) {
+                    mergeModelNames(new String(in.readAllBytes(), StandardCharsets.UTF_8), out);
+                    count++;
                 } catch (Throwable ignored) {
                     // 单个语言文件失败不影响其它
                 }
             }
-        } catch (Throwable ignored) {
-            // 该语言来源不可用
+        } catch (Throwable t) {
+            io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                    "[maid_file_manager] 收集 {} 失败: {}", fileName, t.toString());
         }
-    }
-
-    /** 反射调用 {@code Resource#open()} 读出文本。 */
-    private static String readResource(Object resource) throws Exception {
-        java.lang.reflect.Method open = null;
-        for (java.lang.reflect.Method m : resource.getClass().getMethods()) {
-            if ("open".equals(m.getName()) && m.getParameterCount() == 0) {
-                open = m;
-                break;
-            }
-        }
-        if (open == null) {
-            return null;
-        }
-        try (java.io.InputStream in = (java.io.InputStream) open.invoke(resource)) {
-            return new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-        }
+        return count;
     }
 
     /**
      * 来源二：磁盘上的第三方模型包 —— {@code <gameDir>/tlm_custom_pack/**}{@code /lang/}
-     * 下的 {@code zh_cn.json} 与 {@code en_us.json}。
-     *
-     * <p>这些包**不在** MC 资源管理器里（TLM 自己从磁盘加载），所以只能直接读文件。
+     * 下的 {@code zh_cn.json} 与 {@code en_us.json}（TLM 自己从磁盘加载，不在 MC 资源管理器里）。
      */
-    private static void collectFromModelPackDir(java.util.Map<String, String> zh,
-                                               java.util.Map<String, String> en) {
+    private static int collectFromModelPackDir(Map<String, String> zh, Map<String, String> en) {
+        int count = 0;
         try {
-            java.nio.file.Path gameDir =
-                    io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getGameDir();
+            Path gameDir = io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getGameDir();
             if (gameDir == null) {
-                return;
+                return 0;
             }
-            java.nio.file.Path packs = gameDir.resolve("tlm_custom_pack");
-            if (!java.nio.file.Files.isDirectory(packs)) {
-                return;
+            // 依次尝试：<gameDir>/tlm_custom_pack 与 <gameDir 的上一级>/tlm_custom_pack
+            // （PCL 等启动器有「版本隔离」与「共享目录」两种布局）
+            Path[] candidates = new Path[]{
+                    gameDir.resolve("tlm_custom_pack"),
+                    gameDir.getParent() == null ? null : gameDir.getParent().resolve("tlm_custom_pack")
+            };
+            for (Path packs : candidates) {
+                if (packs == null || !Files.isDirectory(packs)) {
+                    continue;
+                }
+                try (java.util.stream.Stream<Path> walk = Files.walk(packs, 8)) {
+                    java.util.List<Path> langFiles = walk
+                            .filter(Files::isRegularFile)
+                            .filter(p -> {
+                                Path name = p.getFileName();
+                                if (name == null) {
+                                    return false;
+                                }
+                                String n = name.toString();
+                                return "zh_cn.json".equals(n) || "en_us.json".equals(n);
+                            })
+                            .limit(4000L)
+                            .toList();
+                    for (Path p : langFiles) {
+                        try {
+                            String text = new String(Files.readAllBytes(p), StandardCharsets.UTF_8);
+                            String n = p.getFileName().toString();
+                            mergeModelNames(text, "zh_cn.json".equals(n) ? zh : en);
+                            count++;
+                        } catch (Throwable ignored) {
+                            // 单个文件失败不影响其它
+                        }
+                    }
+                }
             }
-            try (java.util.stream.Stream<java.nio.file.Path> walk =
-                         java.nio.file.Files.walk(packs, 8)) {
-                walk.filter(java.nio.file.Files::isRegularFile)
-                        .filter(p -> {
-                            java.nio.file.Path name = p.getFileName();
-                            if (name == null) {
-                                return false;
-                            }
-                            String n = name.toString();
-                            return "zh_cn.json".equals(n) || "en_us.json".equals(n);
-                        })
-                        .limit(4000L)
-                        .forEach(p -> {
-                            try {
-                                String text = new String(java.nio.file.Files.readAllBytes(p),
-                                        java.nio.charset.StandardCharsets.UTF_8);
-                                String n = p.getFileName().toString();
-                                mergeModelNames(text, "zh_cn.json".equals(n) ? zh : en);
-                            } catch (Throwable ignored) {
-                                // 单个文件失败不影响其它
-                            }
-                        });
-            }
-        } catch (Throwable ignored) {
-            // 目录不存在或无权限：跳过
+        } catch (Throwable t) {
+            io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                    "[maid_file_manager] 扫描 tlm_custom_pack 失败: {}", t.toString());
         }
+        return count;
     }
 
     /** 把一份语言 JSON 里 {@code model.*.name} 的条目并入目标表（先到先得）。 */
-    private static void mergeModelNames(String text, java.util.Map<String, String> out) {
+    private static void mergeModelNames(String text, Map<String, String> out) {
         if (text == null || text.isEmpty() || out == null) {
             return;
         }
@@ -324,7 +324,7 @@ public final class ModelNames {
             if (!root.isJsonObject()) {
                 return;
             }
-            for (java.util.Map.Entry<String, com.google.gson.JsonElement> e
+            for (Map.Entry<String, com.google.gson.JsonElement> e
                     : root.getAsJsonObject().entrySet()) {
                 String key = e.getKey();
                 if (key.startsWith("model.") && key.endsWith(".name")
@@ -342,8 +342,7 @@ public final class ModelNames {
     /**
      * 查 TLM 客户端模型表（{@code CustomPackLoader.MAID_MODELS}）里该模型的名字。
      *
-     * <p>用反射而不是直接引用：{@code ModelNames} 在 common 模块，专用服务端环境没有该类，
-     * 编译期引用会让服务端加载失败。反射失败一律返回 {@code null}（静默降级）。
+     * <p>TLM 是可选依赖，编译期不能引用，因此用反射；反射失败一律返回 {@code null}（静默降级）。
      *
      * @param candidates 依次尝试的模型 ID 形态（带命名空间 / 裸短名）
      */
@@ -380,7 +379,6 @@ public final class ModelNames {
                     packGetInfo = packModels.getClass().getMethod("getInfo", String.class);
                 }
             } catch (Throwable ignored) {
-                // 未装 TLM / 类被裁剪 / 字段改名：保持 null，后续全部走短名
                 packModels = null;
                 packGetInfo = null;
             }
