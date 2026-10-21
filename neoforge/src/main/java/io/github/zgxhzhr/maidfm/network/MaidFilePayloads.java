@@ -148,6 +148,10 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
+                    // 旧单发通道与批量通道做的是同一件重活，批量已加频控，这条不能成为绕过口（第六轮 N3）。
+                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "export_maid", 1000L)) {
+                        return;
+                    }
                     try {
                         MaidFileData data = MaidTransferService.exportMaidToData(sp, entityId);
                         if (data == null) {
@@ -206,6 +210,10 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
+                    // 旧单发通道不能成为频控绕过口（第六轮 N3）。
+                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "import_file", 1000L)) {
+                        return;
+                    }
                     try {
                         MaidFileData data = MaidFilePackets.deserializeMaidFileData(bytes);
                         if (data == null) {
