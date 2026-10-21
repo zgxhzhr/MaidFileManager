@@ -291,13 +291,52 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         }
         available = true;
         // 本机：单人 / 局域网主机读当前存档；游戏主菜单无存档上下文，合并扫描本机全部存档
-        IntegratedServer server = this.minecraft.getSingleplayerServer();
-        if (server != null) {
-            applyServerOwners(MaidBackupService.scan(server, requesterUuid(), true));
-        } else {
-            // 主菜单/单人：按存档分组（存档 → 玩家 → 女仆 → 备份文件）
-            applyWorlds(MaidBackupService.scanAllWorlds(this.minecraft.gameDirectory.toPath()));
-        }
+        final IntegratedServer server = this.minecraft.getSingleplayerServer();
+        final java.nio.file.Path scanGameDir = this.minecraft.gameDirectory.toPath();
+        final java.util.UUID scanRequester = requesterUuid();
+        // 扫描会遍历存档目录里的所有 .maid 备份并解析 NBT；主菜单分支 scanAllWorlds 可能扫到
+        // 几十上百个文件，原先在渲染线程同步执行会明显卡顿。改为后台线程 + 回主线程应用。
+        loading = true;
+        loadingSince = System.currentTimeMillis();
+        Thread scanWorker = new Thread(() -> {
+            try {
+                if (server != null) {
+                    final java.util.List<IMaidFileNetwork.BackupOwner> owners =
+                            MaidBackupService.scan(server, scanRequester, true);
+                    if (this.minecraft == null) {
+                        return;
+                    }
+                    this.minecraft.execute(() -> {
+                        loading = false;
+                        loadingSince = 0L;
+                        applyServerOwners(owners);
+                    });
+                } else {
+                    final java.util.List<IMaidFileNetwork.BackupWorld> list =
+                            MaidBackupService.scanAllWorlds(scanGameDir);
+                    if (this.minecraft == null) {
+                        return;
+                    }
+                    this.minecraft.execute(() -> {
+                        loading = false;
+                        loadingSince = 0L;
+                        applyWorlds(list);
+                    });
+                }
+            } catch (Throwable t) {
+                Constants.LOG.warn("[maid_file_manager] 备份扫描失败: {}", t.toString());
+                if (this.minecraft != null) {
+                    this.minecraft.execute(() -> {
+                        loading = false;
+                        loadingSince = 0L;
+                        setFeedback(Component.translatable(
+                                "maid_file_manager.gui.error.network_unavailable"), ERROR_COLOR);
+                    });
+                }
+            }
+        }, "maidfm-backup-scan");
+        scanWorker.setDaemon(true);
+        scanWorker.start();
     }
 
     /** 是否连接的是专业服务端（非本机集成服务端）：此时备份需由服务端代读回传 */
@@ -589,24 +628,47 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
 
     /** 把一份备份数据写入客户端本地导出目录（文件名规则与普通导出一致） */
     private void writeLocal(MaidFileData data) {
-        try {
-            String ownerName = findOwnerDisplayName(data.getOwnerUuid());
-            data.setOwnerName(ownerName);
-            Path exportRoot = MaidFileIo.ensureExportsDir(this.minecraft.gameDirectory.toPath());
-            Path playerDir = MaidFileIo.resolvePlayerDir(exportRoot, ownerName);
-            // 文件名必须与普通导出一致：普通导出会拼自定义名（命名牌所取），
-            // 见 MaidFileManagerScreen / MaidServerCommands 都调 composeDisplayName。
-            // 原先这里直接传 displayModelId，带命名牌的女仆从备份导出时文件名会缺「自定义名_」段，
-            // 与上面那行注释宣称的「规则一致」不符。
-            String baseName = ModelNames.displayModelId(data.getModelId());
-            String displayName = MaidFileIo.composeDisplayName(data.getCustomName(), baseName);
-            String written = MaidFileIo.writeMaidFile(playerDir, displayName, data.getModelId(),
-                    data.getOwnerUuid(), data, LocalDateTime.now());
-            setFeedback(Component.translatable("gui.maid_file_manager.backup.exported", written), ACCENT);
-        } catch (Throwable t) {
-            Constants.LOG.error("[maid_file_manager] 导出备份为 .maid 失败", t);
-            setFeedback(Component.translatable("gui.maid_file_manager.backup.export_failed"), ERROR_COLOR);
+        // 写盘含 NBT 序列化 + 压缩 + 目录创建 + 重名探测：放后台线程，完成后回主线程给反馈。
+        // （原先直接在渲染线程同步写，主菜单批量导出备份时逐条累积成明显卡顿。）
+        if (this.minecraft == null) {
+            return;
         }
+        final String ownerName = findOwnerDisplayName(data.getOwnerUuid());
+        data.setOwnerName(ownerName);
+        final java.nio.file.Path exportGameDir = this.minecraft.gameDirectory.toPath();
+        Thread writeWorker = new Thread(() -> {
+            String written = null;
+            Throwable failure = null;
+            try {
+                Path exportRoot = MaidFileIo.ensureExportsDir(exportGameDir);
+                Path playerDir = MaidFileIo.resolvePlayerDir(exportRoot, ownerName);
+                // 文件名必须与普通导出一致：普通导出会拼自定义名（命名牌所取），
+                // 见 MaidFileManagerScreen / MaidServerCommands 都调 composeDisplayName。
+                String baseName = ModelNames.displayModelId(data.getModelId());
+                String displayName = MaidFileIo.composeDisplayName(data.getCustomName(), baseName);
+                written = MaidFileIo.writeMaidFile(playerDir, displayName, data.getModelId(),
+                        data.getOwnerUuid(), data, LocalDateTime.now());
+            } catch (Throwable t) {
+                failure = t;
+            }
+            final String outWritten = written;
+            final Throwable outFailure = failure;
+            if (this.minecraft == null) {
+                return;
+            }
+            this.minecraft.execute(() -> {
+                if (outFailure != null) {
+                    Constants.LOG.error("[maid_file_manager] 导出备份为 .maid 失败", outFailure);
+                    setFeedback(Component.translatable(
+                            "gui.maid_file_manager.backup.export_failed"), ERROR_COLOR);
+                } else {
+                    setFeedback(Component.translatable(
+                            "gui.maid_file_manager.backup.exported", outWritten), ACCENT);
+                }
+            });
+        }, "maidfm-backup-export");
+        writeWorker.setDaemon(true);
+        writeWorker.start();
     }
 
     private String findOwnerDisplayName(String ownerUuid) {
