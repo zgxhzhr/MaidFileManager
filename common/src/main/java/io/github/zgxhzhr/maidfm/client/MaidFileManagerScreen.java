@@ -103,6 +103,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private Button backupBtn;
     /** 等待服务端返回档案的女仆 entityId（收到不匹配的档案视图时忽略） */
     private int pendingProfileEntityId = Integer.MIN_VALUE;
+    /** 档案请求发出时刻：服务端限频会静默丢弃重复请求，用它超时复位 */
+    private long pendingProfileSince;
+    /** 等档案回包的最长时间 */
+    private static final long PROFILE_REQUEST_TIMEOUT_MS = 5_000L;
     /** 导出 Tab 全选状态 */
     private boolean selectAllState;
     /** 导入 Tab 全选状态 */
@@ -177,6 +181,15 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         super.tick();
         // 界面期间每帧压住原版背景音乐（其 MusicManager 会自动重播，单次停止无效）
         UiMusicManager.tick();
+        // 档案请求的超时复位：服务端 RequestThrottle 会**静默丢弃**同一玩家 1 秒内的重复
+        // 「档案」请求，客户端若照旧等待，pendingProfileEntityId 会永久指向一个永远不来的 id，
+        // 此后所有「档案」点击都被 onMaidProfileReceived 的守卫拒掉 → 界面再也打不开。
+        if (pendingProfileEntityId != Integer.MIN_VALUE && pendingProfileSince > 0L
+                && System.currentTimeMillis() - pendingProfileSince > PROFILE_REQUEST_TIMEOUT_MS) {
+            pendingProfileEntityId = Integer.MIN_VALUE;
+            pendingProfileSince = 0L;
+            setFeedback(Component.translatable("maid_file_manager.gui.profile.timeout"));
+        }
         // 在途导出的超时自愈：服务端预检拒绝 / handler 抛异常 / 结果被别的界面吃掉时，
         // 客户端收不到任何结果，exportInFlight 会一直为真 → 导出按钮永久 busy。
         // 超过 EXPORT_IN_FLIGHT_TIMEOUT_MS 就放开，让玩家能重试。
@@ -1533,6 +1546,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             return;
         }
         pendingProfileEntityId = entityId;
+        pendingProfileSince = System.currentTimeMillis();
         net.sendRequestMaidProfile(entityId);
     }
 
@@ -1550,6 +1564,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             return;
         }
         pendingProfileEntityId = Integer.MIN_VALUE;
+        pendingProfileSince = 0L;
         this.minecraft.setScreen(new MaidProfileScreen(this, view));
     }
 
