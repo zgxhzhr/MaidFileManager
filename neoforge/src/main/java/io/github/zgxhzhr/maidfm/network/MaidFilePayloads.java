@@ -75,7 +75,12 @@ public final class MaidFilePayloads {
             feedback(sp, Component.translatable("maid_file_manager.server.serialize_failed"));
             return false;
         }
-        String reject = MaidFilePackets.checkMaidDataBatchForWire(blobs, MaidFilePackets.MAX_EXPORT_IDS);
+        // 必须传 allowChunkedFallback=true：下面 :86 起有分片导出路径（超过 24 KiB 走
+        // ChunkedDownloadPayload.sendChunks）。用 2 参版本会在 >1 MiB 时直接拒绝，
+        // 而 forge/fabric 都是 3 参 true —— 同一操作在 neoforge 上十余只带头像女仆
+        // 批量导出就报「超过单包上限」，另两端却能正常走分片。四端口径统一。
+        String reject = MaidFilePackets.checkMaidDataBatchForWire(
+                blobs, MaidFilePackets.MAX_EXPORT_IDS, true);
         if (reject != null) {
             Constants.LOG.warn("[maid_file_manager] 导出结果预检被拒绝: player={}, count={}, reason={}",
                     sp.getName().getString(), blobs.size(), reject);
