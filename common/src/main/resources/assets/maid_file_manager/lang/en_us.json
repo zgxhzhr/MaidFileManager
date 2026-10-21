@@ -251,4 +251,5 @@
     "maid_file_manager.gui.export.timeout": "Export timed out waiting for a server response; retry is now allowed.",
     "maid_file_manager.server.export_too_large": "This export exceeds the per-batch chunked limit (%s KB > %s KB); reduce the number of maids per export and retry.",
     "maid_file_manager.gui.server_export.list_failed": "Failed to fetch the unified export list (no permission or too large); this action was cancelled. Please retry.",
+    "maid_file_manager.gui.profile.timeout": "Profile request timed out (the server may have rate-limited it); click again in a moment.",
 }
