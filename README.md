@@ -50,19 +50,19 @@
 |---|---|---|
 | 导出 / 导入 / 备份浏览 | ✅ 完整 | |
 | AI 聊天记录随 `.maid` 迁移 | ✅ 完整 | 26.1 走 `MaidAIChatData.read(ValueInput)` |
-| 饰品（女仆自带饰品栏） | ✅ 完整 | 同版本时交给 TLM 自身反序列化 |
+| 饰品（女仆自带饰品栏） | ✅ 完整 | 同版本交给 TLM 反序列化；跨版本经 DFU 升级后重注入 |
 | 手持 / 护甲物品 | ✅ 按设计不携带 | 26.1 装备键为 `equipment` |
-| 女仆档案照片显示 | ⚠️ 占位 | 26.1 的 `Matrix3x2fStack` / `blit` 语义变化，暂以灰底占位 |
-| Ctrl 多选 / 加速滚动 | ⚠️ 关闭 | 26.1 移除了 `Screen.hasControlDown()` |
+| 女仆档案照片显示 | ✅ 完整 | 26.1 的 `blit` 直接接收目标矩形，无需 PoseStack 变换 |
+| Ctrl 多选 / 加速滚动 | ✅ 完整 | 26.1 用 `InputConstants.isKeyDown(Window, key)` 直接查键状态 |
 
 ## 与其它分支的关系
 
 | 工程 | MC | 加载器 | 版本 |
 |---|---|---|---|
-| `maid_file_manager-forge-1.20.1` | 1.20.1 | Forge | 1.6.5 |
-| `maid_file_manager-fabric-1.20.1` | 1.20.1 | Fabric | 1.6.5 |
-| `maid_file_manager-neoforge-1.21.1` | 1.21.1 | NeoForge | 1.6.5 |
-| `maid_file_manager-fabric-1.21.1` | 1.21.1 | Fabric | 1.6.5 |
+| `maid_file_manager-forge-1.20.1` | 1.20.1 | Forge | 1.7.0 |
+| `maid_file_manager-fabric-1.20.1` | 1.20.1 | Fabric | 1.7.0 |
+| `maid_file_manager-neoforge-1.21.1` | 1.21.1 | NeoForge | 1.7.0 |
+| `maid_file_manager-fabric-1.21.1` | 1.21.1 | Fabric | 1.7.0 |
 | **本工程** | **26.1.2** | **NeoForge** | **1.7.0-snapshot** |
 
 ## 许可
