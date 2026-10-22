@@ -17,13 +17,13 @@ Daemon will be stopped at the end of the build
 Loaded 118 artifacts from E:\Mod\maid_file_manager-neoforge-26.1.2\common\build\tmp\createMinecraftArtifacts\nfrt_artifact_manifest.properties
 *** Started working on downloadManifest
   DL    https://launchermeta.mojang.com/mc/game/version_manifest_v2.json
- DONE  Completed downloadManifest in 0.94s
+ DONE  Completed downloadManifest in 1.16s
 *** Started working on downloadJson
  DONE  Completed downloadJson in 0.00s
-*** Started working on downloadServer
 *** Started working on downloadClient
- DONE  Completed downloadClient in 0.02s
- DONE  Completed downloadServer in 0.02s
+*** Started working on downloadServer
+ DONE  Completed downloadClient in 0.06s
+ DONE  Completed downloadServer in 0.06s
 *** Started working on preProcessJar
  REUSE Used cache of preProcessJar in 0.00s
 *** Started working on decompile
@@ -34,7 +34,7 @@ Loaded 118 artifacts from E:\Mod\maid_file_manager-neoforge-26.1.2\common\build\
  REUSE Used cache of recompile in 0.00s
 *** Started working on mergeWithSources
  REUSE Used cache of mergeWithSources in 0.00s
-Total runtime: 1.56s
+Total runtime: 2.00s
 
 
 > Task :common:compileJava
@@ -43,13 +43,13 @@ Total runtime: 1.56s
 Loaded 141 artifacts from E:\Mod\maid_file_manager-neoforge-26.1.2\neoforge\build\tmp\createMinecraftArtifacts\nfrt_artifact_manifest.properties
 *** Started working on downloadManifest
   DL    https://launchermeta.mojang.com/mc/game/version_manifest_v2.json
- DONE  Completed downloadManifest in 1.27s
+ DONE  Completed downloadManifest in 1.24s
 *** Started working on downloadJson
  DONE  Completed downloadJson in 0.00s
 *** Started working on downloadClient
 *** Started working on downloadServer
- DONE  Completed downloadServer in 0.02s
  DONE  Completed downloadClient in 0.02s
+ DONE  Completed downloadServer in 0.02s
 *** Started working on preProcessJar
  REUSE Used cache of preProcessJar in 0.00s
 *** Started working on decompile
@@ -64,7 +64,7 @@ Loaded 141 artifacts from E:\Mod\maid_file_manager-neoforge-26.1.2\neoforge\buil
  REUSE Used cache of recompile in 0.00s
 *** Started working on mergeWithSources
  REUSE Used cache of mergeWithSources in 0.00s
-Total runtime: 1.97s
+Total runtime: 2.12s
 
 
 > Task :neoforge:compileJava
@@ -91,6 +91,6 @@ You can use '--warning-mode all' to show the individual deprecation warnings and
 
 For more on this, please refer to https://docs.gradle.org/9.2.0/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
 
-BUILD SUCCESSFUL in 15s
+BUILD SUCCESSFUL in 20s
 14 actionable tasks: 14 executed
 Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.2.0/userguide/configuration_cache_enabling.html

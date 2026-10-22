@@ -49,6 +49,9 @@ public final class NbtMigration {
             "MaidInventory", "MaidHideInventory", "MaidTaskInventory",
             "BackpackData", "MaidBackpackData",
             "HandItems", "ArmorItems", "HandDropChances", "ArmorDropChances",
+            // 26.1：LivingEntity 把装备统一存进 TAG_EQUIPMENT = "equipment"，
+            // 旧键已不存在；漏掉它等于给 .maid 留了注入装备的口子。
+            "equipment",
     };
 
     /** 日程/家园位置：跨版本一律删除，由导入主流程按出生点重建 */
