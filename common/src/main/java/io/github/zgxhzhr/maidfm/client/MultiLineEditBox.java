@@ -221,7 +221,13 @@ public class MultiLineEditBox extends EditBox {
      * 粘贴直接读系统剪贴板，中英文均可插入（不经过 {@link #isAllowedChar}，只有换行在单行模式下会被过滤）。
      */
     private boolean handleClipboard(int keyCode) {
-        if (true) { // 26.1 移除了 false /* 26.1 已移除 hasControlDown */，Ctrl 相关功能降级
+        // 26.1 移除了 Screen.hasControlDown()，改用 InputConstants 直接查询按键状态。
+        // 26.1：InputConstants.isKeyDown 接收 Window 对象（不是 GLFW handle）。
+        boolean ctrlDown = com.mojang.blaze3d.platform.InputConstants.isKeyDown(
+                Minecraft.getInstance().getWindow(), org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL)
+                || com.mojang.blaze3d.platform.InputConstants.isKeyDown(
+                Minecraft.getInstance().getWindow(), org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT_CONTROL);
+        if (!ctrlDown) {
             return false;
         }
         Minecraft minecraft = Minecraft.getInstance();

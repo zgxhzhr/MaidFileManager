@@ -130,7 +130,8 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     /** 顶层：一个存档（专业服务端场景为单个「当前服务器」节点） */
     private static final class WorldNode {
         final String name;
-        boolean expanded = true;
+        // 默认折叠：备份树初始只列世界节点，点开再看玩家/女仆/文件，避免一进界面就全部摊开。
+        boolean expanded = false;
         final List<OwnerNode> owners = new ArrayList<>();
 
         WorldNode(String name) {
