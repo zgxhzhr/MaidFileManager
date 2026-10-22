@@ -38,10 +38,11 @@
 
 | Loader | Minecraft 版本 | JAR 文件名 |
 |--------|---------------|-----------|
-| Forge | 1.20 / 1.20.1 | maid_file_manager-forge-1.20.1-1.6.5.jar |
-| NeoForge | 1.21 / 1.21.1 | maid_file_manager-neoforge-1.21.1-1.6.5.jar |
-| Fabric | 1.20 / 1.20.1 | maid_file_manager-fabric-1.20.1-1.6.5.jar |
-| Fabric | 1.21 / 1.21.1 | maid_file_manager-fabric-1.21.1-1.6.5.jar |
+| Forge | 1.20 / 1.20.1 | maid_file_manager-forge-1.20.1-1.7.0.jar |
+| NeoForge | 1.21 / 1.21.1 | maid_file_manager-neoforge-1.21.1-1.7.0.jar |
+| Fabric | 1.20 / 1.20.1 | maid_file_manager-fabric-1.20.1-1.7.0.jar |
+| Fabric | 1.21 / 1.21.1 | maid_file_manager-fabric-1.21.1-1.7.0.jar |
+| NeoForge | 26.1 / 26.1.2 | maid_file_manager-neoforge-26.1.2-1.7.0-snapshot.jar |
 
 > 注：自 v1.4.0 起同一大版本内的小版本合并为单一 JAR：Forge 版基于 1.20.1 构建、兼容 1.20（Forge Loader 46+）；Fabric 1.20 系与 1.21 系同理单 JAR 通吃两个小版本。NeoForge 版自 v1.4.3 起 Minecraft 依赖范围放宽为 1.21～1.22（不含），1.21 原版与 1.21.1 均可加载，实际兼容性以前置车万女仆本体对相应版本的支持为准。
 
