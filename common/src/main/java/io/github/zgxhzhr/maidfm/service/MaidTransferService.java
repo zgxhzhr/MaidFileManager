@@ -335,6 +335,10 @@ public final class MaidTransferService {
                 maid.saveAsPassenger(valueOutput);
                 fullNbt = valueOutput.buildResult();
             }
+            // 26.1 的 TLM 把好感度改为 FavorabilityManager 序列化（FavorabilityManagerCounter 是一个
+            // 按行为类型计数的 Compound）；1.20.1 / 1.21.1 读的是简单的 MaidFavorability int 字段。
+            // 这里额外写一份兼容副本，否则跨版本降到旧端时好感度会归零（数据丢失）。
+            fullNbt.putInt("MaidFavorability", maid.getFavorability());
             clearInventoryItems(fullNbt, "MaidInventory");
             clearInventoryItems(fullNbt, "MaidHideInventory");
             clearInventoryItems(fullNbt, "MaidTaskInventory");
