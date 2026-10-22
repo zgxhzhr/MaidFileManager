@@ -725,13 +725,9 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
             int dstH = Math.max(1, Math.round(photoTexH * scale));
             int dstX = photoX + (PHOTO_DISPLAY - dstW) / 2;
             int dstY = photoY + (PHOTO_DISPLAY - dstH) / 2;
-            // TODO(26.1): 照片渲染待恢复——26.1 的 Matrix3x2fStack.translate/scale 与 blit 语义已变，
-            // 需要按新 API 重写（先用灰底占位，避免影响其它界面）。
-            graphics.fill(photoX, photoY, photoX + PHOTO_DISPLAY, photoY + PHOTO_DISPLAY, 0xFF1A1815);
-            Component pending = Component.translatable("gui.maid_file_manager.profile.no_photo");
-            graphics.text(this.font, pending,
-                    photoX + (PHOTO_DISPLAY - this.font.width(pending)) / 2,
-                    photoY + PHOTO_DISPLAY / 2 - 4, SUBTEXT_COLOR, false);
+            // 26.1：blit 直接接收目标矩形（x0,y0,x1,y1）+ 归一化 UV，无需 PoseStack 变换。
+            // UV 传 0..1 覆盖整张纹理；目标矩形用 contain 后的尺寸，实现等比居中显示。
+            graphics.blit(photoRl, dstX, dstY, dstX + dstW, dstY + dstH, 0f, 1f, 0f, 1f);
         } else {
             graphics.fill(photoX, photoY, photoX + PHOTO_DISPLAY, photoY + PHOTO_DISPLAY, 0xFF141210);
             Component none = Component.translatable("gui.maid_file_manager.profile.no_photo");
