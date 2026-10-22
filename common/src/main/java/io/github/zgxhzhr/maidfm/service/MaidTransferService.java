@@ -339,6 +339,12 @@ public final class MaidTransferService {
             // 按行为类型计数的 Compound）；1.20.1 / 1.21.1 读的是简单的 MaidFavorability int 字段。
             // 这里额外写一份兼容副本，否则跨版本降到旧端时好感度会归零（数据丢失）。
             fullNbt.putInt("MaidFavorability", maid.getFavorability());
+
+            // 同理：26.1 的饰品容器是 Transfer API，键名 stacks、物品为组件格式；
+            // 1.20.1 / 1.21.1 的 TLM 读的是 Items、物品为 tag 格式。
+            // 额外写一份 1.20 风格的 Items 副本（只保留 id + 数量，组件无法反向转换），
+            // 让降级到旧端时至少保住饰品本体，而不是整栏丢失。
+            writeLegacyBaubleItems(fullNbt);
             clearInventoryItems(fullNbt, "MaidInventory");
             clearInventoryItems(fullNbt, "MaidHideInventory");
             clearInventoryItems(fullNbt, "MaidTaskInventory");
@@ -1546,6 +1552,45 @@ public final class MaidTransferService {
             return false;
         }
         return "minecraft".equals(ns) || MaidBaubleCarrierRegistry.isNamespaceCarriable(ns);
+    }
+
+    /**
+     * 为降级兼容写一份 1.20 风格的 {@code MaidBaubleInventory.Items} 副本。
+     *
+     * <p>26.1 的饰品容器是 Transfer API（键 {@code stacks}、物品为组件格式），
+     * 1.20.1 / 1.21.1 的 TLM 读 {@code Items}（物品为 tag 格式）。
+     * 组件到 tag 的反向转换 Mojang 没有提供，因此这里只保留 id + 数量，
+     * 目标端按全新物品还原——总比整栏饰品凭空消失好。
+     */
+    private static void writeLegacyBaubleItems(CompoundTag fullNbt) {
+        try {
+            CompoundTag baubles = fullNbt.getCompoundOrEmpty("MaidBaubleInventory");
+            if (baubles.isEmpty()) {
+                return;
+            }
+            ListTag stacks = baubles.getListOrEmpty("stacks");
+            if (stacks.isEmpty()) {
+                return;
+            }
+            ListTag legacy = new ListTag();
+            for (int i = 0; i < stacks.size(); i++) {
+                CompoundTag e = stacks.getCompoundOrEmpty(i);
+                String id = e.getStringOr("id", "");
+                if (id.isEmpty()) {
+                    continue;
+                }
+                CompoundTag item = new CompoundTag();
+                item.putString("id", id);
+                item.putByte("Count", (byte) Math.max(1, Math.min(64, e.getIntOr("count", 1))));
+                item.putByte("Slot", (byte) Math.min(127, i));
+                legacy.add(item);
+            }
+            if (!legacy.isEmpty()) {
+                baubles.put("Items", legacy);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 写 1.20 饰品兼容副本失败: {}", t.toString());
+        }
     }
 
     /**
