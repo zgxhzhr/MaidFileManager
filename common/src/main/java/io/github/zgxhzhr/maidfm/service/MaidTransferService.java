@@ -708,6 +708,11 @@ public final class MaidTransferService {
                     "ArmorDropChances", "equipment", "MaidBackpackData"}) {
                 migrated.remove(untrustedKey);
             }
+            // 安全：同版本 + 允许携带时饰品不抽取（交给 TLM 反序列化，避免反射回填失败），
+            // 但必须逐件校验命名空间——否则手工改造 .maid 可注入任意饰品，绕过声明制裁剪。
+            if (sameVersion && keepBaubles) {
+                sanitizeTlmBaubles(migrated);
+            }
             // 保险：26.1 早期版本导出的 .maid 可能仍带装备（当时只删了旧的 HandItems/ArmorItems）。
             // 26.1 的装备统一存在 LivingEntity.TAG_EQUIPMENT = "equipment"，导出侧已删，这里再兜一次，
             // 确保导入后不会凭空多出手持/护甲物品。
@@ -1229,6 +1234,43 @@ public final class MaidTransferService {
             c = c.getSuperclass();
         }
         return null;
+    }
+
+    /**
+     * 逐件校验 TLM 自带饰品栏（{@code MaidBaubleInventory.stacks}）里的物品。
+     *
+     * <p>26.1 起同版本导入会把这部分交给 TLM 自身反序列化（反射回填在 Transfer API 下会失败），
+     * 但那条路径绕过了声明制裁剪——必须在这里把「命名空间未声明 / 被禁用清单命中」的条目剔除，
+     * 否则手工改造的 .maid 可注入任意饰品。
+     */
+    private static void sanitizeTlmBaubles(CompoundTag migrated) {
+        CompoundTag baubles = migrated.getCompoundOrEmpty("MaidBaubleInventory");
+        if (baubles.isEmpty()) {
+            return;
+        }
+        ListTag stacks = baubles.getListOrEmpty("stacks");
+        if (stacks.isEmpty()) {
+            return;
+        }
+        ListTag kept = new ListTag();
+        int dropped = 0;
+        for (int i = 0; i < stacks.size(); i++) {
+            CompoundTag item = stacks.getCompoundOrEmpty(i);
+            String id = item.getStringOr("id", "");
+            String ns = id.contains(":") ? id.substring(0, id.indexOf(':')) : "minecraft";
+            boolean allowed = !id.isEmpty()
+                    && !MaidConfigManager.getBaubleBlockedNamespaces().contains(ns)
+                    && ("minecraft".equals(ns) || MaidBaubleCarrierRegistry.isNamespaceCarriable(ns));
+            if (allowed) {
+                kept.add(item);
+            } else {
+                dropped++;
+            }
+        }
+        if (dropped > 0) {
+            Constants.LOG.warn("[maid_file_manager] 安全过滤：剔除 {} 件未声明/被禁的 TLM 饰品", dropped);
+        }
+        baubles.put("stacks", kept);
     }
 
     /**
