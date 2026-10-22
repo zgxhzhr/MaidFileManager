@@ -470,8 +470,8 @@ public class MaidBaubleExtraBlockScreen extends Screen {
                 // 用聊天栏提示并保留窗口。
                 io.github.zgxhzhr.maidfm.Constants.LOG.warn("[maid_file_manager] 网络实现缺失，饰品禁用设置未提交服务端");
                 if (this.minecraft != null && this.minecraft.player != null) {
-                    this.minecraft.gui.setOverlayMessage(
-                            Component.translatable("gui.maid_file_manager.profile.save_failed"), false);
+                    this.minecraft.player.sendSystemMessage(
+                            Component.translatable("gui.maid_file_manager.profile.save_failed"));
                 }
                 return;
             }

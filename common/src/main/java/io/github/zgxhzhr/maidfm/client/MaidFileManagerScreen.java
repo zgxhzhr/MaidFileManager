@@ -1611,7 +1611,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 }
                 setFeedback(fb);
                 if (this.minecraft != null && this.minecraft.player != null) {
-                    this.minecraft.gui.setOverlayMessage(fb, false);
+                    this.minecraft.player.sendSystemMessage(fb);
                 }
             });
         }, "maidfm-export-writer");
@@ -1625,14 +1625,14 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         //   服务端异步结果本身就会通过聊天栏 displayClientMessage 显示（下方 L880），主界面底部黄字仅显示同步即时状态。
         if (System.currentTimeMillis() < serverExportSuppressFeedbackUntil) {
             if (this.minecraft != null && this.minecraft.player != null) {
-                this.minecraft.gui.setOverlayMessage(message, false);
+                this.minecraft.player.sendSystemMessage(message);
             }
             Constants.LOG.info("[maid_file_manager] onFeedbackReceived suppressed(serverExport async): {}", message.getString());
             return;
         }
         setFeedback(message);
         if (this.minecraft != null && this.minecraft.player != null) {
-            this.minecraft.gui.setOverlayMessage(message, false);
+            this.minecraft.player.sendSystemMessage(message);
         }
     }
 
@@ -1640,7 +1640,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     public void onImportBatchResultReceived(Component summary, List<Boolean> spawned) {
         setFeedback(summary);
         if (this.minecraft != null && this.minecraft.player != null) {
-            this.minecraft.gui.setOverlayMessage(summary, false);
+            this.minecraft.player.sendSystemMessage(summary);
         }
         if (pendingImportFileNames.isEmpty() || spawned == null || spawned.isEmpty()) {
             pendingImportFileNames.clear();

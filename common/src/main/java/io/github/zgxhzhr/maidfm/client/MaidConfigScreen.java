@@ -91,8 +91,8 @@ public class MaidConfigScreen extends Screen {
             if (sw.isAckTimedOut()) {
                 sw.rollback();
                 if (this.minecraft != null && this.minecraft.player != null) {
-                    net.minecraft.client.Minecraft.getInstance().gui.setOverlayMessage(
-                            Component.translatable("gui.maid_file_manager.profile.save_failed"), false);
+                    net.minecraft.client.Minecraft.getInstance().player.sendSystemMessage(
+                            Component.translatable("gui.maid_file_manager.profile.save_failed"));
                 }
                 Constants.LOG.warn("[maid_file_manager] 服务端配置开关回滚（未见配置同步）: key={}", sw.configKey);
             }
@@ -296,8 +296,8 @@ public class MaidConfigScreen extends Screen {
                     this.slide = this.state ? 1.0F : 0.0F;
                     Minecraft mc = Minecraft.getInstance();
                     if (mc.player != null) {
-                        mc.gui.setOverlayMessage(
-                                Component.translatable("gui.maid_file_manager.profile.save_failed"), false);
+                        mc.player.sendSystemMessage(
+                                Component.translatable("gui.maid_file_manager.profile.save_failed"));
                     }
                     }
             } else if (MaidConfigManager.KEY_ALLOW_SERVER_EXPORT.equals(this.configKey)) {
