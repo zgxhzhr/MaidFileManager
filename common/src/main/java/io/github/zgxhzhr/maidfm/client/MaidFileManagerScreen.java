@@ -601,7 +601,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private static Component keepMaidsLabel(boolean keep) {
         // 金色系：与 UI 木色/标题金色协调，醒目但不刺眼
         return Component.translatable("maid_file_manager.gui.label.keep_maids")
-                .withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD);
+                .withStyle(keep ? ChatFormatting.GOLD : ChatFormatting.GRAY, ChatFormatting.BOLD);
     }
     private void refreshSelectAllLabel() {
         if (selectAllBtn != null) selectAllBtn.setMessage(selectAllLabel(selectAllState));

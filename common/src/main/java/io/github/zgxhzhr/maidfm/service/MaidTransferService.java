@@ -666,6 +666,13 @@ public final class MaidTransferService {
             CuriosBaubleFilter.Stats curiosStats = new CuriosBaubleFilter.Stats();
             CompoundTag migrated = NbtMigration.migrate(originalNbt, sourceVersion, targetVersion, curiosStats,
                     MaidTransferService::allowCuriosItem, stripAttributes);
+            // .maid 是不可信输入（玩家可手工改造）：导出侧已剔除的容器，这里再无条件删一遍，
+            // 防注入——否则塞入 HandItems/ArmorItems/equipment/MaidBackpackData 即可凭空获得物品。
+            // 饰品不在此列：它走声明制裁剪（CuriosBaubleFilter / extractTlmData）。
+            for (String untrustedKey : new String[]{"HandItems", "ArmorItems", "HandDropChances",
+                    "ArmorDropChances", "equipment", "MaidBackpackData"}) {
+                migrated.remove(untrustedKey);
+            }
             if (!keepBaubles) {
                 // 本次导入不允许携带饰品（玩家勾了「不保留饰品」，或服务端禁用了饰品导入）。
                 // Curios 侧必须一并清空：否则该开关只挡住女仆自带饰品栏，
