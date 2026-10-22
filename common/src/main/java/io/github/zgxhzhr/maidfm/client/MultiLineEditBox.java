@@ -491,7 +491,8 @@ public class MultiLineEditBox extends EditBox {
             int barY = getY() + 1 + (int) ((double) (trackH - barH) * this.scrollLine / Math.max(1, maxScroll));
             graphics.fill(barX, barY, barX + SCROLL_W, barY + barH, BORDER_FOCUS);
         }
-        super.extractWidgetRenderState(graphics, mouseX, mouseY, partialTick);
+        // 不要调 super：EditBox.extractWidgetRenderState 会画原版白色文本框九宫格，
+        // 把我们上面的木色背景（BG）整个盖掉——四端基类没有这一层，所以只有 26.1 出现白框。
     }
 
     @Override
