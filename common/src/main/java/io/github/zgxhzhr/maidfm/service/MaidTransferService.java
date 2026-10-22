@@ -1028,6 +1028,12 @@ public final class MaidTransferService {
             // 26.1：实体反序列化改为 ValueInput（TagValueInput）
                 try (ProblemReporter.ScopedCollector reporter =
                              new ProblemReporter.ScopedCollector(maid.problemPath(), Constants.LOG)) {
+                    // 26.1：跨版本饰品重注入——必须在 load() 之前完成，否则 TLM 反序列化时看不到饰品。
+                    // 原因：跨版本路径原本靠 restoreBaubles 反射 set() 回填，而 26.1 的容器是 Transfer API，
+                    // 反射接口对不上会静默失败；改成「DFU 升级 → 重新组装 stacks → 交给 TLM」才可靠。
+                    if (!sameVersion && keepBaubles && MaidConfigManager.isBaublesAllowed()) {
+                        reinjectBaublesForCrossVersion(maid, migrated, tlmTag, sourceMojangDataVersion);
+                    }
                     maid.load(TagValueInput.create(reporter, maid.registryAccess(), migrated));
                     // 诊断：导入后立即回读实体 NBT，确认聊天记录（MaidHistoryChat）与附件是否真的恢复
                     try {
@@ -1457,6 +1463,85 @@ public final class MaidTransferService {
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] 饰品整体恢复失败（不影响女仆导入）: {}", t.toString());
         }
+    }
+
+    /**
+     * 跨版本导入时重注入饰品：把抽取出来的旧格式饰品逐件经 DFU 升级，
+     * 再序列化成当前版本的物品 NBT，组装成 {@code MaidBaubleInventory.stacks} 塞回 NBT，
+     * 由 TLM 自身的 readAdditionalSaveData 反序列化。
+     *
+     * <p>为什么不用反射回填：26.1 的饰品容器是 NeoForge Transfer API
+     * （{@code ItemStacksResourceHandler}），平台层反射 {@code set(int, ItemResource, int)}
+     * 的接口对不上，会静默失败——这正是「跨版本饰品必丢」的根因。
+     *
+     * <p>安全：逐件校验命名空间（未声明 / 命中禁用清单的直接剔除），
+     * 避免手工改造的 .maid 借此注入任意饰品。
+     */
+    private static void reinjectBaublesForCrossVersion(EntityMaid maid, CompoundTag migrated,
+                                                       CompoundTag tlmTag, int sourceMojangDataVersion) {
+        CompoundTag baubles = tlmTag.getCompoundOrEmpty("MaidBaubleInventory");
+        if (baubles.isEmpty()) {
+            return;
+        }
+        ListTag items = baubles.getListOrEmpty("Items");
+        if (items.isEmpty()) {
+            items = baubles.getListOrEmpty("stacks");
+        }
+        if (items.isEmpty()) {
+            return;
+        }
+        ListTag stacks = new ListTag();
+        int dropped = 0;
+        for (int i = 0; i < items.size(); i++) {
+            CompoundTag entry = items.getCompoundOrEmpty(i);
+            String rawId = entry.getStringOr("id", "");
+            if (!isBaubleNamespaceAllowed(rawId)) {
+                dropped++;
+                continue;
+            }
+            ItemStack stack = tryParseFullBauble(maid, entry, false, sourceMojangDataVersion);
+            CompoundTag serialized;
+            if (stack.isEmpty()) {
+                // 升级失败：退回「同 ID 的全新物品」，至少不让玩家白丢这一件
+                CompoundTag fallback = new CompoundTag();
+                fallback.putString("id", rawId);
+                fallback.putInt("count", Math.max(1, entry.getIntOr("count", 1)));
+                serialized = fallback;
+            } else {
+                serialized = Services.PLATFORM.get()
+                        .serializeItemStack(maid.level().registryAccess(), stack);
+            }
+            if (!serialized.isEmpty()) {
+                stacks.add(serialized);
+            } else {
+                dropped++;
+            }
+        }
+        if (dropped > 0) {
+            Constants.LOG.warn("[maid_file_manager] 跨版本饰品重注入：剔除 {} 件（未声明/无法解析）", dropped);
+        }
+        if (stacks.isEmpty()) {
+            return;
+        }
+        CompoundTag rebuilt = new CompoundTag();
+        rebuilt.put("stacks", stacks);
+        migrated.put("MaidBaubleInventory", rebuilt);
+        Constants.LOG.info("[maid_file_manager] 跨版本饰品已重注入 {} 件，交由 TLM 反序列化", stacks.size());
+        // 重注入成功：从 tlmTag 移除该键，让后面的 restoreBaubles 直接跳过，
+        // 否则它会再反射 set() 一次（Transfer API 下必失败，且可能覆盖已加载结果）。
+        tlmTag.remove("MaidBaubleInventory");
+    }
+
+    /** 饰品命名空间是否允许携带（声明制 + 禁用清单） */
+    private static boolean isBaubleNamespaceAllowed(String itemId) {
+        if (itemId == null || itemId.isEmpty() || !itemId.contains(":")) {
+            return false;
+        }
+        String ns = itemId.substring(0, itemId.indexOf(':'));
+        if (MaidConfigManager.getBaubleBlockedNamespaces().contains(ns)) {
+            return false;
+        }
+        return "minecraft".equals(ns) || MaidBaubleCarrierRegistry.isNamespaceCarriable(ns);
     }
 
     /**
