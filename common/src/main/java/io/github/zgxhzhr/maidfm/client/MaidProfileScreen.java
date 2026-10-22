@@ -701,12 +701,15 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         renderLabels(graphics);
         renderBaubles(graphics);
         renderFeedback(graphics);
+        // 绘制顺序：picker 打开时先画主界面控件、再画遮罩+面板，
+        // 否则 renderPicker 的全屏遮罩会被后画的 super 覆盖，两个面板会叠在一起。
         if (pickerOpen) {
+            super.extractRenderState(graphics, mouseX, mouseY, partialTick);
             renderPicker(graphics, mouseX, mouseY);
         } else {
             renderBaubleTooltip(graphics, mouseX, mouseY);
+            super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         }
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 
     /** 头像：相框装饰角 + 照片或占位文字 */
