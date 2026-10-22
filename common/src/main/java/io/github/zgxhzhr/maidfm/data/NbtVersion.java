@@ -8,6 +8,8 @@ public final class NbtVersion {
     public static final int MC_1_20_6 = 1_20_06_00;
     public static final int MC_1_21   = 1_21_00_00;
     public static final int MC_1_21_1 = 1_21_01_00;
+    /** 26.1.x（物品格式与 1.21.1 同属组件格式，单列是为了让同版本判定能命中） */
+    public static final int MC_26_1 = 26_01_00_00;
     public static final int UNKNOWN = -1;
 
     /** 1.20.1 的 Mojang 官方 DataVersion：1.20 平台据此判断源文件是否为更新的组件格式 */
@@ -17,6 +19,7 @@ public final class NbtVersion {
 
     public static int fromMcVersion(String mcVersion) {
         if (mcVersion == null || mcVersion.isEmpty()) return UNKNOWN;
+        if (mcVersion.startsWith("26.1")) return MC_26_1;   // 26.1.x
         if (mcVersion.startsWith("1.21.1")) return MC_1_21_1;
         if (mcVersion.startsWith("1.21"))   return MC_1_21;
         if (mcVersion.startsWith("1.20.5") || mcVersion.startsWith("1.20.6")) return MC_1_20_6;
@@ -41,8 +44,10 @@ public final class NbtVersion {
                 return 3837;
             case MC_1_21:
                 return 3953;
-            case MC_1_21_1:
-                return 3955;
+            
+            case MC_26_1:
+                // 26.1.2 的 Mojang DataVersion，与 1.21.1 同属组件格式（3955 之上）
+                return 4325;
             default:
                 return -1;
         }

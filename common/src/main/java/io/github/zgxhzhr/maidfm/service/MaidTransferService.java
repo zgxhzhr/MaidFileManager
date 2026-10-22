@@ -691,9 +691,17 @@ public final class MaidTransferService {
             // 仅当来源/目标版本都明确且相同时，才允许按原始 NBT 完整恢复饰品（附魔/组件）；
             // 版本未知或跨版本时，若源 Mojang DataVersion 明确且低于当前版本，经 DFU 升级后恢复；
             // 其余一律全新化（1.20 tag 结构与 1.21 components 结构互不兼容）
-            boolean sameVersion = sourceVersion != NbtVersion.UNKNOWN
-                    && targetVersion != NbtVersion.UNKNOWN
-                    && sourceVersion == targetVersion;
+            // 版本判定：优先用版本号；早期导出的 .maid 把 data_version 写成 -1（26.1 版本识别缺失），
+            // 这类文件会走「跨版本」抽走饰品再反射回填——在 Transfer API 下必然失败。
+            // 因此补字符串兜底：source_mc_version 与当前 MC 版本一致时也视为同版本。
+            String srcMcVersion = data.getSourceMcVersion();
+            String curMcVersion = io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getMcVersion();
+            boolean sameVersionByString = srcMcVersion != null && curMcVersion != null
+                    && srcMcVersion.equals(curMcVersion);
+            boolean sameVersion = sameVersionByString
+                    || (sourceVersion != NbtVersion.UNKNOWN
+                            && targetVersion != NbtVersion.UNKNOWN
+                            && sourceVersion == targetVersion);
             int sourceMojangDataVersion = NbtVersion.mojangDataVersion(sourceVersion);
             // migrate 返回清理后的副本，不修改原始 data。
             // 旧版本导出的 .maid 文件可能仍带着不该携带的 Curios 饰品：下面把裁剪统计取出，
@@ -1297,7 +1305,11 @@ public final class MaidTransferService {
             return;
         }
         try {
+            // 1.20/1.21 的 TLM 用 "Items"；26.1 改为 Transfer API 容器，键名是 "stacks"。两种都认。
             ListTag items = tlmData.getCompoundOrEmpty("MaidBaubleInventory").getListOrEmpty("Items");
+            if (items.isEmpty()) {
+                items = tlmData.getCompoundOrEmpty("MaidBaubleInventory").getListOrEmpty("stacks");
+            }
             if (items.isEmpty()) {
                 return;
             }
