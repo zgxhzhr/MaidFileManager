@@ -266,7 +266,7 @@ EntityEvents.spawned('touhou_little_maid:maid', event => {
 - **协议维护性**：NeoForge 侧 23 处硬编码注册 ID 全部改为引用 `MaidFilePackets.ID_*` 常量；补齐 common 缺失的 `ID_SET_SERVER_BAUBLE_BLOCKED_LIST`；旧版单发协议的 3 个死通道（`export_maid` / `import_file` / `export_result`）在常量处标注为「兼容保留」。
 - **协议版本 `PROTOCOL_VERSION` 升到 `"2"`**：`server_config_sync` 包追加了 `baubleWhitelistEnforced` 字段（修复「整合包配置解析失败时服务端全拒绝、客户端却显示可放行」的判定相反问题）。因此 **1.6.3 与 1.6.4 之间远程联机互拒**；单人世界不受影响，`.maid` 文件格式仍为 v7、两版本之间可互相导入导出。
 - **NeoForge 端协议校验变更**：1.6.4 起 NeoForge 的 `registrar` 使用 `PROTOCOL_VERSION` 而非 1.6.3 里的 modid 字符串，同样导致 1.6.3 ↔ 1.6.4 在 NeoForge 端无法互连。
-- **背景音乐更换为《与酒狐的旅行》**（BuShanDang，4:06，80 BPM，4/4，A 小调 → C 大调；作曲/作词 李熙禹，母带 −14.0 LUFS）：替换 1.6.3 的旧曲目。仍是**保留所有权利**的原创作品（(C) 2026 李熙禹 / 逐光星火-执火人），不适用 MIT 许可证，仅可随本模组原样分发，不得单独提取使用（详见《音乐版权声明》）。客户端音量配置 `ui_music_volume` 行为不变，默认 0.15。
+- **背景音乐更换为《与酒狐的旅行》**（BuShanDang，4:06，80 BPM，4/4，A 小调 → C 大调；作曲/作词 逐光星火-执火人，母带 −14.0 LUFS）：替换 1.6.3 的旧曲目。仍是**保留所有权利**的原创作品（(C) 2026 逐光星火-执火人），不适用 MIT 许可证，仅可随本模组原样分发，不得单独提取使用（详见《音乐版权声明》）。客户端音量配置 `ui_music_volume` 行为不变，默认 0.15。
 兼容性：`.maid` 格式仍为 v7，旧文件照常导入；数据迁移 SPI 签名未变，附属模组无需重新构建。
 #### 修复明细总览（七轮独立审查）
 
