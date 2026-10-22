@@ -1,0 +1,10 @@
+{
+  "ui_music": {
+    "sounds": [
+      {
+        "name": "maid_file_manager:ui_music",
+        "stream": true
+      }
+    ]
+  }
+}
