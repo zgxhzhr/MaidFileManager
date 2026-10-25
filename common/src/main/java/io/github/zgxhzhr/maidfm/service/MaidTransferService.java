@@ -773,13 +773,9 @@ public final class MaidTransferService {
         }
 
         // 好感度保护网：当前为 0 而源数据 >0 时，用公开 API 强制恢复。
-        //
-        // 但只在源文件没有 FavorabilityManagerCounter 时才信任 MaidFavorability 这个兼容副本：
-        // 26.1 自己导出的 .maid 一定带 FavorabilityManagerCounter，TLM 本就能从中恢复好感度；
-        // 此时若还拿可被手工篡改的 int 兜底，等于给 .maid 开了改好感度的口子。
-        boolean trustCompatFavorability = !originalNbt.contains("FavorabilityManagerCounter");
+        // 不做版本/来源区分：好感度不是可交易资源，保住数值比防篡改更重要。
         try {
-            if (trustCompatFavorability && maid.getFavorability() == 0 && sourceFavorability > 0) {
+            if (maid.getFavorability() == 0 && sourceFavorability > 0) {
                 Constants.LOG.warn("[maid_file_manager] 好感度加载后为 0，按源数据恢复为 {}", sourceFavorability);
                 maid.setFavorability(sourceFavorability);
             }
