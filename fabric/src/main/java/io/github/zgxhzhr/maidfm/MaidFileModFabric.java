@@ -32,6 +32,9 @@ public class MaidFileModFabric implements ModInitializer {
         IMaidFileNetwork.Holder.set(new FabricNetwork());
         Constants.LOG.info("[maid_file_manager] Platform & Network services registered");
 
+        // 实体 attachment 必须在初始化窗口内登记（档案与导入标记都存在这里）
+        io.github.zgxhzhr.maidfm.platform.FabricMaidData.bootstrap();
+
         // 负载类型与服务端接收器（客户端接收器在 ClientModInitializer 里挂）
         FabricPayloadRegistration.registerTypes();
         FabricPayloadRegistration.registerServerReceivers();

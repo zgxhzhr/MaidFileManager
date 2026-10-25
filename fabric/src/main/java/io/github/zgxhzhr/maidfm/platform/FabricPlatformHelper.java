@@ -239,26 +239,63 @@ public class FabricPlatformHelper implements IPlatformHelper {
 
     // ===== 女仆档案（走 TLM 的 profile 字段，与加载器无关） =====
 
+    // ===== 档案与导入标记（实体 attachment，等价于 NeoForge 的 getPersistentData） =====
+
+    private static CompoundTag entityData(Entity entity) {
+        return entity.getAttachedOrCreate(FabricMaidData.DATA).copy();
+    }
+
+    private static void setEntityData(Entity entity, CompoundTag tag) {
+        entity.setAttached(FabricMaidData.DATA, tag);
+    }
+
     @Override
     public CompoundTag readMaidProfile(Entity entity) {
-        // 档案由本模组自己的 MaidProfileService 维护，平台层只做空实现占位；
-        // 真正的读写走 common 层的 MaidProfile / NBT，不依赖加载器。
-        return new CompoundTag();
+        try {
+            CompoundTag data = entity.getAttachedOrCreate(FabricMaidData.DATA);
+            if (data.contains(Constants.PROFILE_NBT_KEY)) {
+                return data.getCompoundOrEmpty(Constants.PROFILE_NBT_KEY);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Fabric readMaidProfile 失败: {}", t.toString());
+        }
+        return null;
     }
 
     @Override
     public void writeMaidProfile(Entity entity, CompoundTag tag) {
-        // 同上：common 层直接写实体 NBT，无需平台介入。
+        try {
+            CompoundTag data = entityData(entity);
+            if (tag == null) {
+                data.remove(Constants.PROFILE_NBT_KEY);
+            } else {
+                data.put(Constants.PROFILE_NBT_KEY, tag);
+            }
+            setEntityData(entity, data);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Fabric writeMaidProfile 失败: {}", t.toString());
+        }
     }
 
     @Override
     public void markMaidImported(Entity entity) {
-        // 导入标记由 common 层用 persistent data 或自定义 NBT 键实现，平台层不介入。
+        try {
+            CompoundTag data = entityData(entity);
+            data.putBoolean(Constants.IMPORTED_NBT_KEY, true);
+            setEntityData(entity, data);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] Fabric markMaidImported 失败: {}", t.toString());
+        }
     }
 
     @Override
     public boolean isMaidImported(Entity entity) {
-        return false;
+        try {
+            return entity.getAttachedOrCreate(FabricMaidData.DATA)
+                    .getBooleanOr(Constants.IMPORTED_NBT_KEY, false);
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     /** 反射取 TLM 的饰品容器（NeoForge / Fabric 方法名一致，多候选兜底） */
