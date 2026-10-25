@@ -11,7 +11,7 @@ import net.minecraft.client.KeyMapping;
  */
 public final class MaidFileKeyMappings {
     /** 主分类（与原版按键一致），便于玩家在控制设置中查找 */
-    public static final KeyMapping.Category CATEGORY = new KeyMapping.Category(net.minecraft.resources.Identifier.fromNamespaceAndPath(Constants.MOD_ID, "main"));
+    public static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(net.minecraft.resources.Identifier.fromNamespaceAndPath(Constants.MOD_ID, "main"));
 
     /** 打开女仆档案管理界面 */
     public static final KeyMapping OPEN_MANAGER = new KeyMapping(
