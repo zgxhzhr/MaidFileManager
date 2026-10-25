@@ -13,3 +13,7 @@ libs/*.jar
 # Fabric Loom
 run/
 remappedSrc/
+
+# 内部移植笔记（不入库）
+PORTING-*.md
+FABRIC-PORTING.md
