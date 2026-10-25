@@ -133,8 +133,36 @@ cd E:\Mod\maid_file_manager-fabric-26.1.2
    - `touhoulittlemaid-fabric-1.0.0-neo2.0.0+mc26.1.2.jar`（23.1 MB，2,458 个 `.class`）← 正确的
 3. TLM Fabric 的包名与 NeoForge 版**完全一致**（`com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid`），所以 common 层不用改 import。
 
-## 七、待办
+## 七、测试实例（已建）
 
-- [ ] 实机验证（需 Fabric 26.1.2 实例 + Fabric API + TLM Fabric + 本 jar）
-- [ ] 服务端冒烟测试（`gradlew :fabric:runServer`，验证客户端类没泄漏）
-- [ ] 与 neoforge-26.1.2 的行为对齐验证（饰品、好感度、AI 聊天、备份）
+```
+I:\PCL\.minecraft\versions\26.1.2-Fabric测试\
+  26.1.2-Fabric测试.json      132 个库（124 原版 + 8 fabric/asm）
+  26.1.2-Fabric测试.jar       36.3 MB（原版 26.1.2 客户端）
+  mods\
+    touhoulittlemaid-fabric-1.0.0-neo2.0.0+mc26.1.2.jar   23.1 MB
+    maid_file_manager-fabric-26.1.2-1.7.0-snapshot.jar     3.9 MB
+    fabric-api-0.149.1+26.1.2.jar                          2.4 MB
+```
+
+构建方式（PCL 里新建版本太慢，这里手工组装）：
+1. 从 `26.1.2-NeoForge测试.json` 取原版 124 个库，过滤掉 `neoforge|minecraftforge|net.neoforged|cpw.mods`
+2. 从 `1.21.1-Fabric 0.19.5.json` 取 `net.fabricmc*` 与 `org.ow2.asm*` 共 8 个，`intermediary:1.21.1` 改为 `26.1.2`
+3. `mainClass` 改为 `net.fabricmc.loader.impl.launch.knot.KnotClient`，`arguments` 去掉 `--fml.*` / DFML 参数
+4. 另需下载 `intermediary-26.1.2.jar`（已放到 `libraries/net/fabricmc/intermediary/26.1.2/`）与 `fabric-api-0.149.1+26.1.2.jar`
+
+## 八、静态验证结果
+
+用 `javap` 检查字节码常量池（专用服务器最怕客户端类泄漏）：
+
+| 类 | `net/minecraft/client/` 引用数 |
+|---|---|
+| `MaidFileModFabric`（主入口） | **0** ✅ |
+| `FabricPayloadRegistration`（服务端注册） | **0** ✅ |
+| `FabricClientPayloadRegistration`（客户端注册） | 0（客户端类经 `Minecraft` FQN 引用，不在 `net/minecraft/client/` 前缀统计内，需实际启动验证） |
+
+## 九、待办
+
+- [ ] **实机启动验证**（启动 `26.1.2-Fabric测试`，看是否正常进游戏 + 模组加载成功）
+- [ ] 与 neoforge-26.1.2 的行为对齐验证（饰品、好感度、AI 聊天、备份、GUI）
+- [ ] `gradlew :fabric:runServer` 专用服务器冒烟（验证无客户端类泄漏）
