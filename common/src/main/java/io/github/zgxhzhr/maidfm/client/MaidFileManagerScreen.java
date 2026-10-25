@@ -2608,7 +2608,8 @@ setScrollAmount(0);
             // 关键：此时 maidOwnerByEntityId 还是空的（列表要等服务端回包才有），
             // 立刻全选+导出会全部落到空玩家名 → 服务端查不到玩家 → 导出 0 条。
             // 因此只置标志并重新拉列表，真正的全选+导出由 onServerExportListReceived 触发。
-            parent.pendingServerExport = true;
+            // 不再置 pendingServerExport：确认只负责进入统一导出面板，
+            // 真正的导出由用户在列表里勾选后点「通过服务端导出选中女仆」触发。
             // 接上反馈抑制窗口（P2-26）：该字段原先只在声明与 toggle 两处置 0、从未赋正值，
             // 于是 onFeedbackReceived 里「异步期间只写聊天栏、不覆盖底部黄字」的分支是死的，
             // 服务端异步回执仍会盖掉主界面刚显示的「请求已发送」。15 秒后自动失效。
