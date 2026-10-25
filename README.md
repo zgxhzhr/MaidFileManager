@@ -1,8 +1,9 @@
-# Maid File Manager — Minecraft 26.1.2 (NeoForge)
+# Maid File Manager — Minecraft 26.1.2 (Fabric)
 
 > **状态：Snapshot 测试（`1.7.0-snapshot`）**
 > TLM（车万女仆）26.1.2 目前发布的是 snapshot 版本，本端随之标记为 snapshot。
 > 1.20.1 / 1.21.1 的四个工程与本工程**互不影响**，版本号也不共用。
+> 26.1.2 的 NeoForge 端（`maid_file_manager-neoforge-26.1.2`）与本工程共享同一份 common 代码。
 
 女仆档案管理：把车万女仆的自动备份导出为 `.maid` 文件，并可跨存档 / 跨服务器导入。
 
@@ -11,20 +12,21 @@
 | 项 | 值 |
 |---|---|
 | Minecraft | 26.1.2 |
-| NeoForge | 26.1.2.7-beta |
+| Fabric Loader | 0.19.2 |
+| Fabric API | 0.149.1+26.1.2 |
 | Java | 25（Gradle toolchain） |
-| Gradle | 9.2.0 |
+| Loom | 1.16-SNAPSHOT |
 | 前置 | 车万女仆（Touhou Little Maid）26.1.2 snapshot |
 
 ## 构建
 
 ```powershell
-.\gradlew.bat :neoforge:build --offline --no-daemon
+.\gradlew.bat :fabric:build --offline --no-daemon
 ```
 
-产物：`neoforge/build/libs/maid_file_manager-neoforge-26.1.2-1.7.0-snapshot.jar`
+产物：`fabric/build/libs/maid_file_manager-fabric-26.1.2-1.7.0-snapshot.jar`
 
-依赖已缓存在本机 Gradle 仓库，可离线构建。TLM 编译期依赖为 `libs/touhoulittlemaid-26.1.2-neoforge.jar`
+依赖已缓存在本机 Gradle 仓库，可离线构建。TLM 编译期依赖为 `libs/touhoulittlemaid-fabric-26.1.2.jar`
 （`compileOnly`，不打进产物；运行期由 TLM 本体提供）。`libs/` 不入库（22MB）。
 
 构建期会自动执行 `verifyAssets`：资源 JSON 严格性 / `PROTOCOL_VERSION` / 通道 ID 唯一性 /
@@ -63,7 +65,7 @@
 | `maid_file_manager-fabric-1.20.1` | 1.20.1 | Fabric | 1.7.0 |
 | `maid_file_manager-neoforge-1.21.1` | 1.21.1 | NeoForge | 1.7.0 |
 | `maid_file_manager-fabric-1.21.1` | 1.21.1 | Fabric | 1.7.0 |
-| **本工程** | **26.1.2** | **NeoForge** | **1.7.0-snapshot** |
+| **本工程** | **26.1.2** | **Fabric** | **1.7.0-snapshot** |
 
 ## 许可
 

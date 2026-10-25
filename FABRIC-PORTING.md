@@ -1,0 +1,140 @@
+# 26.1.2 Fabric 移植笔记（v1.7.0-snapshot）
+
+> 本工程从 `maid_file_manager-neoforge-26.1.2` 复制而来，MC 版本完全相同（26.1.2）。
+> 因此**所有与加载器无关的 26.1 API 适配都是原样复用的**，本文只记录 Fabric 专有的差异。
+> NeoForge 侧的完整踩坑记录见 `PORTING-26.1.md`（保留未改，作历史参考）。
+
+## 一、工程基线
+
+| 项 | 值 |
+|---|---|
+| Minecraft | 26.1.2 |
+| Fabric Loader | 0.19.2 |
+| Fabric API | 0.149.1+26.1.2 |
+| Loom | 1.16-SNAPSHOT |
+| JDK | 25 |
+| TLM 依赖 | `libs/touhoulittlemaid-fabric-26.1.2.jar`（compileOnly，来自 `E:\Mod\TouhouLittleMaid-Orihime-26.1`） |
+
+## 二、复用了什么（一行没改）
+
+`common/` 下的 **43 个文件 / 约 17,000 行**全部原样通过编译，包括：
+
+- `client/` 12 个 GUI 文件（`GuiGraphicsExtractor` / `extractRenderState` / `extractContent` 那一整套 26.1 迁移）
+- `data/`（`MaidFileData` / `NbtMigration` / `CuriosBaubleFilter` / `NbtVersion`）
+- `service/`（`MaidTransferService` 约 1,700 行 / `MaidBackupService` / `MaidProfileService`）
+- `config/` / `network/` 的加载器无关部分（`IMaidFileNetwork` / `MaidFilePackets` / `ChunkedUploadAssembler`）
+
+**结论**：26.1 的 API 迁移（GUI 渲染模型、NBT getter Optional 化、`Identifier` 重命名等）是 MC 层面的，与加载器无关。第二个 26.1 平台只需要写 **8 个文件 / 约 2,270 行**适配层。
+
+## 三、Fabric 专有的 5 处 API 差异
+
+### 1. 负载注册方法名（最容易踩）
+
+```java
+// ❌ 旧版 Fabric API
+PayloadTypeRegistry.playC2S().register(type, codec);
+PayloadTypeRegistry.playS2C().register(type, codec);
+
+// ✅ 26.1 的 Fabric API 0.149.1
+PayloadTypeRegistry.serverboundPlay().register(type, codec);
+PayloadTypeRegistry.clientboundPlay().register(type, codec);
+```
+
+**验证方式**：直接看 TLM 自己的 `NetworkHandler.java`（同一套 Fabric API），比猜 API 快得多。
+
+### 2. 服务端/客户端入口必须物理分离
+
+```
+FabricPayloadRegistration       ← 服务端：PayloadTypeRegistry + ServerPlayNetworking
+FabricClientPayloadRegistration ← 客户端：ClientPlayNetworking（引用 Minecraft / client 类）
+MaidFileModFabric               ← ModInitializer（main 入口）
+MaidFileClientFabric            ← ClientModInitializer（client 入口）
+```
+
+**混在一起会让专用服务器在类加载阶段崩**（`NoClassDefFoundError: net/minecraft/client/Minecraft`）。
+NeoForge 用 `@Mod(dist = Dist.CLIENT)` 隔离，Fabric 用双入口 + 双 `fabric.mod.json` entrypoint 隔离。
+
+### 3. 饰品容器换成了 Fabric Transfer API
+
+| | NeoForge | Fabric |
+|---|---|---|
+| 容器类 | `net.neoforged.neoforge.items.ItemStackHandler` | `cn.sh1rocu.touhoulittlemaid.util.transfer.ItemStacksResourceHandler`（TLM 的 shim，基于 `net.fabricmc.fabric.api.transfer.v1`） |
+| 资源类型 | `ItemResource` | `ItemVariant` |
+| 槽位写入 | `set(slot, resource, amount)` | `set(slot, variant, amount, TransactionContext)` ← **必须开事务** |
+| 槽位读取 | `getResource(slot).value()` → `Item` → `new ItemStack(item, amount)` | `getResource(slot)` + `getAmountAsInt(slot)` → **`ItemVariant.toStack(int)`** |
+
+**Fabric 侧反而更好**：`ItemVariant.toStack(int)` 会带上完整数据组件，而 NeoForge 侧按 `Item` 重建会丢附魔/耐久。
+
+事务写法：
+
+```java
+Object tx = txCls.getMethod("openOuter").invoke(null);
+try {
+    handler.getClass().getMethod("set", int.class, variantCls, int.class, txCls)
+            .invoke(handler, slot, variant, amount, tx);
+    txCls.getMethod("commit").invoke(tx);
+} finally {
+    txCls.getMethod("close").invoke(tx);
+}
+```
+
+### 4. `PayloadCtx` 抽象（免去写两份 handle）
+
+NeoForge 的 `IPayloadContext` 在 C2S 与 S2C 共用一套接口（`player()` 返回 `Player`）。Fabric 的接收器签名不同，且 C2S 的 player 恒为 `ServerPlayer`。
+
+做法：在 `network/PayloadCtx.java` 定义一个最小接口（`player()` + 默认直跑的 `enqueueWork`），这样：
+
+- `MaidFilePayloads.java` 里的 26 个 `handle(PayloadCtx)` **一行没改**
+- 只在注册处分别构造 `ServerCtx`（包装 `ctx.player()`）与 `ClientCtx`（从 `Minecraft.getInstance().player` 取）
+
+### 5. `IMaidFileNetwork.set()` 在内部类里
+
+```java
+IMaidFileNetwork.set(new FabricNetwork());          // ❌ 找不到符号
+IMaidFileNetwork.Holder.set(new FabricNetwork());   // ✅
+```
+
+## 四、DFU 物品升级的泛型坑（两平台相同）
+
+```java
+Dynamic<?> upgraded = DataFixers.getDataFixer().update(...);
+// ❌ 直接传 Dynamic 给 CODEC：类型推断失败
+// ✅ 取出底层 CompoundTag 再解析
+if (upgraded.getValue() instanceof CompoundTag tag) {
+    return ItemStack.CODEC.parse(RegistryOps.create(NbtOps.INSTANCE, registries), tag)
+            .result().orElse(ItemStack.EMPTY);
+}
+```
+
+## 五、构建
+
+```powershell
+$env:JAVA_HOME='D:\Program Files\Java\jdk-25'
+cd E:\Mod\maid_file_manager-fabric-26.1.2
+
+# 代理参数必须逐个加引号，否则 Gradle 会把它当任务名
+.\gradlew.bat :fabric:build --console=plain `
+    "-Dhttp.proxyHost=127.0.0.1" "-Dhttp.proxyPort=10808" `
+    "-Dhttps.proxyHost=127.0.0.1" "-Dhttps.proxyPort=10808"
+```
+
+产物：`fabric/build/libs/maid_file_manager-fabric-26.1.2-1.7.0-snapshot.jar`（约 3.86 MB）
+
+## 六、TLM 依赖的三个坑
+
+1. **必须构建 TLM Fabric 本体**才能拿到 jar：
+   ```powershell
+   cd E:\Mod\TouhouLittleMaid-Orihime-26.1
+   $env:JAVA_HOME='D:\Program Files\Java\jdk-25'
+   .\gradlew.bat build -x test --console=plain "-Dhttp.proxyHost=..." ...
+   ```
+2. **`build/libs/` 里有两个 jar，必须拿 `-sources.jar` 之外的那个**：
+   - `touhoulittlemaid-fabric-1.0.0-neo2.0.0+mc26.1.2-sources.jar`（20.4 MB，1,642 个 `.java`，**0 个 `.class`**）← 拿错会报 70 个「EntityMaid 找不到」
+   - `touhoulittlemaid-fabric-1.0.0-neo2.0.0+mc26.1.2.jar`（23.1 MB，2,458 个 `.class`）← 正确的
+3. TLM Fabric 的包名与 NeoForge 版**完全一致**（`com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid`），所以 common 层不用改 import。
+
+## 七、待办
+
+- [ ] 实机验证（需 Fabric 26.1.2 实例 + Fabric API + TLM Fabric + 本 jar）
+- [ ] 服务端冒烟测试（`gradlew :fabric:runServer`，验证客户端类没泄漏）
+- [ ] 与 neoforge-26.1.2 的行为对齐验证（饰品、好感度、AI 聊天、备份）
