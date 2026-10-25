@@ -335,6 +335,16 @@ public final class MaidTransferService {
                 maid.saveAsPassenger(valueOutput);
                 fullNbt = valueOutput.buildResult();
             }
+            // 诊断：26.1 的 TLM 把背包/饰品/AI 聊天等数据存在实体 attachment 里
+            // （序列化后落在 neoforge:attachments 下）。这里显式检查一次，
+            // 缺失说明 AttachmentHolder 那条链路没被触发，届时跨版本会连带丢背包与饰品。
+            if (!fullNbt.contains("neoforge:attachments")) {
+                Constants.LOG.warn("[maid_file_manager] 导出告警：{} 的 NBT 里没有 neoforge:attachments，"
+                        + "attachment 数据（背包类型/等级等）可能未随 .maid 带出", maid.getUUID());
+            } else {
+                Constants.LOG.info("[maid_file_manager] 导出诊断：attachment 已带上，子键={}",
+                        fullNbt.getCompoundOrEmpty("neoforge:attachments").keySet());
+            }
             // 26.1 的 TLM 把好感度改为 FavorabilityManager 序列化（FavorabilityManagerCounter 是一个
             // 按行为类型计数的 Compound）；1.20.1 / 1.21.1 读的是简单的 MaidFavorability int 字段。
             // 这里额外写一份兼容副本，否则跨版本降到旧端时好感度会归零（数据丢失）。
