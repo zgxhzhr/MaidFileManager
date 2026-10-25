@@ -591,8 +591,14 @@ public final class MaidTransferService {
         // 导出侧只允许本人导出（isOwnedBy / ownerUUID 精确匹配），导入侧再显式校验一次，
         // 避免手工构造或转交的文件把别人的女仆搬进本世界。未驯服档案（无 owner）放行。
         String fileOwnerUuid = data.getOwnerUuid();
-        if (fileOwnerUuid != null && !fileOwnerUuid.isEmpty()
-                && !fileOwnerUuid.equals(player.getUUID().toString())) {
+        if (fileOwnerUuid == null || fileOwnerUuid.isEmpty()) {
+            // 无主女仆无法做归属校验：设计上 .maid 的 owner_uuid 是必选字段，
+            // 缺失说明文件被手工裁剪或来自更早的格式，一律拒绝（曾放行，与导入策略不符）。
+            Constants.LOG.info("[maid_file_manager] 导入被拒绝: 档案缺少 owner_uuid，无法校验归属");
+            return ImportResult.failed(Component.translatable(
+                    "maid_file_manager.import.fail.not_your_maid"));
+        }
+        if (!fileOwnerUuid.equals(player.getUUID().toString())) {
             // 闸门 3 只比 UUID（**用户决议：不做名字兜底**）。UUID 不同必然拒绝。
             // 常见成因：在线模式导出（正版 v4 UUID）→ 离线服导入（v3 离线 UUID），
             // 或反向。这属于服务器 online-mode 配置问题，不是模组缺陷；
