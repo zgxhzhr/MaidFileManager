@@ -68,3 +68,19 @@
 ## 许可
 
 代码与文档为 MIT（见 `LICENSE`），但随包曲目 `ui_music.ogg` 为保留所有权利，见 `NOTICE`。
+## `.maid` 格式兼容字段（26.1 端独有）
+
+26.1 的 TLM 换了两个存储格式，为了让 `.maid` 能**降级**到 1.20.1 / 1.21.1，导出时会额外写两份兼容副本：
+
+| 字段 | 位置 | 作用 | 旧端如何用 |
+|---|---|---|---|
+| `MaidFavorability`（int） | `data` 内 | 好感度数值副本 | 1.20.1 / 1.21.1 的 TLM 直接读这个 int 字段 |
+| `MaidBaubleInventory.Items`（List） | `data` 内 | 1.20 风格饰品副本，只含 `id` + `Count` | 旧端 TLM 用 `Items` 键恢复饰品（无附魔） |
+
+**为什么不升 `format_version`**：这两个字段是加在 `data`（实体 NBT）**内部**的额外键，不是文件结构变化；旧端读到未知键会忽略，不会报错。`format_version` 仍为 `7`。
+
+**安全边界**：`MaidFavorability` 是可被手工篡改的 int。导入时**只在源文件没有 `FavorabilityManagerCounter` 时**才用它兜底（即真正的跨版本 / 旧端导出文件）；26.1 自己导出的文件一定带 `FavorabilityManagerCounter`，TLM 从该结构恢复好感度，此时不信任这个 int 副本。
+
+**降级损失**：饰品的**附魔 / 耐久 / 自定义组件无法反向转换**（Mojang DFU 只升不降），所以 `Items` 副本只保留 `id` + `Count` —— 降级后饰品会以全新物品出现，而不是整栏消失。
+
+**升级方向无影响**：1.20.1 / 1.21.1 导出的 `.maid` 本来就有 `MaidFavorability` 与 `Items`，26.1 导入走 DFU 升级，不依赖这两个副本。
