@@ -180,7 +180,36 @@ public final class MaidBackupService {
                     }
                     // 同一女仆的多个备份按文件名倒序：新备份（时间戳更大）排在最前
                     names.sort(Comparator.reverseOrder());
-                    maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, nameByMaid.get(maidUuid), names));
+                    // 名字：index.dat 的 Name 通常只是 TLM 的默认名（「小女仆」），单看它无法区分
+                    // 是哪只女仆。这里额外读该女仆最新一份备份的 model_id 拿模型名，
+                    // 自定义名存在时显示「自定义名 (模型名)」，不存在时直接用模型名。
+                    String customName = nameByMaid.get(maidUuid);
+                    String modelName = "";
+                    try {
+                        java.io.File latest = new java.io.File(maidDir, names.get(0));
+                        CompoundTag latestTag = MaidFileIo.readCompressedNbt(latest.toPath());
+                        if (latestTag != null) {
+                            String modelId = readModelIdTag(latestTag);
+                            if (modelId.isEmpty()) {
+                                modelId = latestTag.getStringOr("ModelId", "");
+                            }
+                            if (!modelId.isEmpty()) {
+                                modelName = MaidTransferService.getDisplayName(modelId);
+                            }
+                        }
+                    } catch (Throwable t) {
+                        // 单个备份读不出模型名不该让整个列表失败
+                        Constants.LOG.debug("[maid_file_manager] 备份模型名解析失败: {}", t.toString());
+                    }
+                    String shownName;
+                    if (customName == null || customName.isEmpty()) {
+                        shownName = modelName;
+                    } else if (modelName.isEmpty() || modelName.equals(customName)) {
+                        shownName = customName;
+                    } else {
+                        shownName = customName + " (" + modelName + ")";
+                    }
+                    maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, shownName, names));
                 }
             }
             maids.sort(Comparator.comparing(IMaidFileNetwork.BackupMaid::maidUuid));

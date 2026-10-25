@@ -81,7 +81,34 @@ public final class ModelNames {
                 return zh;
             }
         }
-        // 翻译键形态：含 '.' 且不含命名空间分隔符（模型 ID 用 ':' 分隔）
+        // 纯模型 path（如 winefox_new_year，既无命名空间也无 '.'）：档案界面的 displayName
+        // 传的就是这种形态，旧逻辑会原样返回裸 ID。按 26.1 的 geckolib 与旧版
+        // touhou_little_maid 两个命名空间各查一次。
+        if (raw.indexOf(':') < 0 && raw.indexOf('.') < 0) {
+            if (isZhLikeLanguage()) {
+                ensureModelNameTables();
+                String zh = lookupZh(modelNameKeys("geckolib", raw));
+                if (zh == null || zh.isEmpty()) {
+                    zh = lookupZh(modelNameKeys("touhou_little_maid", raw));
+                }
+                if (zh != null && !zh.isEmpty()) {
+                    return zh;
+                }
+            }
+            for (String key : new String[]{
+                    "model.geckolib." + raw + ".name",
+                    "model.touhou_little_maid." + raw + ".name"
+            }) {
+                try {
+                    String translated = Component.translatable(key).getString();
+                    if (translated != null && !translated.isEmpty() && !translated.equals(key)) {
+                        return translated;
+                    }
+                } catch (Throwable ignored) {
+                    // 继续下一个候选
+                }
+            }
+        }        // 翻译键形态：含 '.' 且不含命名空间分隔符（模型 ID 用 ':' 分隔）
         if (raw.indexOf('.') >= 0 && raw.indexOf(':') < 0) {
             try {
                 String translated = Component.translatable(raw).getString();
