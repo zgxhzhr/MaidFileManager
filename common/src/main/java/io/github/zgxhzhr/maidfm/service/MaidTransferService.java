@@ -1,5 +1,6 @@
 package io.github.zgxhzhr.maidfm.service;
 
+import io.github.zgxhzhr.maidfm.data.MaidFileIo;
 import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.ImportResult;
@@ -38,6 +39,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -630,8 +633,8 @@ public final class MaidTransferService {
         // （导出时不保留）/ 区块未加载 / 收入魂符时均不拦截，导入正常进行。
         // 无法解析源 UUID 的极早期文件退回 new EntityMaid 的随机 UUID，不影响导入。
         UUID sourceMaidUuid = resolveSourceMaidUuid(data, originalNbt);
-        UUID mappedEntityUuid = sourceMaidUuid != null
-                ? mapImportUuid(sourceMaidUuid, player.getUUID()) : null;
+        // 四层解析：幂等记录 → 默认保留原 UUID → 冲突派生 → 派生时迁移备份。
+        UUID mappedEntityUuid = resolveImportUuid(player, sourceMaidUuid);
 
         // 双胞胎拦截（针对"保留原女仆导出、再把同一文件导回同一世界"）：
         // 源 UUID 女仆在本世界仍存活（已加载实体；或虽不在已加载区块/已收入魂符但 MaidWorldData
@@ -1674,6 +1677,142 @@ public final class MaidTransferService {
      * <p>使用 JDK 内置的 v3(MD5) 名字 UUID：固定命名前缀隔离用途，输出带版本/变体位，
      * 与原版随机 v4 实体 UUID 不会发生有意义的碰撞。该函数纯函数、无存储，故不存在映射累积问题。
      */
+    /**
+     * 解析导入实体的 UUID（四层，默认保留原 UUID）。
+     *
+     * <ol>
+     *   <li><b>幂等记录</b>：同一份文件在同一存档导入过时复用当时的结果，不再生成第二只；</li>
+     *   <li><b>默认保留原 UUID</b>：目标世界没有占用就沿用源女仆 UUID——玩家认的是这个；</li>
+     *   <li><b>冲突才派生</b>：原 UUID 已被别的实体占用时，按「源 UUID + 玩家 UUID」派生新 UUID 作兜底；</li>
+     *   <li><b>备份迁移</b>：派生时把 TLM 自动备份从旧 UUID 目录迁到新 UUID 目录，否则备份管理里看不到这只。</li>
+     * </ol>
+     *
+     * <p>返回 null 表示源文件没有可用的源 UUID（极早期格式），调用方沿用构造器随机 UUID。
+     */
+    private static UUID resolveImportUuid(ServerPlayer player, UUID sourceMaidUuid) {
+        if (sourceMaidUuid == null) {
+            return null;
+        }
+        MinecraftServer server = player.level().getServer();
+        UUID recorded = ArchiveImportMap.lookup(server, sourceMaidUuid, player.getUUID());
+        if (recorded != null) {
+            return recorded;
+        }
+        if (!isUuidOccupied(server, sourceMaidUuid)) {
+            ArchiveImportMap.record(server, sourceMaidUuid, player.getUUID(), sourceMaidUuid);
+            return sourceMaidUuid;
+        }
+        UUID derived = mapImportUuid(sourceMaidUuid, player.getUUID());
+        ArchiveImportMap.record(server, sourceMaidUuid, player.getUUID(), derived);
+        migrateTlmBackups(player, sourceMaidUuid, derived);
+        Constants.LOG.info("[maid_file_manager] 原 UUID {} 在本存档被占用，派生新 UUID {} 导入",
+                sourceMaidUuid, derived);
+        return derived;
+    }
+
+    /**
+     * 判定 UUID 是否已被占用。只查已加载实体（任意维度）：未加载区块里的实体查不到，
+     * 但那种情况下 addFreshEntity 本身不会因 UUID 冲突失败，按「可用」处理更贴近原生行为。
+     */
+    private static boolean isUuidOccupied(MinecraftServer server, UUID uuid) {
+        if (server == null || uuid == null) {
+            return false;
+        }
+        for (ServerLevel serverLevel : server.getAllLevels()) {
+            if (serverLevel.getEntity(uuid) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+        /**
+     * 派生新 UUID 时把 TLM 自动备份迁到新 UUID 目录（兜底路径，绝大多数导入不会走到）。
+     *
+     * <p>备份 {@code .dat} 是完整的实体存档，<b>里面存着自己的 UUID</b>（IntArray 4 个 int）。
+     * 直接复制会让「新 UUID 目录下的备份」仍然自称旧 UUID——备份列表看着对，但导出 .maid 时
+     * source_maid_uuid 会取到旧值，再次导入又对不上。因此逐份改写 UUID 后再写盘，
+     * 并同步 {@code index.dat}（以女仆 UUID 为键的索引表），最后删除原目录。
+     */
+    private static void migrateTlmBackups(ServerPlayer player, UUID oldUuid, UUID newUuid) {
+        try {
+            MinecraftServer server = player.level().getServer();
+            if (server == null) {
+                return;
+            }
+            Path root = MaidBackupService.backupRoot(server);
+            String owner = player.getUUID().toString();
+            Path ownerDir = root.resolve(owner);
+            Path oldDir = ownerDir.resolve(oldUuid.toString());
+            if (!Files.isDirectory(oldDir)) {
+                return;
+            }
+            Path newDir = ownerDir.resolve(newUuid.toString());
+            Files.createDirectories(newDir);
+            int[] newUuidArray = uuidToIntArray(newUuid);
+            int copied = 0;
+            try (var stream = Files.list(oldDir)) {
+                for (Path p : stream.toList()) {
+                    if (!Files.isRegularFile(p)) {
+                        continue;
+                    }
+                    CompoundTag dat = MaidFileIo.readCompressedNbt(p);
+                    if (dat == null) {
+                        continue;
+                    }
+                    dat.putIntArray("UUID", newUuidArray);
+                    net.minecraft.nbt.NbtIo.writeCompressed(dat, newDir.resolve(p.getFileName().toString()).toFile());
+                    copied++;
+                }
+            }
+            rewriteBackupIndex(ownerDir.resolve("index.dat"), oldUuid, newUuid);
+            deleteRecursively(oldDir);
+            Constants.LOG.info("[maid_file_manager] 已把 TLM 备份从 {} 迁到 {}（{} 个文件，已改写 UUID 并删除原目录）",
+                    oldUuid, newUuid, copied);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 迁移 TLM 备份失败（不影响导入）: {}", t.toString());
+        }
+    }
+
+    /** UUID → Minecraft 实体 NBT 里的 IntArray 形态（高/低 64 位各拆成两个 int） */
+    private static int[] uuidToIntArray(UUID uuid) {
+        long msb = uuid.getMostSignificantBits();
+        long lsb = uuid.getLeastSignificantBits();
+        return new int[]{(int) (msb >> 32), (int) msb, (int) (lsb >> 32), (int) lsb};
+    }
+
+        /** 把 index.dat 里以旧 UUID 为键的条目改名到新 UUID（TLM 备份列表的索引表） */
+    private static void rewriteBackupIndex(Path indexFile, UUID oldUuid, UUID newUuid) {
+        try {
+            if (!Files.isRegularFile(indexFile)) {
+                return;
+            }
+            CompoundTag index = MaidFileIo.readCompressedNbt(indexFile);
+            if (index == null || !index.contains(oldUuid.toString())) {
+                return;
+            }
+            CompoundTag entry = index.getCompound(oldUuid.toString()).copy();
+            index.remove(oldUuid.toString());
+            index.put(newUuid.toString(), entry);
+            net.minecraft.nbt.NbtIo.writeCompressed(index, indexFile.toFile());
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 更新备份索引失败（残留不影响功能）: {}", t.toString());
+        }
+    }
+
+    /** 递归删除目录（失败只告警：保留残留比删错文件安全） */
+    private static void deleteRecursively(Path dir) {
+        if (!Files.isDirectory(dir)) {
+            return;
+        }
+        try (var stream = Files.walk(dir)) {
+            for (Path p : stream.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 清理旧备份目录失败（残留不影响功能）: {}", t.toString());
+        }
+    }
     private static UUID mapImportUuid(UUID sourceMaidUuid, UUID importerPlayerUuid) {
         String name = "maid_file_manager|import-v1|" + sourceMaidUuid + "|" + importerPlayerUuid;
         return UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
