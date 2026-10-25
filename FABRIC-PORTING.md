@@ -161,7 +161,30 @@ I:\PCL\.minecraft\versions\26.1.2-Fabric测试\
 | `FabricPayloadRegistration`（服务端注册） | **0** ✅ |
 | `FabricClientPayloadRegistration`（客户端注册） | 0（客户端类经 `Minecraft` FQN 引用，不在 `net/minecraft/client/` 前缀统计内，需实际启动验证） |
 
-## 九、待办
+## 九、TLM Fabric 的运行期依赖（必须装，否则启动直接报 Incompatible mods）
+
+TLM Fabric 的 `fabric.mod.json` 硬依赖 `forgeconfigapiport`，另有三个功能依赖。这些 jar 都能从 TLM 自己的 Gradle 缓存里取（`GRADLE_USER_HOME=E:\gradle`）：
+
+| 依赖 | 版本 | 大小 | 必需性 |
+|---|---|---|---|
+| forgeconfigapiport-fabric | 26.1.4 | 0.6 MB | **硬依赖**（fabric.mod.json depends） |
+| fabric-language-kotlin | 1.13.11+kotlin.2.3.21 | 7.5 MB | TLM 有 Kotlin 代码，必需 |
+| trinkets | 4.0.0-beta.1+26.1 | 0.5 MB | 饰品系统（Curios 的 Fabric 替代） |
+| cloth-config-fabric | 26.1.154 | 1.1 MB | 配置界面 |
+
+缓存路径前缀：`E:\gradle\caches\modules-2\files-2.1\`
+
+## 十、runServer 冒烟的结论（放弃）
+
+Loom 的 `runServer` 在本工程不可行：
+
+1. **首次 remap 极慢**——要 remap 整个 MC 26.1.2 + TLM（23 MB、含 Kotlin），实测 600 秒仍未进入服务器启动阶段。
+2. **runServer 只认依赖声明**——手动往 `runs/server/mods` 放 jar 无效，必须写进 `modRuntimeOnly`。
+3. 为了冒烟还踩了三个工具链坑：Loom 版本（1.15.5 → 1.16-SNAPSHOT，否则读不了 TLM 的 class-tweaker v2）、Gradle 版本（9.2.0 → 9.4.0，loom 1.16.3 要求）、`modRuntimeOnly` 在旧 Loom 下不存在。
+
+**因此 :fabric:build 产物 + 静态验证（服务端入口 0 客户端类引用）+ 用户实机启动**是当前唯一的验证路径。
+
+## 十一、待办
 
 - [ ] **实机启动验证**（启动 `26.1.2-Fabric测试`，看是否正常进游戏 + 模组加载成功）
 - [ ] 与 neoforge-26.1.2 的行为对齐验证（饰品、好感度、AI 聊天、备份、GUI）

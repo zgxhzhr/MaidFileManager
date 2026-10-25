@@ -8,6 +8,12 @@ dependencies {
     implementation("net.fabricmc.fabric-api:fabric-api:${fabric_version}")
     // TLM 编译期依赖：只用于编译，运行期由 TLM 本体提供
     compileOnly files(rootProject.file(tlm_jar_path))
+    // 冒烟测试用运行期依赖（Loom 的 runServer 只认依赖声明，手动放 runs/server/mods 无效）
+    modRuntimeOnly files(rootProject.file(tlm_jar_path))
+    modRuntimeOnly files('E:/gradle/caches/modules-2/files-2.1/fuzs.forgeconfigapiport/forgeconfigapiport-fabric/26.1.4/b2e11b1f91776efdd628da7501d74f7e0f7bcdb7/forgeconfigapiport-fabric-26.1.4.jar')
+    modRuntimeOnly files('E:/gradle/caches/modules-2/files-2.1/net.fabricmc/fabric-language-kotlin/1.13.11+kotlin.2.3.21/b6190b247c557c493dc4204121744f289a1d1837/fabric-language-kotlin-1.13.11+kotlin.2.3.21.jar')
+    modRuntimeOnly files('E:/gradle/caches/modules-2/files-2.1/eu.pb4/trinkets/4.0.0-beta.1+26.1/c6213cc55677d408c8e4fa6dcc1ce5d316d3a755/trinkets-4.0.0-beta.1+26.1.jar')
+    modRuntimeOnly files('E:/gradle/caches/modules-2/files-2.1/me.shedaniel.cloth/cloth-config-fabric/26.1.154/832f9047bc4af13587709c74f7c37e1c8579d1eb/cloth-config-fabric-26.1.154.jar')
 }
 
 loom {
