@@ -203,6 +203,33 @@ EntityEvents.spawned('touhou_little_maid:maid', event => {
 > 已经把数据写在女仆实体 NBT（含 `getPersistentData()` 与随存档自动序列化的 Capability）里的附属**无需接入**——本模组用 `EntityMaid#saveWithoutId` 导出完整女仆 NBT，这部分数据会自动随女仆迁移。
 ## 版本历史
 
+### v1.7.0
+
+**本版是 1.6.5 之后的功能修复与架构准备版，同时完成 Minecraft 26.1.2 移植。**
+
+#### 修复
+
+- **统一导出确认窗**：点「确认导出」现在只进入统一导出面板，不再自动全选并执行一次导出（原行为会跳过勾选直接导）。
+- **档案界面姓名**：纯模型 path（如 `winefox_new_year`）也能正确解析为中文模型名（此前显示裸 ID）。
+- **备份列表**：显示模型名而非 TLM 默认名「小女仆」；有自定义名时显示为「自定义名 (模型名)」。
+- **聊天栏反馈**：结果说明统一走聊天栏（此前 26.1 端误用 actionbar，3 秒即消失）。
+
+#### 新增端（非发布，随 TLM snapshot 状态）
+
+| Loader | Minecraft | JAR | 版本 |
+|---|---|---|---|
+| NeoForge | 26.1 / 26.1.2 | maid_file_manager-neoforge-26.1.2-1.7.0-snapshot.jar | 1.7.0-snapshot |
+| Fabric | 26.1 / 26.1.2 | maid_file_manager-fabric-26.1.2-1.7.0-snapshot.jar | 1.7.0-snapshot |
+
+26.1.2 两头**不是正式发布版**：前置车万女仆本体的 26.1.2 目前是 snapshot，本端随之标记 `-snapshot`。目的是为 TLM 26.1.2 正式版发布**提前打好基础**；在 TLM 正式版出来之前，26.1.2 端只做缺陷修复，不主动跟进新功能（已发布的四端出新功能时会同步过去）。
+
+#### 兼容性
+
+- `.maid` 格式仍为 **v7**；`data_version` 新增 `26010000`（MC 26.1 / 26.1.2）。
+- **`owner_uuid` 改为必选字段**：无主女仆（缺该字段）的档案一律拒绝导入——归属校验是导入策略的一部分，没有主人的女仆无法确定归属。
+- 26.1.2 端导出的 `.maid` 额外带 `MaidFavorability`（int）与 `MaidBaubleInventory.Items`（1.20 风格饰品）两个兼容副本，供降级到旧端使用。
+- 六端 `.maid` 互通；降级方向饰品的附魔 / 耐久无法保留（DFU 只升不降），饰品本体保留。
+- 背包类型支持跨版本双向映射（26.1 的 attachment ↔ 旧版的 `MaidBackpackType`）。
 ### v1.6.5
 
 本版是 **1.6.4 之后的收尾版**：补齐全语言、升级构建可移植性、并给构建加了离线静态校验。
