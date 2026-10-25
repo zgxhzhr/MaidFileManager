@@ -355,6 +355,17 @@ public final class MaidTransferService {
             // 额外写一份 1.20 风格的 Items 副本（只保留 id + 数量，组件无法反向转换），
             // 让降级到旧端时至少保住饰品本体，而不是整栏丢失。
             writeLegacyBaubleItems(fullNbt);
+            // 同理：26.1 的背包类型存在实体 attachment 里（neoforge:attachments →
+            // touhou_little_maid:backpack → {type}），1.20.1 / 1.21.1 读的是实体 NBT 的
+            // MaidBackpackType 字符串。额外写一份兼容副本，否则跨版本降级后背包格子会锁回。
+            CompoundTag backpackAttachment = fullNbt.getCompoundOrEmpty("neoforge:attachments")
+                    .getCompoundOrEmpty("touhou_little_maid:backpack");
+            if (!backpackAttachment.isEmpty()) {
+                String backpackType = backpackAttachment.getStringOr("type", "");
+                if (!backpackType.isEmpty() && !fullNbt.contains("MaidBackpackType")) {
+                    fullNbt.putString("MaidBackpackType", backpackType);
+                }
+            }
             clearInventoryItems(fullNbt, "MaidInventory");
             clearInventoryItems(fullNbt, "MaidHideInventory");
             clearInventoryItems(fullNbt, "MaidTaskInventory");
@@ -751,6 +762,19 @@ public final class MaidTransferService {
                 // Curios 里"命名空间已声明"的饰品仍会随 load() 恢复。
                 // 这里是玩家/服务端主动不要饰品，不计入"模组未声明"的提示统计。
                 CuriosBaubleFilter.strip(migrated, false, MaidTransferService::allowCuriosItem, false);
+            }
+            // 旧版 .maid 的背包类型在实体 NBT 的 MaidBackpackType 字符串里；26.1 的 TLM 只读
+            // neoforge:attachments → touhou_little_maid:backpack。这里做一次反向映射，
+            // 否则跨版本升级后背包格子会锁回（类型丢失）。attachment 已存在时不覆盖。
+            String legacyBackpackType = migrated.getStringOr("MaidBackpackType", "");
+            if (!legacyBackpackType.isEmpty()) {
+                CompoundTag attachmentRoot = migrated.getCompoundOrEmpty("neoforge:attachments").copy();
+                if (!attachmentRoot.contains("touhou_little_maid:backpack")) {
+                    CompoundTag backpackTag = new CompoundTag();
+                    backpackTag.putString("type", legacyBackpackType);
+                    attachmentRoot.put("touhou_little_maid:backpack", backpackTag);
+                    migrated.put("neoforge:attachments", attachmentRoot);
+                }
             }
             CompoundTag tlmTag = extractTlmData(migrated, sameVersion, keepBaubles);
             loadMaidNbt(maid, migrated, tlmTag, keepBaubles, sourceStruckByLightning, sameVersion,
