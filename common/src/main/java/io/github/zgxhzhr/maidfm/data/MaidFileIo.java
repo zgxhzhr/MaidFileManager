@@ -1,0 +1,500 @@
+package io.github.zgxhzhr.maidfm.data;
+
+import io.github.zgxhzhr.maidfm.Constants;
+import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.nbt.NbtIo;
+
+import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Locale;
+import java.util.stream.Stream;
+
+/**
+ * .maid 文件的读写与命名工具。
+ *
+ * <p>导出文件命名规则：{@code 中文名_yyyyMMdd-HHmmss_短UUID.maid}
+ * <ul>
+ *   <li>中文名从模型 ID 推断（找不到时回退到模型 ID 转下划线形式）</li>
+ *   <li>短 UUID 取前 8 位，便于在同名同时间文件多份时区分来源</li>
+ *   <li>文件名中的非法字符替换为下划线</li>
+ *   <li>同模型多个文件可通过文件名中的时间戳自然排序</li>
+ * </ul>
+ *
+ * <p>目录：导出 → {@code maid_file/maid_exports/}，导入源 → {@code maid_file/maid_imports/}
+ * （玩家把自己的 .maid 放到此处）；档案照片候选图 → {@code maid_file/photos/}；
+ * 档案照片入库目录 → {@code maid_file/maid_photos/}（由模组按女仆 UUID 自动维护）。
+ * 三者统一收纳在游戏根目录下的 {@code maid_file/} 内，方便一次性打包带走。
+ * 旧版散落在根目录的 {@code maid_exports/}、{@code maid_imports/} 与
+ * {@code config/maid_file_manager/photos/} 会在启动时由 {@link #migrateLegacyDirs(Path)} 自动搬运并入。
+ */
+public final class MaidFileIo {
+    /** 时间戳格式：年月日-时分秒 */
+    private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
+    /** 文件名中非法字符的正则（Windows 不允许 <>:"/\|?*[]，及控制字符） */
+    private static final String INVALID_CHAR_REGEX = "[\\\\/:*?\"<>|\\[\\]\\u0000-\\u001F]";
+    /** 替换字符 */
+    private static final String SEP = "_";
+    /** 原子写临时文件后缀 */
+    private static final String TMP_SUFFIX = ".tmp";
+
+    private MaidFileIo() {
+    }
+
+    /** 获取导出目录（maid_exports），若不存在则创建；创建失败抛 IOException（禁止静默返回坏路径） */
+    public static Path ensureExportsDir(Path gameDir) throws IOException {
+        return ensureDir(gameDir, Constants.MAID_EXPORTS_DIR);
+    }
+
+    /** 获取导入目录（maid_imports），若不存在则创建；创建失败抛 IOException */
+    public static Path ensureImportsDir(Path gameDir) throws IOException {
+        return ensureDir(gameDir, Constants.MAID_IMPORTS_DIR);
+    }
+
+    private static Path ensureDir(Path gameDir, String sub) throws IOException {
+        Path dir = gameDir.resolve(sub);
+        Files.createDirectories(dir);
+        return dir;
+    }
+
+    /**
+     * 把旧版本散落的目录搬运并入新目录（{@code maid_file/} 之下）。
+     *
+     * <p>迁移对：{@code maid_exports/}→{@code maid_file/maid_exports/}、
+     * {@code maid_imports/}→{@code maid_file/maid_imports/}、
+     * {@code config/maid_file_manager/photos/}→{@code maid_file/photos/}。
+     * 目标目录不存在时整目录直接改名移动（最快）；已存在时逐项合并，
+     * 名称冲突一律保留新目录版本。迁移结束后清理已搬空的旧目录。
+     *
+     * <p>本方法幂等、且对缺失的旧目录静默跳过，可在每次启动时无副作用地调用。
+     */
+    public static void migrateLegacyDirs(Path gameDir) {
+        if (gameDir == null) {
+            return;
+        }
+        migrateInto(gameDir.resolve(Constants.LEGACY_EXPORTS_DIR), gameDir.resolve(Constants.MAID_EXPORTS_DIR));
+        migrateInto(gameDir.resolve(Constants.LEGACY_IMPORTS_DIR), gameDir.resolve(Constants.MAID_IMPORTS_DIR));
+        migrateInto(gameDir.resolve(Constants.LEGACY_PHOTOS_DIR), gameDir.resolve(Constants.MAID_PHOTO_CANDIDATES_DIR));
+    }
+
+    /** 迁移单个目录；旧目录不存在或新旧同路径时跳过 */
+    private static void migrateInto(Path legacy, Path target) {
+        if (legacy == null || !Files.isDirectory(legacy)) {
+            return;
+        }
+        try {
+            if (legacy.toAbsolutePath().normalize().equals(target.toAbsolutePath().normalize())) {
+                return;
+            }
+            Path parent = target.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            if (!Files.exists(target)) {
+                try {
+                    Files.move(legacy, target);
+                    Constants.LOG.info("[maid_file_manager] 目录迁移: {} -> {}", legacy, target);
+                    return;
+                } catch (IOException e) {
+                    // 跨卷等场景整目录移动失败，退回逐项合并
+                    Files.createDirectories(target);
+                }
+            }
+            mergeDir(legacy, target);
+            deleteEmptyDirs(legacy);
+        } catch (IOException e) {
+            Constants.LOG.warn("[maid_file_manager] 旧目录迁移失败: {} -> {}: {}", legacy, target, e.toString());
+        }
+    }
+
+    /** 递归把 src 内容并入 dst；同名文件保留 dst 中已有版本，目录则递归合并 */
+    private static void mergeDir(Path src, Path dst) throws IOException {
+        Files.createDirectories(dst);
+        List<Path> children;
+        try (Stream<Path> stream = Files.list(src)) {
+            children = stream.toList();
+        }
+        for (Path child : children) {
+            Path dest = dst.resolve(child.getFileName().toString());
+            if (Files.isDirectory(child)) {
+                if (Files.exists(dest) && !Files.isDirectory(dest)) {
+                    continue; // 类型冲突：保留目标
+                }
+                mergeDir(child, dest);
+            } else {
+                if (Files.exists(dest)) {
+                    continue; // 同名文件：保留新目录版本
+                }
+                Files.move(child, dest);
+            }
+        }
+    }
+
+    /** 自底向上删除已空的目录树（保留尚存文件的目录） */
+    private static void deleteEmptyDirs(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) {
+            return;
+        }
+        List<Path> children;
+        try (Stream<Path> stream = Files.list(dir)) {
+            children = stream.toList();
+        }
+        for (Path child : children) {
+            if (Files.isDirectory(child)) {
+                deleteEmptyDirs(child);
+            }
+        }
+        try (Stream<Path> stream = Files.list(dir)) {
+            if (stream.findAny().isEmpty()) {
+                Files.deleteIfExists(dir);
+            }
+        }
+    }
+
+    /**
+     * 生成导出文件名（不含路径）。
+     *
+     * <p>格式：{@code <displayName>_<yyyyMMdd-HHmmss>_<uuid前8位>.maid}
+     * 例如 {@code 博丽灵梦_20260820-153012_a1b2c3d4.maid}
+     *
+     * @param displayName 模型显示名（中文名）；为空时回退到 {@code modelId}
+     * @param modelId      模型 ID（fallback 用）
+     * @param ownerUuid    主人 UUID（取前 8 位用于区分，null 时省略）
+     * @param time         导出时间
+     */
+    public static String buildExportFileName(String displayName, String modelId, String ownerUuid,
+                                             LocalDateTime time) {
+        String name = (displayName == null || displayName.isEmpty())
+                ? fallbackNameFromModelId(modelId)
+                : displayName;
+        name = sanitize(name);
+        String timestamp = time.format(TIMESTAMP_FORMAT);
+        String shortUuid = (ownerUuid != null && ownerUuid.length() >= 8)
+                ? ownerUuid.replace("-", "").substring(0, 8)
+                : "nouuid";
+        return name + SEP + timestamp + SEP + shortUuid + Constants.MAID_FILE_EXT;
+    }
+
+    /** 从 modelId（如 touhou_little_maid:hakurei_reimu）回退出可读文件名 */
+    private static String fallbackNameFromModelId(String modelId) {
+        if (modelId == null || modelId.isEmpty()) {
+            return "unknown_model";
+        }
+        // 取冒号后路径段作为可读名
+        int colon = modelId.indexOf(':');
+        String path = colon >= 0 ? modelId.substring(colon + 1) : modelId;
+        return sanitize(path);
+    }
+
+    /**
+     * 组合自定义名与模型显示名，用于导出文件名。
+     *
+     * <p>规则：自定义名为空时直接返回模型显示名；非空时拼接为
+     * {@code <自定义名>_<模型显示名>}（自定义名在前、模型名在后）。
+     * 两段均由 {@link #buildExportFileName} 内部的 {@link #sanitize} 统一清洗非法字符。
+     *
+     * @param customName  女仆自定义名（命名牌所取），可空
+     * @param displayName 模型显示名（中文名），可空
+     * @return 用于传给 {@link #buildExportFileName} 的合并显示名
+     */
+    public static String composeDisplayName(String customName, String displayName) {
+        if (customName == null || customName.isEmpty()) {
+            return displayName;
+        }
+        String model = (displayName == null || displayName.isEmpty()) ? "unknown_model" : displayName;
+        return customName + SEP + model;
+    }
+
+    /** 把任意字符串清洗为文件名安全字符串 */
+    public static String sanitize(String s) {
+        if (s == null || s.isEmpty()) {
+            return "unknown";
+        }
+        // 去除 Windows 非法字符，并 trim 首尾空白与下划线
+        String cleaned = s.replaceAll(INVALID_CHAR_REGEX, SEP).trim();
+        // 折叠多个连续下划线
+        cleaned = cleaned.replaceAll("_+", SEP);
+        // 去除首尾下划线
+        while (cleaned.startsWith(SEP)) cleaned = cleaned.substring(1);
+        while (cleaned.endsWith(SEP)) cleaned = cleaned.substring(0, cleaned.length() - 1);
+        return cleaned.isEmpty() ? "unknown" : truncateForFilename(cleaned);
+    }
+
+    /** 文件名主体的字节上限：多数文件系统单个文件名上限 255 字节，留出扩展名与去重后缀余量 */
+    private static final int FILENAME_BODY_MAX_BYTES = 180;
+
+    /** 按 UTF-8 字节数截断（不截半个字符），用于文件名主体 */
+    static String truncateForFilename(String s) {
+        if (s == null) {
+            return "unknown";
+        }
+        byte[] bytes = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (bytes.length <= FILENAME_BODY_MAX_BYTES) {
+            return s;
+        }
+        int end = 0;
+        int i = 0;
+        while (i < s.length()) {
+            int cp = s.codePointAt(i);
+            int len = new String(Character.toChars(cp)).getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+            if (end + len > FILENAME_BODY_MAX_BYTES) {
+                break;
+            }
+            end += len;
+            i += Character.charCount(cp);
+        }
+        String cut = s.substring(0, i);
+        return cut.isEmpty() ? "unknown" : cut;
+    }
+
+    /**
+     * 玩家名目录安全清洗：仅替换 Windows 非法字符为下划线，不做「首尾下划线删除/多下划线折叠」。
+     * 避免单独下划线玩家名（如 "_"）被清洗成空→回退 "unknown" 导致子目录错位。
+     */
+    public static String sanitizePlayerName(String s) {
+        if (s == null || s.isEmpty()) {
+            return "unknown";
+        }
+        // trim：玩家名带前后空白时会生成「 xxx」这种目录，肉眼几乎看不出但和期望的不同；
+        // 尾随点（"name."）在 Windows 上会被静默丢弃，造成同名目录被合并，也一并去掉。
+        String cleaned = s.replaceAll(INVALID_CHAR_REGEX, SEP).trim();
+        while (cleaned.endsWith(".")) {
+            cleaned = cleaned.substring(0, cleaned.length() - 1).trim();
+        }
+        // "." 与 ".." 是文件系统特殊目录项：正版在线模式玩家名不会出现，但离线认证/自定义启动器允许，
+        // 若放行会令 exportRoot.resolve("..") 越出导出根目录，必须回退为 unknown
+        if (".".equals(cleaned) || "..".equals(cleaned)) {
+            return "unknown";
+        }
+        // Windows 保留设备名（CON/PRN/AUX/NUL/COM1-9/LPT1-9，带任意扩展名也算）不能作为目录名，
+        // 统一回退 unknown；非 Windows 平台如此处理亦无害
+        String upper = cleaned.toUpperCase(Locale.ROOT);
+        if (upper.matches("^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\\..*)?$")) {
+            return "unknown";
+        }
+        return cleaned.isEmpty() ? "unknown" : truncateForFilename(cleaned);
+    }
+
+    /**
+     * 解析某玩家的导出子目录并做目录穿越兜底断言。
+     * 即使未来清洗逻辑被改坏，也绝不允许返回 exportRoot 之外的路径。
+     */
+    public static Path resolvePlayerDir(Path exportRoot, String playerName) {
+        Path root = exportRoot.toAbsolutePath().normalize();
+        Path dir = root.resolve(sanitizePlayerName(playerName)).normalize();
+        if (!dir.startsWith(root)) {
+            throw new IllegalArgumentException("非法玩家名导致导出目录越界: " + playerName);
+        }
+        return dir;
+    }
+
+    /**
+     * 原子写入 .maid 文件，处理重名情况（追加 _1/_2）。
+     * 写入流程：先写同目录 {@code .tmp} 临时文件，再移动替换目标，
+     * 避免崩溃/断电时留下半截损坏文件被当成有效存档导入。
+     *
+     * @param dir         目录
+     * @param displayName 模型显示名
+     * @param modelId     模型 ID（fallback）
+     * @param ownerUuid   主人 UUID
+     * @param data        数据
+     * @param time        导出时间
+     * @return 实际写入的文件名（不含路径）
+     */
+    public static String writeMaidFile(Path dir, String displayName, String modelId,
+                                        String ownerUuid, MaidFileData data, LocalDateTime time) throws IOException {
+        // 确保父目录存在（玩家子目录不存在时自动创建，避免 FileNotFoundException）
+        Files.createDirectories(dir);
+        String baseName = buildExportFileName(displayName, modelId, ownerUuid, time);
+        CompoundTag root = data.writeToNbt();
+        // 目标名在 resolveUniqueTarget 里只是「查一下存不存在」，到 move 之间有空窗：
+        // 两个线程同时导出同名女仆会拿到同一个 target，后移动的会覆盖先移动的（ATOMIC_MOVE
+        // 在 POSIX 上是覆盖语义）。这里改为「不带 REPLACE 的移动 + 冲突重试」：
+        // 目标已存在时 move 抛 FileAlreadyExistsException，重新取名再试，最多 5 次。
+        IOException lastConflict = null;
+        for (int attempt = 0; attempt < 5; attempt++) {
+            Path target = resolveUniqueTarget(dir, baseName);
+            // 临时文件名必须唯一：此前固定为「目标名 + .tmp」，两个线程同时导出同名女仆时
+            // 会抢同一个 tmp，先完成的 deleteIfExists 会删掉后完成的那个临时文件。
+            Path tmp = dir.resolve(target.getFileName().toString() + TMP_SUFFIX
+                    + "-" + Long.toHexString(System.nanoTime())
+                    + "-" + Integer.toHexString(java.util.concurrent.ThreadLocalRandom.current().nextInt(0x10000)));
+            try {
+                // 1.21+ NbtIo.writeCompressed 直接接收 Path
+                NbtIo.writeCompressed(root, tmp);
+                // 必须用「无选项的 move」：ATOMIC_MOVE 在 Windows 与 POSIX 上都是**覆盖**语义，
+                // 目标已存在时会静默替换，FileAlreadyExistsException 分支永远不可达 —— 原注释
+                // 声称的「冲突重试」实际从未生效，同名并发导出仍会互相覆盖。
+                // Files.move 不带任何 CopyOption 时，目标已存在会抛 FileAlreadyExistsException。
+                Files.move(tmp, target);
+                return target.getFileName().toString();
+            } catch (java.nio.file.FileAlreadyExistsException conflict) {
+                lastConflict = conflict;
+                // 换名重试
+            } finally {
+                // 失败路径清理残留临时文件
+                Files.deleteIfExists(tmp);
+            }
+        }
+        throw lastConflict != null ? lastConflict : new IOException("无法为导出文件分配唯一名称: " + baseName);
+    }
+
+    /** 重名时按 _1/_2 递增；只剥离末尾扩展名，不用全局 replace 以免误改名字本体 */
+    private static Path resolveUniqueTarget(Path dir, String baseName) {
+        Path target = dir.resolve(baseName);
+        if (!Files.exists(target)) {
+            return target;
+        }
+        String stem;
+        String ext;
+        if (baseName.endsWith(Constants.MAID_FILE_EXT)) {
+            stem = baseName.substring(0, baseName.length() - Constants.MAID_FILE_EXT.length());
+            ext = Constants.MAID_FILE_EXT;
+        } else {
+            stem = baseName;
+            ext = "";
+        }
+        int suffix = 1;
+        do {
+            target = dir.resolve(stem + SEP + suffix + ext);
+            suffix++;
+        } while (Files.exists(target));
+        return target;
+    }
+
+    /** 读取 .maid 文件，失败返回 null（同时兜底 NBT 损坏抛出的运行时异常） */
+    public static MaidFileData readMaidFile(Path file) {
+        try {
+            // 本地文件虽是玩家自选，但同样给显式解压配额（与网络侧共用 4 MiB 口径 = MAX_NBT_DECOMPRESSED_BYTES），
+            // 1.21+ NbtIo.readCompressed 接收 Path 并支持 NbtAccounter 配额
+            CompoundTag root = NbtIo.readCompressed(file, NbtAccounter.create(MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES));
+            if (root == null) {
+                return null;
+            }
+            return MaidFileData.readFromNbt(root);
+        } catch (IOException | RuntimeException e) {
+            Constants.LOG.error("读取 maid 文件失败: {}", file, e);
+            return null;
+        }
+    }
+
+    /**
+     * 读取压缩 NBT 文件（如 TLM 自动备份产出的 .dat），失败返回 null。
+     *
+     * <p>各加载器的 {@code NbtIo} 读法不同（1.20.x 为 {@code readCompressed(File)}、
+     * 1.21+ 为 {@code readCompressed(Path, NbtAccounter)}），故在本类内分别适配，
+     * 调用方共用同一签名。
+     */
+    public static CompoundTag readCompressedNbt(Path file) {
+        try {
+            return NbtIo.readCompressed(file, NbtAccounter.create(MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES));
+        } catch (IOException | RuntimeException e) {
+            Constants.LOG.error("读取压缩 NBT 文件失败: {}", file, e);
+            return null;
+        }
+    }
+
+    /**
+     * 列出目录中所有 .maid 文件。排序为**文件名字典序反序**（本模组导出名把时间戳嵌在名字里，视觉上近似时间倒序；重命名过的不保证）。
+     *
+     * @return 文件名列表（不含路径）
+     */
+    public static List<String> listMaidFiles(Path dir) {
+        List<String> result = new ArrayList<>();
+        if (!Files.exists(dir) || !Files.isDirectory(dir)) {
+            return result;
+        }
+        try (Stream<Path> stream = Files.list(dir)) {
+            stream.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().endsWith(Constants.MAID_FILE_EXT))
+                    .forEach(p -> result.add(p.getFileName().toString()));
+        } catch (IOException e) {
+            Constants.LOG.error("列出 maid 目录失败: {}", dir, e);
+        }
+        // 注意：这里是按**整串文件名**反序，不是按解析出的时间戳排序（时间戳只用于显示）
+        result.sort(Comparator.reverseOrder());
+        return result;
+    }
+
+    /**
+     * 解析文件名中的时间戳，用于排序与展示。
+     * 两种命名格式：
+     * <ul>
+     *   <li>本模组导出：{@code <name>_<yyyyMMdd-HHmmss>_<uuid8>.maid}</li>
+     *   <li>TLM 备份：{@code yyyy-MM-dd-HH-mm-ss.maid}（纯时间戳，TouhouLittleMaid 自动备份直接产出）</li>
+     * </ul>
+     */
+    public static long parseTimestampFromFileName(String fileName) {
+        if (fileName == null || !fileName.endsWith(Constants.MAID_FILE_EXT)) {
+            return 0L;
+        }
+        String name = fileName.substring(0, fileName.length() - Constants.MAID_FILE_EXT.length());
+        // TLM 备份命名：整段即 yyyy-MM-dd-HH-mm-ss
+        if (name.matches("\\d{4}-\\d{2}-\\d{2}-\\d{2}-\\d{2}-\\d{2}")) {
+            try {
+                return LocalDateTime.parse(name, DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"))
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli();
+            } catch (Exception e) {
+                return 0L;
+            }
+        }
+        // 找形如 _20260820-153012 的段
+        int dashIdx = name.lastIndexOf('-');
+        if (dashIdx < 0) {
+            return 0L;
+        }
+        int tsStart = name.lastIndexOf('_', dashIdx);
+        if (tsStart < 0) {
+            return 0L;
+        }
+        // 长度校验必须在 substring 之前：玩家可自由重命名文件（如 名字_20260820-15.maid），
+        // 越界会抛 StringIndexOutOfBoundsException —— 而本方法在导入列表的渲染路径里每帧调用。
+        int tsEnd = dashIdx + 7;
+        if (tsEnd > name.length()) {
+            return 0L;
+        }
+        String timestampPart = name.substring(tsStart + 1, tsEnd);
+        try {
+            return LocalDateTime.parse(timestampPart, TIMESTAMP_FORMAT)
+                    .atZone(java.time.ZoneId.systemDefault())
+                    .toInstant()
+                    .toEpochMilli();
+        } catch (Exception e) {
+            return 0L;
+        }
+    }
+
+    /** 文件名 → 显示用时间串（解析失败为 "?"）。带小缓存：UI 列表每帧都会调用，
+     *  原先每帧重新解析文件名并 new SimpleDateFormat，属明显的每帧分配与重复计算。 */
+    private static final java.util.Map<String, String> DISPLAY_TIME_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** 缓存条目上限：超出即整体清空（文件名数量有限，清空代价可接受，避免长期累积 */
+    private static final int DISPLAY_TIME_CACHE_MAX = 512;
+
+    public static String formatDisplayTime(String fileName) {
+        String key = fileName == null ? "" : fileName;
+        if (DISPLAY_TIME_CACHE.size() > DISPLAY_TIME_CACHE_MAX) {
+            DISPLAY_TIME_CACHE.clear();
+        }
+        return DISPLAY_TIME_CACHE.computeIfAbsent(key, n -> {
+            long ts = parseTimestampFromFileName(n);
+            if (ts <= 0) {
+                return "?";
+            }
+            return java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+                    .format(java.time.Instant.ofEpochMilli(ts)
+                            .atZone(java.time.ZoneId.systemDefault()));
+        });
+    }
+}

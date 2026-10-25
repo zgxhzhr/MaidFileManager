@@ -1,0 +1,15 @@
+.gradle/
+build/
+runs/
+*.log
+libs/*.jar
+!libs/.gitkeep
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Fabric Loom
+run/
+remappedSrc/

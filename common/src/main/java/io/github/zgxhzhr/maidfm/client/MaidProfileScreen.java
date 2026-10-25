@@ -1,0 +1,1068 @@
+package io.github.zgxhzhr.maidfm.client;
+
+import net.minecraft.client.input.MouseButtonEvent;
+
+import com.mojang.blaze3d.platform.NativeImage;
+import io.github.zgxhzhr.maidfm.Constants;
+import io.github.zgxhzhr.maidfm.data.MaidFileData;
+import io.github.zgxhzhr.maidfm.data.MaidProfile;
+import io.github.zgxhzhr.maidfm.data.MaidProfileView;
+import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
+import io.github.zgxhzhr.maidfm.platform.Services;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractButton;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.Util;
+import net.minecraft.world.item.ItemStack;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * 女仆档案界面。
+ *
+ * <p>版式遵循「网格对齐 + 分组」原则：
+ * 左侧为 1:1 档案照片（玩家从 {@code maid_file/photos/} 挑选，带相框装饰角）；
+ * 右侧为档案信息区，自上而下分三组，用细分隔线区隔——
+ * <ul>
+ *   <li>档案编号（只读，可横向查看与复制）</li>
+ *   <li>基本资料：所属势力 / 模型、基础数值（血量 / 攻击 / 好感度，浅色底框）</li>
+ *   <li>个人档案：职业与生日并排、个人资料与背景故事为多行文本域、偏好与特长单行、随身饰品图标</li>
+ * </ul>
+ *
+ * <p>背景故事即 TLM 的 AI 人设（{@code MaidAIChat.CustomSetting}）：读取时取当前值，保存时同步写回，
+ * 在 TLM 侧修改后再次打开本界面即可看到最新内容，实现双向同步。
+ *
+ * <p>当本界面由导入列表打开时（{@code entityId < 0}），展示的是 {@code .maid} 文件内的档案快照，
+ * 全部为只读，且不提供「保存」。文字一律禁用阴影、本界面为非暂停界面。
+ */
+public class MaidProfileScreen extends Screen implements IMaidFileNetwork.ClientHandler {
+    // ===== 配色（柔和暗金 / 古铜，降低饱和度，避免刺眼） =====
+    private static final int SCREEN_BG = 0xFF0E0E12;
+    private static final int PANEL_BG = 0xFF2A2620;
+    private static final int PANEL_BORDER = 0xFF6E5A3A;
+    private static final int HEADER_COLOR = 0xFFE6C989;
+    private static final int TEXT_COLOR = 0xFFF2EDE4;
+    private static final int SUBTEXT_COLOR = 0xFF9C9385;
+    private static final int ACCENT = 0xFFC9A96A;
+    private static final int DIVIDER = 0xFF463B2C;
+    private static final int GROUP_BG = 0xFF3A3226;
+    private static final int BUTTON_BG = 0xFF3A2C1C;
+    private static final int BUTTON_BG_HOVER = 0xFF4A3826;
+    private static final int BUTTON_DISABLED = 0xFF2A2018;
+    private static final int SAVE_BG = 0xFF7A5E2E;
+    private static final int SAVE_BG_HOVER = 0xFF8E6E38;
+    private static final int ERROR_COLOR = 0xFFFF8080;
+
+    // ===== 尺寸 =====
+    private static final int PANEL_MAX_W = 470;
+    private static final int PANEL_MIN_W = 340;
+    private static final int HEADER_H = 24;
+    private static final int BOTTOM_H = 34;
+    private static final int ROW_GAP = 4;
+    private static final int FIELD_H = 16;
+    private static final int LINE_H = 11;
+    private static final int STATS_H = 20;
+    private static final int DIVIDER_GAP = 11;
+    private static final int LABEL_W = 60;
+    private static final int LABEL_SMALL_W = 26;
+    private static final int BAUBLE_ICON = 16;
+    private static final int BAUBLE_GAP = 2;
+    private static final int PHOTO_DISPLAY = 96;
+    private static final int PHOTO_FRAME_PAD = 3;
+    private static final int PHOTO_BTN_H = 16;
+    private static final int PICKER_ROW_H = 14;
+    private static final int PICKER_SCROLL_W = 3;
+    private static final int PICKER_BTN_H = 18;
+
+    private final Screen parent;
+    private final MaidProfileView view;
+    /** 打开本界面前活跃的回调（通常是主管理界面），关闭时归还，避免回调指针悬空 */
+    private final IMaidFileNetwork.ClientHandler prevHandler;
+
+    /** 可编辑档案副本（界面内修改，点保存才提交） */
+    private final MaidProfile profile;
+    /** 该档案是否来自真实实体（false = 导入文件预览，全部只读） */
+    private final boolean liveEntity;
+
+    private int panelX;
+    private int panelY;
+    private int panelW;
+    private int panelH;
+
+    private int photoX;
+    private int photoY;
+    private int colX;
+    private int colW;
+
+    // 右列各行 Y 坐标（init 时由 assignLayout 统一计算，render 复用）
+    private int idY;
+    private int factionY;
+    private int statsY;
+    private int dividerBasicY;
+    private int occY;
+    private int noteY;
+    private int prefY;
+    private int storyY;
+    private int dividerPersonalY;
+    private int baubleY;
+
+    /** 多行文本域高度（随字体行高自适应，窗口过矮时收缩） */
+    private int noteH;
+    private int storyH;
+
+    private MultiLineEditBox uuidField;
+    private MultiLineEditBox occupationField;
+    private MultiLineEditBox birthdayField;
+    private MultiLineEditBox noteField;
+    private MultiLineEditBox prefField;
+    private MultiLineEditBox storyField;
+
+    private Component feedback = Component.empty();
+    private int feedbackColor = SUBTEXT_COLOR;
+    /** 反馈自动过期时间戳（毫秒）；0 表示不设过期。此前档案页反馈会一直挂着不消失。 */
+    private long feedbackUntil;
+
+    private Identifier photoRl;
+    private DynamicTexture photoTexture;
+    /** 当前照片纹理的真实像素尺寸（照片按原比例存盘，绘制时据此等比 contain） */
+    private int photoTexW;
+    private int photoTexH;
+
+    /** 照片选择覆盖层 */
+    private boolean pickerOpen;
+    /** 界面是否已关闭：异步选图回来后据此判断要不要建纹理（否则没人释放 → 显存泄漏） */
+    private boolean screenClosed;
+    private int pickerX;
+    private int pickerY;
+    private int pickerW;
+    private int pickerH;
+    private int pickerScroll;
+    private final List<String> photoFiles = new ArrayList<>();
+    /** 覆盖层内「打开图片文件夹」按钮矩形 */
+    private int pickerOpenBtnX;
+    private int pickerOpenBtnY;
+    private int pickerOpenBtnW;
+    /** 覆盖层内「取消」按钮矩形 */
+    private int pickerCancelX;
+    private int pickerCancelY;
+    private int pickerCancelW;
+    private int pickerRefreshX;
+    private int pickerRefreshY;
+    private int pickerRefreshW;
+
+    /** 已解析的饰品图标（客户端渲染用） */
+    private final List<ItemStack> baubleIcons = new ArrayList<>();
+
+    public MaidProfileScreen(Screen parent, MaidProfileView view) {
+        super(Component.translatable("gui.maid_file_manager.profile.title"));
+        this.parent = parent;
+        this.view = view;
+        this.prevHandler = IMaidFileNetwork.ClientHandlerHolder.get();
+        this.liveEntity = view != null && view.entityId() >= 0;
+        this.profile = (view != null && view.profile() != null) ? view.profile() : new MaidProfile();
+    }
+
+    /**
+     * 由导入列表的 {@code .maid} 文件数据构造只读预览视图。
+     *
+     * <p>好感度与饰品图标不在文件顶层字段中，而是从文件内的实体 NBT 现场提取：
+     * 好感度读 {@code MaidFavorability}（旧版键 {@code MaidFavorabilityManagerCounter}），
+     * 饰品栏读 {@code MaidBaubleInventory.Items}，去掉槽位键后交给客户端按当前版本反序列化渲染。
+     */
+    public static MaidProfileView buildOfflineView(MaidFileData data) {
+        return new MaidProfileView(
+                -1,
+                data.getSourceMaidUuid(),
+                data.getOwnerName(),
+                data.getModelId(),
+                data.getDisplayName(),
+                data.getCustomName(),
+                0f, 0f, 0f,
+                readOfflineFavorability(data.getData()),
+                isOfflineStruckByLightning(data.getData()),
+                data.getProfile(),
+                extractOfflineBaubles(data.getData()));
+    }
+
+    /** 从 .maid 内实体 NBT 读取好感度（双键名兼容，与导入端一致）；缺失返回 0 */
+    private static int readOfflineFavorability(CompoundTag entity) {
+        if (entity == null) {
+            return 0;
+        }
+        if (entity.contains("MaidFavorability")) {
+            return entity.getIntOr("MaidFavorability", 0);
+        }
+        if (entity.contains("MaidFavorabilityManagerCounter")) {
+            return entity.getIntOr("MaidFavorabilityManagerCounter", 0);
+        }
+        return 0;
+    }
+
+    /** 从 .maid 内实体 NBT 读取渡劫标记（TLM 雷击标记键 {@code StruckByLightning}）；缺失返回 false */
+    private static boolean isOfflineStruckByLightning(CompoundTag entity) {
+        return entity != null && entity.getBooleanOr("StruckByLightning", false);
+    }
+
+    /** 从 .maid 内实体 NBT 提取饰品栏物品 NBT（移除槽位键，供客户端反序列化渲染） */
+    private static List<CompoundTag> extractOfflineBaubles(CompoundTag entity) {
+        List<CompoundTag> result = new ArrayList<>();
+        if (entity == null || !entity.contains("MaidBaubleInventory")) {
+            return result;
+        }
+        ListTag items = entity.getCompoundOrEmpty("MaidBaubleInventory").getListOrEmpty("Items");
+        for (int i = 0; i < items.size(); i++) {
+            CompoundTag entry = items.getCompoundOrEmpty(i).copy();
+            entry.remove("Slot");
+            if (!entry.isEmpty()) {
+                result.add(entry);
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public void removed() {
+        // 界面背景音乐（试验性功能）：离开界面时释放，全部界面关闭后延迟停止
+        UiMusicManager.leave(this);
+        // 界面被 setScreen 切走时 onClose 不会被调用：若不在这里还原网络回调持有者，
+        // 会残留指向已关闭界面的引用，后续服务端回调打到死界面。
+        if (IMaidFileNetwork.ClientHandlerHolder.get() == this) {
+            IMaidFileNetwork.ClientHandlerHolder.set(prevHandler);
+        }
+        // 释放照片动态纹理：此前不释放，靠下次用同一个 Identifier 注册时被动顶掉，
+        // 期间显存一直占着一份没人用的贴图（纹理管理器不主动回收）。
+        releasePhotoTexture();
+        super.removed();
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        // 界面期间每帧压住原版背景音乐（其 MusicManager 会自动重播，单次停止无效）
+        UiMusicManager.tick();
+    }
+
+    @Override
+    protected void init() {
+        screenClosed = false;
+        UiMusicManager.enter(this);
+        super.init();
+        IMaidFileNetwork.ClientHandlerHolder.set(this);
+
+        panelW = Math.max(PANEL_MIN_W, Math.min(PANEL_MAX_W, this.width - 16));
+        panelX = (this.width - panelW) / 2;
+
+        // 多行文本域高度随字体行高自适应：个人资料 2 行、背景故事 3 行
+        int lh = this.font.lineHeight + 1;
+        noteH = 2 * lh + 12;
+        storyH = 3 * lh + 12;
+
+        // 窗口过矮时依次把背景故事、个人资料压到 1 行，避免底部按钮被挤出屏幕
+        while (HEADER_H + measureContentH() + BOTTOM_H > this.height - 8 && storyH > lh + 12) {
+            storyH = Math.max(lh + 12, storyH - lh);
+        }
+        while (HEADER_H + measureContentH() + BOTTOM_H > this.height - 8 && noteH > lh + 12) {
+            noteH = Math.max(lh + 12, noteH - lh);
+        }
+        int contentH = measureContentH();
+        panelH = HEADER_H + contentH + BOTTOM_H;
+        panelY = Math.max(4, (this.height - panelH) / 2);
+
+        int contentTop = panelY + HEADER_H;
+        int leftColW = 14 + PHOTO_DISPLAY + PHOTO_FRAME_PAD * 2 + 14;
+        photoX = panelX + 14 + PHOTO_FRAME_PAD;
+        photoY = contentTop + PHOTO_FRAME_PAD + 2;
+        colX = panelX + leftColW;
+        colW = panelX + panelW - 14 - colX;
+        assignLayout(contentTop);
+
+        boolean editable = liveEntity;
+        int singleW = colW - LABEL_W - 4;
+
+        // 档案编号（只读，单行）
+        uuidField = addField(editable, true, idY, colX + LABEL_W + 4, singleW, FIELD_H,
+                "gui.maid_file_manager.profile.id", view != null && view.maidUuid() != null ? view.maidUuid() : "",
+                false, SUBTEXT_COLOR, null);
+
+        // 职业 / 生日 并排两列
+        int halfW = (colW - 8) / 2;
+        int boxW = halfW - LABEL_SMALL_W;
+        occupationField = addField(editable, true, occY, colX + LABEL_SMALL_W, boxW, FIELD_H,
+                "gui.maid_file_manager.profile.occupation", profile.getOccupation(), true, TEXT_COLOR,
+                "gui.maid_file_manager.profile.default_occupation");
+        birthdayField = addField(editable, true, occY, colX + halfW + 8 + LABEL_SMALL_W, boxW, FIELD_H,
+                "gui.maid_file_manager.profile.birthday", profile.getBirthday(), true, TEXT_COLOR, null);
+
+        // 个人资料 / 背景故事：多行文本域
+        noteField = addField(editable, false, noteY, colX + LABEL_W + 4, singleW, noteH,
+                "gui.maid_file_manager.profile.note", profile.getPersonalNote(), true, TEXT_COLOR, null);
+        prefField = addField(editable, true, prefY, colX + LABEL_W + 4, singleW, FIELD_H,
+                "gui.maid_file_manager.profile.preferences", profile.getPreferences(), true, TEXT_COLOR, null);
+        storyField = addField(editable, false, storyY, colX + LABEL_W + 4, singleW, storyH,
+                "gui.maid_file_manager.profile.story", profile.getStorySnapshot(), true, TEXT_COLOR, null);
+
+        // 照片按钮（头像正下方，两个半宽小按钮）
+        int frameW = PHOTO_DISPLAY + PHOTO_FRAME_PAD * 2;
+        int btnW = (frameW - 4) / 2;
+        int btnY = photoY + PHOTO_DISPLAY + PHOTO_FRAME_PAD + 6;
+        addRenderableWidget(new WoodButton(photoX - PHOTO_FRAME_PAD, btnY, btnW, PHOTO_BTN_H,
+                Component.translatable("gui.maid_file_manager.profile.choose_photo"),
+                this::openPicker)).active = editable;
+        addRenderableWidget(new WoodButton(photoX - PHOTO_FRAME_PAD + btnW + 4, btnY, btnW, PHOTO_BTN_H,
+                Component.translatable("gui.maid_file_manager.profile.clear_photo"),
+                this::clearPhoto)).active = editable;
+
+        // 底部按钮：保存（实心暗金，主操作）在左，返回（空心描边，次操作）在右
+        int bottomBtnY = panelY + panelH - 26;
+        int backW = 76;
+        int saveW = 92;
+        int backX = panelX + panelW - 14 - backW;
+        addRenderableWidget(new WoodButton(backX, bottomBtnY, backW, FIELD_H + 4,
+                Component.translatable("gui.maid_file_manager.profile.back"), this::onClose, false));
+        if (editable) {
+            addRenderableWidget(new WoodButton(backX - 8 - saveW, bottomBtnY, saveW, FIELD_H + 4,
+                    Component.translatable("gui.maid_file_manager.profile.save"), this::onSave, true));
+        } else {
+            setFeedback(Component.translatable("gui.maid_file_manager.profile.preview_only"), SUBTEXT_COLOR);
+        }
+
+        parseBaubleIcons();
+        refreshPhotoTexture();
+    }
+
+    /** 试算内容区高度（originY=0），用于定高与窗口过矮时的收缩判断 */
+    private int measureContentH() {
+        assignLayout(0);
+        int rightH = baubleY + BAUBLE_ICON;
+        int leftH = PHOTO_DISPLAY + PHOTO_FRAME_PAD * 2 + 6 + PHOTO_BTN_H + 4 + PHOTO_BTN_H;
+        return Math.max(leftH, rightH);
+    }
+
+    /** 统一计算右列各行 Y 坐标（originY 为内容区顶部） */
+    private void assignLayout(int originY) {
+        int y = originY;
+        idY = y;                        // 档案编号
+        y += FIELD_H + ROW_GAP;
+        dividerBasicY = y;              // 分隔：基本资料
+        y += DIVIDER_GAP;
+        factionY = y;                   // 所属势力 / 模型
+        y += LINE_H + ROW_GAP;
+        statsY = y;                     // 基础数值（血量 / 攻击 / 好感度）
+        y += STATS_H + ROW_GAP;
+        dividerPersonalY = y;           // 分隔：个人档案
+        y += DIVIDER_GAP;
+        occY = y;                       // 职业 / 生日（两列并排）
+        y += FIELD_H + ROW_GAP;
+        noteY = y;                      // 个人资料（多行）
+        y += noteH + ROW_GAP;
+        prefY = y;                      // 偏好与特长
+        y += FIELD_H + ROW_GAP;
+        storyY = y;                     // 背景故事（多行）
+        y += storyH + ROW_GAP;
+        baubleY = y;                    // 随身饰品
+    }
+
+    private MultiLineEditBox addField(boolean editable, boolean singleLine, int y, int x, int w, int h,
+                                      String labelKey, String value, boolean allowEdit, int color, String hintKey) {
+        MultiLineEditBox box = new MultiLineEditBox(this.font, x, y, w, h,
+                Constants.PROFILE_TEXT_MAX_LEN, Component.translatable(labelKey));
+        box.setSingleLine(singleLine);
+        box.setValue(value == null ? "" : value);
+        box.setTextColor(color);
+        box.setEditable(editable && allowEdit);
+        if (hintKey != null) {
+            box.setHint(Component.translatable(hintKey));
+        }
+        addRenderableWidget(box);
+        return box;
+    }
+
+    // ===== 保存与回执 =====
+
+    /** 保存：把可编辑字段写回档案副本并提交服务端 */
+    private void onSave() {
+        if (view == null || !liveEntity) {
+            return;
+        }
+        profile.setOccupation(occupationField.getValue());
+        profile.setBirthday(birthdayField.getValue());
+        profile.setPersonalNote(noteField.getValue());
+        profile.setPreferences(prefField.getValue());
+        profile.setStorySnapshot(storyField.getValue());
+        IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
+        if (net == null) {
+            setFeedback(Component.translatable("gui.maid_file_manager.profile.save_failed"), ERROR_COLOR);
+            Constants.LOG.warn("[maid_file_manager] 网络实现缺失，档案未保存");
+            return;
+        }
+        net.sendSaveMaidProfile(view.entityId(), profile);
+    }
+
+    @Override
+    public void onFeedbackReceived(Component message) {
+        if (message != null) {
+            setFeedback(message, ACCENT);
+        }
+    }
+
+    // ===== 照片 =====
+
+    /** 重新扫描 maid_photos 目录（供「刷新」按钮与首次打开共用） */
+    private void refreshPhotoList() {
+        photoFiles.clear();
+        Path dir = MaidPhotoUtil.photosDir(this.minecraft.gameDirectory.toPath());
+        photoFiles.addAll(MaidPhotoUtil.listPhotoFiles(dir));
+        pickerScroll = 0;
+    }
+
+    private void openPicker() {
+        refreshPhotoList();
+        pickerOpen = true;
+        layoutPicker();
+    }
+
+    private void layoutPicker() {
+        pickerW = Math.min(340, this.width - 40);
+        pickerH = Math.min(230, this.height - 40);
+        pickerX = (this.width - pickerW) / 2;
+        pickerY = (this.height - pickerH) / 2;
+        pickerOpenBtnX = pickerX + 8;
+        pickerOpenBtnY = pickerY + pickerH - PICKER_BTN_H - 8;
+        pickerOpenBtnW = 108;
+        pickerCancelW = 64;
+        pickerCancelX = pickerX + pickerW - 8 - pickerCancelW;
+        // 「刷新」按钮：夹在「打开目录」与「取消」之间，用于重新扫描 maid_photos 目录
+        pickerRefreshW = 56;
+        pickerRefreshX = pickerCancelX - 8 - pickerRefreshW;
+        if (pickerRefreshX < pickerOpenBtnX + pickerOpenBtnW + 6) {
+            // 面板太窄时把刷新按钮压到「打开目录」右侧的最小可用位置
+            pickerRefreshX = pickerOpenBtnX + pickerOpenBtnW + 6;
+        }
+        pickerRefreshY = pickerOpenBtnY;
+        pickerCancelY = pickerOpenBtnY;
+    }
+
+    private void choosePhoto(String fileName) {
+        Path dir = MaidPhotoUtil.photosDir(this.minecraft.gameDirectory.toPath());
+        Path file = dir.resolve(fileName);
+        // 解码 + 缩放 + PNG 重编码全是 CPU/IO 密集操作（4096² 的 BufferedImage 约 64 MB，
+        // 还要多轮 encodePng 才压到上限内）。原先在渲染线程同步做，选一张大图会明显卡帧。
+        // 改为丢到后台线程，结果回主线程再改界面状态（纹理创建必须回主线程）。
+        Thread worker = new Thread(() -> {
+            byte[] bytes = null;
+            String errorKey = null;
+            try {
+                if (MaidPhotoUtil.isSourceTooLarge(file)) {
+                    errorKey = "gui.maid_file_manager.profile.photo_source_too_large";
+                } else {
+                    bytes = MaidPhotoUtil.loadAndEncode(file, Constants.PROFILE_PHOTO_MAX_SIDE);
+                    if (bytes == null || bytes.length > Constants.PROFILE_PHOTO_MAX_BYTES) {
+                        errorKey = "gui.maid_file_manager.profile.photo_too_large";
+                    }
+                }
+            } catch (Throwable t) {
+                Constants.LOG.warn("[maid_file_manager] 读取档案照片失败: {}", t.toString());
+                errorKey = "gui.maid_file_manager.profile.photo_load_failed";
+            }
+            final byte[] outBytes = bytes;
+            final String outError = errorKey;
+            if (this.minecraft == null) {
+                return;
+            }
+            this.minecraft.execute(() -> {
+                if (outError != null) {
+                    // 浮层不关的话，它的不透明底色会把底部提示遮住 → 看起来「点了没反应」（第六轮 M7）。
+                    pickerOpen = false;
+                    setFeedback(Component.translatable(outError), ERROR_COLOR);
+                    return;
+                }
+                // 界面已关闭：此时建纹理没人释放（onClose 已 release 过）→ 显存泄漏（第六轮 M6）。
+                if (screenClosed) {
+                    return;
+                }
+                profile.setPhoto(outBytes);
+                refreshPhotoTexture();
+                pickerOpen = false;
+                setFeedback(Component.translatable(
+                        "gui.maid_file_manager.profile.photo_selected", fileName), SUBTEXT_COLOR);
+            });
+        }, "maidfm-photo-encode");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /** 打开档案照片投放目录（不存在则创建） */
+    private void openPhotosDir() {
+        try {
+            Path dir = MaidPhotoUtil.ensurePhotosDir(this.minecraft.gameDirectory.toPath());
+            // 用游戏原生的平台打开方式（各系统分支已内建），比直接调 AWT Desktop 更可靠
+            Util.getPlatform().openFile(dir.toFile());
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 打开照片目录失败: {}", t.toString());
+            setFeedback(Component.translatable("gui.maid_file_manager.profile.picker_open_dir_failed"), ERROR_COLOR);
+        }
+    }
+
+    private void clearPhoto() {
+        // 不再按版本拦截：清空照片会走 save_profile 的分片通道（超 24 KiB 自动分片），
+        // 1.20.x 也能正常保存。此前这里挡着，导致 1.20.x 玩家清不掉头像。
+        profile.setPhoto(null);
+        releasePhotoTexture();
+        setFeedback(Component.translatable("gui.maid_file_manager.profile.photo_cleared"), SUBTEXT_COLOR);
+    }
+
+    /** 用当前档案照片字节重建动态纹理（照片变化时调用） */
+    private void refreshPhotoTexture() {
+        releasePhotoTexture();
+        byte[] bytes = profile.getPhoto();
+        if (bytes == null || bytes.length == 0) {
+            return;
+        }
+        try {
+            NativeImage image = NativeImage.read(new ByteArrayInputStream(bytes));
+            photoTexture = new DynamicTexture(() -> "maid_manager_photo", image);
+            photoTexW = image.getWidth();
+            photoTexH = image.getHeight();
+            // 照片存盘分辨率通常高于显示框，缩小绘制时必须用线性过滤，否则会出现严重锯齿
+            // photoTexture.setFilter(true, false); // 26.1 纹理过滤 API 变化，使用默认过滤
+            photoRl = Identifier.fromNamespaceAndPath(Constants.MOD_ID, "profile_photo/preview");
+            Minecraft.getInstance().getTextureManager().register(photoRl, photoTexture);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 加载档案照片纹理失败: {}", t.toString());
+            photoRl = null;
+            photoTexture = null;
+            photoTexW = 0;
+            photoTexH = 0;
+        }
+    }
+
+    private void releasePhotoTexture() {
+        if (photoRl != null) {
+            try {
+                Minecraft.getInstance().getTextureManager().release(photoRl);
+            } catch (Throwable ignored) {
+                // 纹理不存在时释放失败可忽略
+            }
+            photoRl = null;
+        }
+        photoTexture = null;
+        photoTexW = 0;
+        photoTexH = 0;
+    }
+
+    // ===== 饰品 =====
+
+    private void parseBaubleIcons() {
+        baubleIcons.clear();
+        if (view == null || view.baubleItems() == null) {
+            return;
+        }
+        RegistryAccess registries = net.minecraft.client.Minecraft.getInstance().level != null ? net.minecraft.client.Minecraft.getInstance().level.registryAccess() : null;
+        if (registries == null) {
+            return;
+        }
+        for (CompoundTag tag : view.baubleItems()) {
+            try {
+                ItemStack stack = Services.PLATFORM.get().parseItemStack(registries, tag);
+                if (stack != null && !stack.isEmpty()) {
+                    baubleIcons.add(stack);
+                }
+            } catch (Throwable t) {
+                Constants.LOG.warn("[maid_file_manager] 解析档案饰品图标失败: {}", t.toString());
+            }
+        }
+    }
+
+    // ===== 输入 =====
+
+    @Override
+    public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent event, boolean doubleClick) {
+        double mouseX = event.x();
+        double mouseY = event.y();
+        int button = event.button();
+        if (pickerOpen) {
+            return handlePickerClick(mouseX, mouseY, button);
+        }
+        return super.mouseClicked(event, doubleClick);
+    }
+
+    /** 照片选择覆盖层的点击处理：命中文件行则选用，命中按钮或面板外则相应处理 */
+    private boolean handlePickerClick(double mouseX, double mouseY, int button) {
+        if (button != 0) {
+            return true;
+        }
+        if (inRect(mouseX, mouseY, pickerCancelX, pickerCancelY, pickerCancelW, PICKER_BTN_H)) {
+            pickerOpen = false;
+            return true;
+        }
+        if (inRect(mouseX, mouseY, pickerRefreshX, pickerRefreshY, pickerRefreshW, PICKER_BTN_H)) {
+            // 刷新：重新扫描目录，不关闭面板（玩家可在界面开着时往目录里丢图）
+            refreshPhotoList();
+            setFeedback(Component.translatable("gui.maid_file_manager.profile.picker_refreshed",
+                    photoFiles.size()), SUBTEXT_COLOR);
+            return true;
+        }
+        if (inRect(mouseX, mouseY, pickerOpenBtnX, pickerOpenBtnY, pickerOpenBtnW, PICKER_BTN_H)) {
+            openPhotosDir();
+            return true;
+        }
+        int listTop = pickerY + 20;
+        int listBottom = pickerOpenBtnY - 6;
+        if (mouseX >= pickerX + 4 && mouseX <= pickerX + pickerW - 4 - PICKER_SCROLL_W
+                && mouseY >= listTop && mouseY <= listBottom) {
+            int index = pickerScroll + (int) ((mouseY - listTop) / PICKER_ROW_H);
+            if (index >= 0 && index < photoFiles.size()) {
+                choosePhoto(photoFiles.get(index));
+            }
+            return true;
+        }
+        if (mouseX < pickerX || mouseX > pickerX + pickerW || mouseY < pickerY || mouseY > pickerY + pickerH) {
+            pickerOpen = false;
+        }
+        return true;
+    }
+
+    private static boolean inRect(double mx, double my, int x, int y, int w, int h) {
+        return mx >= x && mx <= x + w && my >= y && my <= y + h;
+    }
+
+    /**
+     * 1.21.x 官方映射为四参 {@code mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount)}，
+     * 滚轮只产生垂直量（第四参）；1.20.x 为三参（第三参即垂直量）。两个签名都写一遍共用同一实现。
+     */
+    @SuppressWarnings("unused")
+    public boolean mouseScrolled(double mouseX, double mouseY, double amount, double delta) {
+        return handleScroll(mouseX, mouseY, delta);
+    }
+
+    @SuppressWarnings("unused")
+    public boolean mouseScrolled(double mouseX, double mouseY, double amount) {
+        return handleScroll(mouseX, mouseY, amount);
+    }
+
+    private boolean handleScroll(double mouseX, double mouseY, double amount) {
+        if (pickerOpen) {
+            int listTop = pickerY + 20;
+            int listBottom = pickerOpenBtnY - 6;
+            int visibleRows = (listBottom - listTop) / PICKER_ROW_H;
+            int maxScroll = Math.max(0, photoFiles.size() - visibleRows);
+            pickerScroll = Math.max(0, Math.min(maxScroll, pickerScroll + (amount > 0 ? -2 : 2)));
+            return true;
+        }
+        // 把滚轮转发给鼠标所悬停的文本域：只读预览（导入界面的档案）下多行文本域不可编辑，
+        // 键盘与光标导航被整体禁用，被截断的长文本（尤其背景故事）只能靠滚轮查看
+        MultiLineEditBox[] fields = { storyField, noteField, prefField, occupationField, birthdayField, uuidField };
+        for (MultiLineEditBox field : fields) {
+            if (field != null && field.handleScroll(mouseX, mouseY, amount)) {
+                return true;
+            }
+        }
+        // 不调用 super.mouseScrolled：其签名在 1.20.x（三参）与 1.21.x（四参）不一致，直接返回未消费
+        return false;
+    }
+
+    @Override
+    public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
+        if (pickerOpen && event.key() == 256) {
+            pickerOpen = false;
+            return true;
+        }
+        return super.keyPressed(event);
+    }
+
+    // ===== 渲染 =====
+
+    @Override
+    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        graphics.fill(0, 0, this.width, this.height, SCREEN_BG);
+        graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, PANEL_BG);
+        graphics.outline(panelX, panelY, panelW, panelH, PANEL_BORDER);
+        graphics.text(this.font, this.title,
+                this.width / 2 - this.font.width(this.title) / 2, panelY + 8, HEADER_COLOR, false);
+
+        renderPhoto(graphics);
+        renderReadonly(graphics);
+        renderDividers(graphics);
+        renderLabels(graphics);
+        renderBaubles(graphics);
+        renderFeedback(graphics);
+        // 绘制顺序：picker 打开时先画主界面控件、再画遮罩+面板，
+        // 否则 renderPicker 的全屏遮罩会被后画的 super 覆盖，两个面板会叠在一起。
+        if (pickerOpen) {
+            super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+            renderPicker(graphics, mouseX, mouseY);
+        } else {
+            renderBaubleTooltip(graphics, mouseX, mouseY);
+            super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        }
+    }
+
+    /** 头像：相框装饰角 + 照片或占位文字 */
+    private void renderPhoto(GuiGraphicsExtractor graphics) {
+        int frameX = photoX - PHOTO_FRAME_PAD;
+        int frameY = photoY - PHOTO_FRAME_PAD;
+        int frameW = PHOTO_DISPLAY + PHOTO_FRAME_PAD * 2;
+        int frameH = PHOTO_DISPLAY + PHOTO_FRAME_PAD * 2;
+        graphics.fill(frameX, frameY, frameX + frameW, frameY + frameH, 0xFF1C1812);
+        if (photoRl != null && photoTexW > 0 && photoTexH > 0) {
+            // 等比 contain 绘制：照片按原比例存盘，这里按短边贴合显示框并居中，避免拉伸变形或裁切。
+            // UV 必须覆盖整张纹理 0..1，因此取样宽高传纹理自身尺寸；显示尺寸则靠 PoseStack 缩放映射到
+            // 目标矩形（旧代码把「取样宽高」当「绘制宽高」传入，UV 只到 0.75，故只显示左上 3/4）。
+            float scale = Math.min((float) PHOTO_DISPLAY / photoTexW, (float) PHOTO_DISPLAY / photoTexH);
+            int dstW = Math.max(1, Math.round(photoTexW * scale));
+            int dstH = Math.max(1, Math.round(photoTexH * scale));
+            int dstX = photoX + (PHOTO_DISPLAY - dstW) / 2;
+            int dstY = photoY + (PHOTO_DISPLAY - dstH) / 2;
+            // 26.1：blit 直接接收目标矩形（x0,y0,x1,y1）+ 归一化 UV，无需 PoseStack 变换。
+            // UV 传 0..1 覆盖整张纹理；目标矩形用 contain 后的尺寸，实现等比居中显示。
+            graphics.blit(photoRl, dstX, dstY, dstX + dstW, dstY + dstH, 0f, 1f, 0f, 1f);
+        } else {
+            graphics.fill(photoX, photoY, photoX + PHOTO_DISPLAY, photoY + PHOTO_DISPLAY, 0xFF141210);
+            Component none = Component.translatable("gui.maid_file_manager.profile.no_photo");
+            graphics.text(this.font, none,
+                    photoX + (PHOTO_DISPLAY - this.font.width(none)) / 2,
+                    photoY + PHOTO_DISPLAY / 2 - 4, SUBTEXT_COLOR, false);
+        }
+        graphics.outline(frameX, frameY, frameW, frameH, PANEL_BORDER);
+        // 相框四角装饰角
+        drawCorner(graphics, frameX, frameY, 1, 1);
+        drawCorner(graphics, frameX + frameW, frameY, -1, 1);
+        drawCorner(graphics, frameX, frameY + frameH, 1, -1);
+        drawCorner(graphics, frameX + frameW, frameY + frameH, -1, -1);
+    }
+
+    /** 在 (x,y) 处朝 (dx,dy) 方向画一个 L 形装饰角 */
+    private void drawCorner(GuiGraphicsExtractor graphics, int x, int y, int dx, int dy) {
+        int len = 6;
+        int x0 = dx > 0 ? x : x - len;
+        int y0 = dy > 0 ? y : y - 1;
+        graphics.fill(x0, y0, x0 + len, y0 + 1, ACCENT);
+        int vx = dx > 0 ? x : x - 1;
+        int vy = dy > 0 ? y : y - len;
+        graphics.fill(vx, vy, vx + 1, vy + len, ACCENT);
+    }
+
+    private void renderReadonly(GuiGraphicsExtractor graphics) {
+        String faction = view != null && view.ownerName() != null ? view.ownerName() : "-";
+        // 姓名行：设有命名牌（自定义名称）时显示姓名，否则回退显示模型名
+        String modelName = view != null && view.displayName() != null
+                ? ModelNames.display(view.displayName()) : "-";
+        String custom = view != null ? view.customName() : null;
+        String shownName = custom != null && !custom.isBlank() ? custom : modelName;
+        graphics.text(this.font,
+                Component.translatable("gui.maid_file_manager.profile.faction")
+                        .append(Component.translatable("maid_file_manager.gui.label.colon_value", faction))
+                        .getString(),
+                colX, factionY, TEXT_COLOR, false);
+        String nameLine = tr("gui.maid_file_manager.profile.name") + Component.translatable("maid_file_manager.gui.label.colon_value", shownName).getString();
+        graphics.text(this.font, nameLine, colX + colW - this.font.width(nameLine),
+                factionY, TEXT_COLOR, false);
+
+        // 基础数值底框
+        graphics.fill(colX, statsY, colX + colW, statsY + STATS_H, GROUP_BG);
+        graphics.outline(colX, statsY, colW, STATS_H, DIVIDER);
+        // 离线预览（.maid 文件）没有可靠的血量/攻击数值，保持占位符；好感度与渡劫标记在文件中有据可查，正常展示
+        String stats;
+        if (liveEntity && view != null) {
+            stats = tr("gui.maid_file_manager.profile.health") + " " + fmtInt(view.health()) + "/" + fmtInt(view.maxHealth())
+                    + "    " + tr("gui.maid_file_manager.profile.attack") + " " + fmtFloat(view.attackDamage())
+                    + "    " + tr("gui.maid_file_manager.profile.favor") + " " + view.favorability()
+                    + "    " + lightningMark();
+        } else {
+            stats = tr("gui.maid_file_manager.profile.health") + " -"
+                    + "    " + tr("gui.maid_file_manager.profile.attack") + " -"
+                    + "    " + tr("gui.maid_file_manager.profile.favor") + " "
+                    + (view != null ? view.favorability() : 0)
+                    + "    " + lightningMark();
+        }
+        graphics.text(this.font, stats, colX + 8, statsY + (STATS_H - 8) / 2, TEXT_COLOR, false);
+    }
+
+    /** 渡劫标记文本：已渡劫显示「渡劫 是」，否则「渡劫 否」 */
+    private String lightningMark() {
+        boolean struck = view != null && view.struckByLightning();
+        return tr("gui.maid_file_manager.profile.lightning") + " "
+                + tr(struck ? "gui.maid_file_manager.profile.yes" : "gui.maid_file_manager.profile.no");
+    }
+
+    /** 分组细分隔线（带小标题） */
+    private void renderDividers(GuiGraphicsExtractor graphics) {
+        drawSectionDivider(graphics, dividerBasicY, "gui.maid_file_manager.profile.group.basic");
+        drawSectionDivider(graphics, dividerPersonalY, "gui.maid_file_manager.profile.group.personal");
+        // 底部操作区上方的分隔线
+        int bottomDiv = panelY + panelH - BOTTOM_H + 2;
+        graphics.fill(panelX + 14, bottomDiv, panelX + panelW - 14, bottomDiv + 1, DIVIDER);
+    }
+
+    private void drawSectionDivider(GuiGraphicsExtractor graphics, int y, String labelKey) {
+        Component label = Component.translatable(labelKey);
+        int lw = this.font.width(label);
+        graphics.text(this.font, label, colX, y, SUBTEXT_COLOR, false);
+        int lineX = colX + lw + 6;
+        int lineY = y + 4;
+        if (lineX < colX + colW) {
+            graphics.fill(lineX, lineY, colX + colW, lineY + 1, DIVIDER);
+        }
+    }
+
+    /** 绘制各字段左侧标签（多行框的标签垂直居中于首行） */
+    private void renderLabels(GuiGraphicsExtractor graphics) {
+        drawLabel(graphics, idY, FIELD_H, colX, "gui.maid_file_manager.profile.id");
+        drawLabel(graphics, occY, FIELD_H, colX, "gui.maid_file_manager.profile.occupation");
+        int halfW = (colW - 8) / 2;
+        drawLabel(graphics, occY, FIELD_H, colX + halfW + 8, "gui.maid_file_manager.profile.birthday");
+        drawLabel(graphics, noteY, FIELD_H, colX, "gui.maid_file_manager.profile.note");
+        drawLabel(graphics, prefY, FIELD_H, colX, "gui.maid_file_manager.profile.preferences");
+        drawLabel(graphics, storyY, FIELD_H, colX, "gui.maid_file_manager.profile.story");
+    }
+
+    private void drawLabel(GuiGraphicsExtractor graphics, int fieldY, int fieldH, int x, String key) {
+        graphics.text(this.font, Component.translatable(key),
+                x, fieldY + (fieldH - 8) / 2, SUBTEXT_COLOR, false);
+    }
+
+    private void renderBaubles(GuiGraphicsExtractor graphics) {
+        Component label = Component.translatable("gui.maid_file_manager.profile.baubles");
+        graphics.text(this.font, label, colX, baubleY, HEADER_COLOR, false);
+        int startX = colX + this.font.width(label) + 6;
+        if (baubleIcons.isEmpty()) {
+            graphics.text(this.font,
+                    Component.translatable("gui.maid_file_manager.profile.no_bauble"),
+                    startX, baubleY, SUBTEXT_COLOR, false);
+            return;
+        }
+        int iconY = baubleY - 4;
+        int maxCount = Math.max(1, (colX + colW - startX) / (BAUBLE_ICON + BAUBLE_GAP));
+        for (int i = 0; i < baubleIcons.size() && i < maxCount; i++) {
+            graphics.item(baubleIcons.get(i), startX + i * (BAUBLE_ICON + BAUBLE_GAP), iconY);
+        }
+    }
+
+    private void renderFeedback(GuiGraphicsExtractor graphics) {
+        // 自动过期：超过 6 秒的提示自行消失，不必关窗才清掉
+        if (this.feedbackUntil > 0L && System.currentTimeMillis() > this.feedbackUntil) {
+            this.feedback = Component.empty();
+            this.feedbackUntil = 0L;
+        }
+        if (feedback.getString().isEmpty()) {
+            return;
+        }
+        // 反馈文本左对齐绘制于底部，右端需为右对齐的保存/返回按钮留出空间
+        int maxW = panelW - 210;
+        String text = this.font.plainSubstrByWidth(feedback.getString(), Math.max(20, maxW));
+        graphics.text(this.font, text, panelX + 14, panelY + panelH - 22, feedbackColor, false);
+    }
+
+    private void renderBaubleTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        if (baubleIcons.isEmpty()) {
+            return;
+        }
+        int startX = colX + this.font.width(Component.translatable("gui.maid_file_manager.profile.baubles")) + 6;
+        int iconY = baubleY - 4;
+        int maxCount = Math.max(1, (colX + colW - startX) / (BAUBLE_ICON + BAUBLE_GAP));
+        for (int i = 0; i < baubleIcons.size() && i < maxCount; i++) {
+            int ix = startX + i * (BAUBLE_ICON + BAUBLE_GAP);
+            if (mouseX >= ix && mouseX < ix + BAUBLE_ICON && mouseY >= iconY && mouseY < iconY + BAUBLE_ICON) {
+                graphics.setTooltipForNextFrame(this.font, baubleIcons.get(i), mouseX, mouseY);
+                return;
+            }
+        }
+    }
+
+    private void renderPicker(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        // 不透明遮罩：防止背后档案文字穿透浮现
+        graphics.fill(0, 0, this.width, this.height, SCREEN_BG);
+        graphics.fill(pickerX, pickerY, pickerX + pickerW, pickerY + pickerH, PANEL_BG);
+        graphics.outline(pickerX, pickerY, pickerW, pickerH, PANEL_BORDER);
+        graphics.text(this.font, Component.translatable("gui.maid_file_manager.profile.picker_title"),
+                pickerX + 8, pickerY + 6, HEADER_COLOR, false);
+
+        int listTop = pickerY + 20;
+        int listBottom = pickerOpenBtnY - 6;
+        graphics.fill(pickerX + 4, listTop, pickerX + pickerW - 4, listBottom, 0xFF1A1712);
+        if (photoFiles.isEmpty()) {
+            graphics.text(this.font,
+                    Component.translatable("gui.maid_file_manager.profile.picker_empty"),
+                    pickerX + 8, listTop + 4, SUBTEXT_COLOR, false);
+        } else {
+            graphics.enableScissor(pickerX + 4, listTop, pickerX + pickerW - 4, listBottom);
+            int visibleRows = (listBottom - listTop) / PICKER_ROW_H;
+            for (int i = 0; i < visibleRows; i++) {
+                int index = pickerScroll + i;
+                if (index >= photoFiles.size()) {
+                    break;
+                }
+                int rowY = listTop + i * PICKER_ROW_H;
+                boolean hover = mouseX >= pickerX + 4 && mouseX <= pickerX + pickerW - 4
+                        && mouseY >= rowY && mouseY < rowY + PICKER_ROW_H;
+                if (hover) {
+                    graphics.fill(pickerX + 4, rowY, pickerX + pickerW - 4, rowY + PICKER_ROW_H, 0x30FFFFFF);
+                }
+                graphics.text(this.font, Component.literal(photoFiles.get(index)),
+                        pickerX + 8, rowY + 3, TEXT_COLOR, false);
+            }
+            graphics.disableScissor();
+            if (photoFiles.size() > visibleRows) {
+                int barX = pickerX + pickerW - 4 - PICKER_SCROLL_W;
+                int barH = Math.max(12, (int) ((listBottom - listTop) * ((double) visibleRows / photoFiles.size())));
+                int maxScroll = photoFiles.size() - visibleRows;
+                int barY = listTop + (int) (((listBottom - listTop) - barH) * ((double) pickerScroll / maxScroll));
+                graphics.fill(barX, barY, barX + PICKER_SCROLL_W, barY + barH, PANEL_BORDER);
+            }
+        }
+        // 目录提示 + 底部按钮
+        graphics.text(this.font,
+                Component.translatable("gui.maid_file_manager.profile.picker_dir_hint"),
+                pickerX + 8, pickerOpenBtnY - 12, SUBTEXT_COLOR, false);
+        drawFlatButton(graphics, pickerOpenBtnX, pickerOpenBtnY, pickerOpenBtnW, PICKER_BTN_H,
+                Component.translatable("gui.maid_file_manager.profile.picker_open_dir"),
+                inRect(mouseX, mouseY, pickerOpenBtnX, pickerOpenBtnY, pickerOpenBtnW, PICKER_BTN_H));
+        drawFlatButton(graphics, pickerRefreshX, pickerRefreshY, pickerRefreshW, PICKER_BTN_H,
+                Component.translatable("gui.maid_file_manager.profile.picker_refresh"),
+                inRect(mouseX, mouseY, pickerRefreshX, pickerRefreshY, pickerRefreshW, PICKER_BTN_H));
+        drawFlatButton(graphics, pickerCancelX, pickerCancelY, pickerCancelW, PICKER_BTN_H,
+                Component.translatable("gui.maid_file_manager.profile.back"),
+                inRect(mouseX, mouseY, pickerCancelX, pickerCancelY, pickerCancelW, PICKER_BTN_H));
+    }
+
+    private void drawFlatButton(GuiGraphicsExtractor graphics, int x, int y, int w, int h, Component label, boolean hover) {
+        graphics.fill(x, y, x + w, y + h, hover ? BUTTON_BG_HOVER : BUTTON_BG);
+        graphics.outline(x, y, w, h, PANEL_BORDER);
+        graphics.text(this.font, label, x + (w - this.font.width(label)) / 2, y + (h - 8) / 2, TEXT_COLOR, false);
+    }
+
+    /** 打断 Screen 默认的 4 参 renderBackground 调用链（1.21.x 会画泥土背景并触发背景模糊） */
+    private void renderBackgroundDisabled(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        // 全屏底色与面板统一在 render() 开头绘制
+    }
+
+    // 真实 MC jar 取证（第六轮）：两版都**没有** returnsPauseScreen；1.20.x/1.21.x 的映射名都是 isPauseScreen。
+    // 保留 returnsPauseScreen 只是历史兼容的空方法（不会被调用），注释不要再写成「1.21 映射名」。
+    @SuppressWarnings("unused")
+    public boolean returnsPauseScreen() {
+        return false;
+    }
+
+    @SuppressWarnings("unused")
+    public boolean isPauseScreen() {
+        return false;
+    }
+
+    @Override
+    public void onClose() {
+        screenClosed = true;
+        releasePhotoTexture();
+        if (prevHandler != null) {
+            IMaidFileNetwork.ClientHandlerHolder.set(prevHandler);
+        }
+        if (this.minecraft != null) {
+            this.minecraft.setScreen(this.parent);
+        }
+    }
+
+    // ===== 主界面回调：本界面只关心反馈，其余忽略 =====
+
+    @Override
+    public void onMaidListReceived(List<io.github.zgxhzhr.maidfm.data.MaidInfo> list) {
+    }
+
+    @Override
+    public void onExportResultReceived(List<io.github.zgxhzhr.maidfm.data.MaidFileData> dataList) {
+    }
+
+    @Override
+    public void onImportBatchResultReceived(Component summary, List<Boolean> spawned) {
+    }
+
+    @Override
+    public void onServerExportListReceived(List<IMaidFileNetwork.PlayerMaidGroup> groups) {
+    }
+
+    @Override
+    public void onMaidProfileReceived(MaidProfileView received) {
+    }
+
+    // ===== 辅助 =====
+
+    private void setFeedback(Component message, int color) {
+        this.feedback = message == null ? Component.empty() : message;
+        this.feedbackColor = color;
+        this.feedbackUntil = System.currentTimeMillis() + 6000L;
+    }
+
+    private String tr(String key) {
+        return Component.translatable(key).getString();
+    }
+
+    private static String fmtInt(float v) {
+        return String.valueOf(Math.round(v));
+    }
+
+    private static String fmtFloat(float v) {
+        return String.format(Locale.ROOT, "%.1f", v);
+    }
+
+    /** 木色按钮：深棕底 + 木色描边 + 白字（无阴影）；primary=true 时用实心暗金表示主操作 */
+    private class WoodButton extends AbstractButton {
+        private final Runnable action;
+        private final boolean primary;
+
+        WoodButton(int x, int y, int width, int height, Component message, Runnable action) {
+            this(x, y, width, height, message, action, false);
+        }
+
+        WoodButton(int x, int y, int width, int height, Component message, Runnable action, boolean primary) {
+            super(x, y, width, height, message);
+            this.action = action;
+            this.primary = primary;
+        }
+
+        @Override
+        public void onPress(net.minecraft.client.input.InputWithModifiers input) {
+            this.action.run();
+        }
+
+        @Override
+        protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+            boolean hovered = isHoveredOrFocused();
+            int bg;
+            int border;
+            if (!this.active) {
+                bg = BUTTON_DISABLED;
+                border = DIVIDER;
+            } else if (this.primary) {
+                bg = hovered ? SAVE_BG_HOVER : SAVE_BG;
+                border = ACCENT;
+            } else {
+                bg = hovered ? BUTTON_BG_HOVER : BUTTON_BG;
+                border = PANEL_BORDER;
+            }
+            graphics.fill(getX(), getY(), getX() + width, getY() + height, bg);
+            graphics.outline(getX(), getY(), width, height, border);
+            int tx = getX() + (width - MaidProfileScreen.this.font.width(getMessage())) / 2;
+            int ty = getY() + (height - 8) / 2;
+            graphics.text(MaidProfileScreen.this.font, getMessage(), tx, ty,
+                    this.active ? TEXT_COLOR : SUBTEXT_COLOR, false);
+        }
+
+        @Override
+        protected void updateWidgetNarration(NarrationElementOutput output) {
+            this.defaultButtonNarrationText(output);
+        }
+    }
+}

@@ -1,0 +1,35 @@
+{
+    "schemaVersion": 1,
+    "id": "${mod_id}",
+    "version": "${version}",
+    "name": "${mod_name}",
+    "description": "${description}",
+    "authors": [
+        "${mod_author}"
+    ],
+    "contact": {
+        "homepage": "https://github.com/zgxhzhr/MaidFileManager",
+        "sources": "https://github.com/zgxhzhr/MaidFileManager",
+        "issues": "https://github.com/zgxhzhr/MaidFileManager/issues"
+    },
+    "license": "${license}",
+    "environment": "*",
+    "entrypoints": {
+        "main": [
+            "io.github.zgxhzhr.maidfm.MaidFileModFabric"
+        ],
+        "client": [
+            "io.github.zgxhzhr.maidfm.MaidFileClientFabric"
+        ]
+    },
+    "mixins": [
+        "${mod_id}.mixins.json"
+    ],
+    "depends": {
+        "fabricloader": ">=${fabric_loader_version}",
+        "fabric-api": "*",
+        "minecraft": "~${minecraft_version}",
+        "java": ">=${java_version}",
+        "touhou_little_maid": "*"
+    }
+}
