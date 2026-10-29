@@ -196,7 +196,8 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
                 readOfflineFavorability(data.getData()),
                 isOfflineStruckByLightning(data.getData()),
                 data.getProfile(),
-                extractOfflineBaubles(data.getData()));
+                extractOfflineBaubles(data.getData()),
+                false);
     }
 
     /** 从 .maid 内实体 NBT 读取好感度（双键名兼容，与导入端一致）；缺失返回 0 */
@@ -768,11 +769,18 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         // 必须用 modelId 而不是 displayName：
         //   displayName 是服务端解析出来的展示名，服务端没有该模型包时就是英文/path 形态
         //   modelId 才是「ba_mutsuki_pack:ba_mutsuki」这种原始 ID，交给 displayModelId 才能拆开查中文表
-        String rawModelId = view != null ? view.modelId() : null;
-        if (rawModelId == null || rawModelId.isEmpty()) {
-            rawModelId = view != null ? view.displayName() : null;
+        // YSM 换模：modelId 是 YSM 路径 ID，解析不出来，直接用服务端给的 displayName
+        String modelName;
+        if (view != null && view.ysmModel()
+                && view.displayName() != null && !view.displayName().isEmpty()) {
+            modelName = view.displayName();
+        } else {
+            String rawModelId = view != null ? view.modelId() : null;
+            if (rawModelId == null || rawModelId.isEmpty()) {
+                rawModelId = view != null ? view.displayName() : null;
+            }
+            modelName = rawModelId != null ? ModelNames.displayModelId(rawModelId) : "-";
         }
-        String modelName = rawModelId != null ? ModelNames.displayModelId(rawModelId) : "-";
         String custom = view != null ? view.customName() : null;
         String shownName = custom != null && !custom.isBlank() ? custom : modelName;
         graphics.text(this.font,

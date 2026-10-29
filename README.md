@@ -214,6 +214,20 @@ EntityEvents.spawned('touhou_little_maid:maid', event => {
 > 已经把数据写在女仆实体 NBT（含 `getPersistentData()` 与随存档自动序列化的 Capability）里的附属**无需接入**——本模组用 `EntityMaid#saveWithoutId` 导出完整女仆 NBT，这部分数据会自动随女仆迁移。
 ## 版本历史
 
+### v1.7.2
+
+**修复 YSM（Yes Steve Model）换模女仆的名字显示。**
+
+#### 修复
+
+- **YSM 女仆显示成模型路径**：YSM 换模时，女仆的模型 ID 会被替换成 YSM 自己的路径 ID（形如 `ysm:Wine Fox/02 New Year`），本模组此前拿它去查 TLM 模型表，查不到就美化成路径原文，界面上出现「Wine Fox/02 New Year」这类名字。现在会识别 YSM 换模，直接采用车万女仆提供的 YSM 模型名（如「酒尾狐」）。
+- **备份列表对 YSM 女仆显示 TLM 名字**：备份 `.dat` 里的模型 ID 是 TLM 底层 ID，能正常解析，所以不会报错——但解析出来的是 TLM 模型名，不是玩家看到的 YSM 名。现在读取备份的 `IsYsmModel` 标记，YSM 女仆一律优先用 YSM 名。
+
+#### 兼容性
+
+- **网络协议版本 `3` → `4`**：新增 YSM 标记字段，1.7.1 与 1.7.2 混连会被拒绝（单人存档不受影响）。
+- `.maid` 文件格式仍为 **v7**，与 1.7.0 / 1.7.1 互通。
+
 ### v1.7.1
 
 本版集中修掉**备份界面名字显示**的一整串问题，并给备份界面补了搜索与说明。
