@@ -52,6 +52,19 @@ public class MaidFileModForge {
         // 玩家登录 → 仅向该玩家单播服务端配置；退出 → 清理同意状态
         MinecraftForge.EVENT_BUS.addListener(this::onPlayerLoggedIn);
         MinecraftForge.EVENT_BUS.addListener(this::onPlayerLoggedOut);
+        // 模型名注册表：启动时从存档恢复，停止时落盘并清空
+        MinecraftForge.EVENT_BUS.addListener(this::onServerStarted);
+        MinecraftForge.EVENT_BUS.addListener(this::onServerStopping);
+    }
+
+    /** 服务端启动：恢复上次持久化的模型名注册表（重启后不用等客户端重新上报） */
+    private void onServerStarted(net.minecraftforge.event.server.ServerStartedEvent event) {
+        io.github.zgxhzhr.maidfm.service.ModelNameRegistry.loadFromServer(event.getServer());
+    }
+
+    /** 服务端停止：落盘 + 清空，避免把 A 服的名字带到 B 服 */
+    private void onServerStopping(net.minecraftforge.event.server.ServerStoppingEvent event) {
+        io.github.zgxhzhr.maidfm.service.ModelNameRegistry.saveAndClear(event.getServer());
     }
 
     private void onCommonSetup(FMLCommonSetupEvent event) {

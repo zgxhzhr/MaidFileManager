@@ -190,4 +190,28 @@ public final class ForgeNetwork implements IMaidFileNetwork {
         buf.writeBoolean(success);
         sendC2S(MaidFilePackets.ID_EXPORT_WRITE_ACK, buf);
     }
+
+    @Override
+    public void sendModelNames(java.util.List<String> pairs) {
+        if (pairs == null || pairs.isEmpty()) {
+            return;
+        }
+        net.minecraft.network.FriendlyByteBuf buf = new net.minecraft.network.FriendlyByteBuf(
+                io.netty.buffer.Unpooled.buffer());
+        try {
+            int n = Math.min(pairs.size(), MaidFilePackets.MAX_MODEL_NAME_ENTRIES * 2);
+            buf.writeVarInt(n / 2);
+            for (int i = 0; i + 1 < n; i += 2) {
+                String k = pairs.get(i);
+                String v = pairs.get(i + 1);
+                buf.writeUtf(k == null ? "" : k, MaidFilePackets.MAX_TEXT_LEN);
+                buf.writeUtf(v == null ? "" : v, MaidFilePackets.MAX_TEXT_LEN);
+            }
+            io.github.zgxhzhr.maidfm.MaidFileModForge.CHANNEL.sendToServer(
+                    new C2SPacket(MaidFilePackets.ID_MODEL_NAMES, buf));
+        } catch (Throwable t) {
+            io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                    "[maid_file_manager] 上报模型名失败: {}", t.toString());
+        }
+    }
 }

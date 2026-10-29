@@ -96,6 +96,12 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                 } else if (MaidFilePackets.ID_SAVE_MAID_PROFILE.equals(id)) {
                     int entityId = data.readVarInt();
                     handleSaveMaidProfile(player, entityId, MaidFilePackets.readMaidProfile(data));
+                } else if (MaidFilePackets.ID_MODEL_NAMES.equals(id)) {
+                    // 客户端上报的「模型 ID → 显示名」映射：合并进服务端汇总表，
+                    // 备份列表解析模型名时优先查它（这是拿到别人私有模型中文名的唯一来源）。
+                    // 注意：data 的释放由外层 finally 统一处理，这里再 release 会 refCnt 归零后二次减一。
+                    io.github.zgxhzhr.maidfm.service.ModelNameRegistry.mergeFromPairs(
+                            MaidFilePackets.readModelNames(packet.data));
                 } else if (MaidFilePackets.ID_REQUEST_BACKUP_LIST.equals(id)) {
                     handleRequestBackupList(player);
                 } else if (MaidFilePackets.ID_REQUEST_BACKUP_EXPORT.equals(id)) {

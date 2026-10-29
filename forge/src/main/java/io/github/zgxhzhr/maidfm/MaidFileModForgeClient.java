@@ -2,6 +2,7 @@ package io.github.zgxhzhr.maidfm;
 
 import io.github.zgxhzhr.maidfm.client.MaidBackupBrowserScreen;
 import io.github.zgxhzhr.maidfm.client.MaidFileKeyMappings;
+import io.github.zgxhzhr.maidfm.client.PlayerNameResolver;
 import io.github.zgxhzhr.maidfm.client.MaidFileManagerScreen;
 import io.github.zgxhzhr.maidfm.network.ForgeNetwork;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
@@ -11,6 +12,7 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.client.event.ScreenEvent;
 import net.minecraftforge.common.MinecraftForge;
@@ -34,10 +36,58 @@ import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 @Mod.EventBusSubscriber(modid = Constants.MOD_ID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.MOD)
 public final class MaidFileModForgeClient {
 
+    /** 本连接是否已上报模型名映射 */
+    private static boolean MODEL_NAMES_SENT;
+
     private MaidFileModForgeClient() {
     }
 
-    /** 注册 U 键（可在控制设置中修改） */
+    /**
+     * 进入世界即开始解析属主名字（不等玩家打开备份界面）。
+     *
+     * <p><b>注意</b>：本类挂在 MOD bus 上，而 {@code ClientPlayerNetworkEvent.LoggingIn}
+     * 属于 GAME bus 事件，不能用 {@code @SubscribeEvent} 自动订阅——那样会在构造阶段抛
+     * {@code IllegalArgumentException: ... not a subtype of IModBusEvent} 直接崩游戏。
+     * 正确做法是在 {@link #onClientSetup} 里用 {@code MinecraftForge.EVENT_BUS.addListener} 手动注册。
+     */
+    public static void onClientLogin(ClientPlayerNetworkEvent.LoggingIn event) {
+        java.nio.file.Path gameDir = net.minecraft.client.Minecraft.getInstance().gameDirectory.toPath();
+        PlayerNameResolver.loadCache(gameDir);
+        PlayerNameResolver.warmUpFromSaves(gameDir);
+        io.github.zgxhzhr.maidfm.client.ClientModelNameCache.load(gameDir);
+        MODEL_NAMES_SENT = false;
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        mc.execute(() -> sendModelNamesOnce());
+    }
+
+    /** 把本机认识的「模型 ID → 显示名」上报给服务端（每个连接只发一次） */
+    private static void sendModelNamesOnce() {
+        if (MODEL_NAMES_SENT) {
+            return;
+        }
+        MODEL_NAMES_SENT = true;
+        try {
+            java.util.Map<String, String> names =
+                    io.github.zgxhzhr.maidfm.client.ModelNames.exportModelNameMap();
+            if (names == null || names.isEmpty()) {
+                return;
+            }
+            java.util.List<String> pairs = new java.util.ArrayList<>(names.size() * 2);
+            for (java.util.Map.Entry<String, String> e : names.entrySet()) {
+                pairs.add(e.getKey());
+                pairs.add(e.getValue());
+            }
+            io.github.zgxhzhr.maidfm.network.IMaidFileNetwork net =
+                    io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.Holder.get();
+            if (net != null) {
+                net.sendModelNames(pairs);
+                Constants.LOG.info("[maid_file_manager] 已上报 {} 条模型名映射", names.size());
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 上报模型名失败（不影响功能）: {}", t.toString());
+        }
+    }
+
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(MaidFileKeyMappings.OPEN_MANAGER);
@@ -49,6 +99,11 @@ public final class MaidFileModForgeClient {
         IMaidFileNetwork.Holder.set(new ForgeNetwork());
         MinecraftForge.EVENT_BUS.addListener(MaidFileModForgeClient::onClientTick);
         MinecraftForge.EVENT_BUS.addListener(MaidFileModForgeClient::onScreenInit);
+        // LoggingIn 是 GAME bus 事件，本类在 MOD bus，只能手动挂
+        MinecraftForge.EVENT_BUS.addListener(MaidFileModForgeClient::onClientLogin);
+        // 主界面本地扫描时，MaidBackupService 靠它查客户端缓存的名字
+        io.github.zgxhzhr.maidfm.service.ModelNameRegistry.externalProvider =
+                io.github.zgxhzhr.maidfm.client.ClientModelNameCache::lookup;
     }
 
     /**

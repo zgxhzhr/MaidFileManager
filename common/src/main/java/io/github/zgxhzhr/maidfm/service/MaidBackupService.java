@@ -158,7 +158,71 @@ public final class MaidBackupService {
                     }
                     // 同一女仆的多个备份按文件名倒序：新备份（时间戳更大）排在最前
                     names.sort(Comparator.reverseOrder());
-                    maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, nameByMaid.get(maidUuid), names));
+                    // 名字：index.dat 的 Name 通常只是 TLM 默认名（「小女仆」），无法区分是哪只女仆。
+                    // 这里读该女仆最新一份备份的模型 ID 拿模型名；同时把原始 modelId 一起传给客户端，
+                    // 让装了模型资源包的客户端自己解析显示名（服务端可能没装资源包，只能给出占位名）。
+                    String firstFile = names.get(0);
+                    String modelName = "";
+                    String modelIdOut = "";
+                    String entityCustomName = null;
+                    try {
+                        java.io.File latest = new java.io.File(maidDir, firstFile);
+                        CompoundTag latestTag = MaidFileIo.readCompressedNbt(latest.toPath());
+                        if (latestTag != null) {
+                            String modelId = latestTag.contains("model_id")
+                                    ? latestTag.getString("model_id") : latestTag.getString("ModelId");
+                            if (modelId.isEmpty()) {
+                                modelId = latestTag.getString("ModelId");
+                            }
+                            if (!modelId.isEmpty()) {
+                                modelIdOut = modelId;
+                                String fromRegistry = ModelNameRegistry.get(modelId);
+                                if (fromRegistry == null || fromRegistry.isEmpty()) {
+                                    // 注册表只存在于「当过服务端的进程」里：客户端退到主界面走本地扫描时
+                                    // 它一定是空的，所以要再问客户端本地缓存（从服务端下发的列表学来的名字）
+                                    java.util.function.Function<String, String> ext =
+                                            ModelNameRegistry.externalProvider;
+                                    if (ext != null) {
+                                        try {
+                                            fromRegistry = ext.apply(modelId);
+                                        } catch (Throwable ignored) {
+                                        }
+                                    }
+                                }
+                                modelName = (fromRegistry != null && !fromRegistry.isEmpty())
+                                        ? fromRegistry
+                                        : MaidTransferService.getDisplayName(modelId);
+                            }
+                            // 实体自定义名（玩家给女仆起的名字）存在 .dat 的 CustomName 里，
+                            // 而 index.dat 的 Name 只是 TLM 的内部编号（如 001）。导出界面读的是前者，
+                            // 备份列表此前读后者，于是同一只女仆在两边名字不一样。
+                            String entityName = extractText(latestTag.getString("CustomName"));
+                            if (entityName != null && !entityName.isEmpty()) {
+                                entityCustomName = entityName;
+                            }
+                        }
+                    } catch (Throwable t) {
+                        Constants.LOG.debug("[maid_file_manager] 备份模型名解析失败: {}", t.toString());
+                    }
+                    // 优先级：.dat 里的实体自定义名 > index.dat 的 Name。
+                    // index.dat 的 Name 常常只是 001 这类内部编号，不是玩家看得懂的名字。
+                    String customName = (entityCustomName != null && !entityCustomName.isEmpty())
+                            ? entityCustomName
+                            : nameByMaid.get(maidUuid);
+                    // 过滤「内部编号」形态的伪名字：index.dat 兜底值可能只是 001 / 32 位 hash，
+                    // 那不是女仆名。留着会把模型名挤掉，界面上就只剩一串编号。
+                    if (entityCustomName == null && isPlaceholderName(customName)) {
+                        customName = null;
+                    }
+                    String shownName;
+                    if (customName == null || customName.isEmpty()) {
+                        shownName = modelName;
+                    } else if (modelName.isEmpty() || modelName.equals(customName)) {
+                        shownName = customName;
+                    } else {
+                        shownName = customName + " (" + modelName + ")";
+                    }
+                    maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, shownName, modelIdOut, names));
                 }
             }
             maids.sort(Comparator.comparing(IMaidFileNetwork.BackupMaid::maidUuid));
@@ -311,6 +375,35 @@ public final class MaidBackupService {
     }
 
     /** 读取 index.dat，返回 女仆UUID → 名字 映射（失败返回空表） */
+
+    /**
+     * 判断 {@code index.dat} 里的 Name 是不是「占位名」而不是真名。
+     *
+     * <p>TLM 往 index.dat 写的 Name 有三种形态，全都不是玩家给女仆起的名字：
+     * <ul>
+     *   <li>纯数字内部编号（{@code 001}）</li>
+     *   <li>32 位十六进制（UUID/hash）</li>
+     *   <li><b>实体类型翻译键</b>（{@code entity.touhou_little_maid.maid}）—— 这就是之前
+     *       界面上出现 {@code Entity.touhou Little Maid.maid} 的原因：把翻译键当名字，
+     *       再经 path 美化就变成了一串人看不懂的东西</li>
+     * </ul>
+     *
+     * <p>真正的自定义名存在备份 {@code .dat} 的 {@code CustomName} 里，不走这条判断。
+     */
+    private static boolean isPlaceholderName(String s) {
+        if (s == null || s.isEmpty()) {
+            return true;
+        }
+        if (s.matches("\\d{1,6}") || s.matches("[0-9a-fA-F]{16,32}")) {
+            return true;
+        }
+        if (s.startsWith("entity.") || s.startsWith("item.") || s.startsWith("block.")
+                || s.startsWith("gui.") || s.startsWith("container.") || s.startsWith("effect.")) {
+            return true;
+        }
+        return s.contains("touhou_little_maid.maid");
+    }
+
     private static Map<String, String> readIndexNames(Path indexFile) {
         Map<String, String> map = new HashMap<>();
         if (!Files.isRegularFile(indexFile)) {
