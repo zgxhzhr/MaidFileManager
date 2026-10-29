@@ -226,7 +226,8 @@ public final class MaidProfileService {
                 maid.getFavorability(),
                 maid.isStruckByLightning(),
                 readFromMaid(maid),
-                collectBaubleIcons(maid));
+                collectBaubleIcons(maid),
+                ysmName != null);
     }
 
     /**

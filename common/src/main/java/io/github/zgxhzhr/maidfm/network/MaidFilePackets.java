@@ -169,7 +169,7 @@ public final class MaidFilePackets {
      *
      * <p>今后任何新增/删除网络包、或改动字段布局，<b>必须</b>把本值 +1，并同步更新 README 兼容性说明。
      */
-    public static final String PROTOCOL_VERSION = "3";
+    public static final String PROTOCOL_VERSION = "4";
 
     /** 字符串字段长度上限（模型 ID、玩家名、自定义名等） */
     public static final int MAX_TEXT_LEN = 256;
@@ -398,6 +398,7 @@ public final class MaidFilePackets {
         if (info.customName() != null) {
             buf.writeUtf(info.customName(), MAX_TEXT_LEN);
         }
+        buf.writeBoolean(info.ysmModel());
     }
 
     public static MaidInfo readMaidInfo(FriendlyByteBuf buf) {
@@ -411,7 +412,9 @@ public final class MaidFilePackets {
         UUID ownerUuid = buf.readBoolean() ? buf.readUUID() : null;
         String ownerName = buf.readBoolean() ? buf.readUtf(MAX_TEXT_LEN) : null;
         String customName = buf.readBoolean() ? buf.readUtf(MAX_TEXT_LEN) : null;
-        return new MaidInfo(entityId, modelId, displayName, favorability, health, maxHealth, tamed, ownerUuid, ownerName, customName);
+        boolean ysmModel = buf.readBoolean();
+        return new MaidInfo(entityId, modelId, displayName, favorability, health, maxHealth, tamed,
+                ownerUuid, ownerName, customName, ysmModel);
     }
 
     // ---------- 批量导出辅助 ----------
@@ -570,6 +573,7 @@ public final class MaidFilePackets {
                 buf.writeUtf(maid.maidName() == null ? "" : maid.maidName(), MAX_TEXT_LEN);
                 // 原始模型 ID：让客户端自己解析显示名（服务端可能没装模型资源包）
                 buf.writeUtf(maid.modelId() == null ? "" : maid.modelId(), MAX_TEXT_LEN);
+                buf.writeBoolean(maid.ysmModel());
                 List<String> files = maid.files() == null ? List.of() : maid.files();
                 int fileCount = Math.min(files.size(), MAX_BACKUP_FILES);
                 buf.writeVarInt(fileCount);
@@ -593,12 +597,13 @@ public final class MaidFilePackets {
                 String maidUuid = buf.readUtf(MAX_TEXT_LEN);
                 String maidName = buf.readUtf(MAX_TEXT_LEN);
                 String modelId = buf.readUtf(MAX_TEXT_LEN);
+                boolean ysmModel = buf.readBoolean();
                 int fileCount = checkSize(buf.readVarInt(), MAX_BACKUP_FILES, "backupFiles");
                 List<String> files = new ArrayList<>(fileCount);
                 for (int k = 0; k < fileCount; k++) {
                     files.add(buf.readUtf(MAX_TEXT_LEN));
                 }
-                maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, maidName, modelId, files));
+                maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, maidName, modelId, ysmModel, files));
             }
             owners.add(new IMaidFileNetwork.BackupOwner(ownerUuid, ownerName.isEmpty() ? null : ownerName, maids));
         }
@@ -701,6 +706,7 @@ public final class MaidFilePackets {
         float attackDamage = buf.readFloat();
         int favorability = buf.readVarInt();
         boolean struckByLightning = buf.readBoolean();
+        boolean ysmModel = buf.readBoolean();
         MaidProfile profile = readMaidProfile(buf);
         int count = checkSize(buf.readVarInt(), MAX_BAUBLE_ICONS, "baubleIcons");
         List<CompoundTag> baubles = new ArrayList<>(count);
@@ -711,6 +717,6 @@ public final class MaidFilePackets {
             }
         }
         return new MaidProfileView(entityId, maidUuid, ownerName, modelId, displayName, customName,
-                health, maxHealth, attackDamage, favorability, struckByLightning, profile, baubles);
+                health, maxHealth, attackDamage, favorability, struckByLightning, profile, baubles, ysmModel);
     }
 }
