@@ -133,7 +133,8 @@ public final class MaidTransferService {
                 maid.isTame(),
                 ownerUuid,
                 ownerName,
-                customName
+                customName,
+                ysmName != null
         );
     }
 

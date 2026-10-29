@@ -158,13 +158,16 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         final String name;
         /** 原始 TLM 模型 ID：客户端据此自行解析显示名，避免服务端缺资源时退化成「小女仆」 */
         final String modelId;
+        /** 是否 YSM 换模：为 true 时服务端给的 name 才是权威名字，不能再拿 modelId 去解析 */
+        final boolean ysmModel;
         final List<String> files;
         boolean expanded;
 
-        MaidNode(String uuid, String name, String modelId, List<String> files) {
+        MaidNode(String uuid, String name, String modelId, boolean ysmModel, List<String> files) {
             this.uuid = uuid;
             this.name = name;
             this.modelId = modelId;
+            this.ysmModel = ysmModel;
             this.files = files;
         }
     }
@@ -461,7 +464,7 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         }
         List<IMaidFileNetwork.BackupMaid> maids = o.maids() == null ? List.of() : o.maids();
         for (IMaidFileNetwork.BackupMaid m : maids) {
-            owner.maids.add(new MaidNode(m.maidUuid(), m.maidName(), m.modelId(),
+            owner.maids.add(new MaidNode(m.maidUuid(), m.maidName(), m.modelId(), m.ysmModel(),
                     m.files() == null ? new ArrayList<>() : new ArrayList<>(m.files())));
         }
         owner.maids.sort(Comparator.comparing(m -> m.uuid));
@@ -1009,6 +1012,15 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
             // 备份 index.dat 里存的是翻译键，显示前统一转换（服务端不会翻译）
             // 优先用原始 modelId 做客户端侧解析：服务端可能没装模型资源包，
             // 它传来的 maidName 已是「小女仆」占位名，再解析也变不回来。
+            // YSM 换模的女仆：modelId 是 TLM 底层 ID，用它解析会得到 TLM 名字而不是 YSM 名字，
+            // 所以直接采用服务端给的 maidName（那里已是 YSM 真名）
+            if (row.maid.ysmModel && row.maid.name != null && !row.maid.name.isEmpty()) {
+                // arrow 在下面才定义，这里自己算一份，避免作用域问题
+                String ysmArrow = row.maid.expanded ? "▼ " : "▶ ";
+                graphics.drawString(this.font, Component.literal(ysmArrow + row.maid.name),
+                        listX + 24, top + 3, ACCENT, false);
+                return;
+            }
             // 名字解析要分两层，缺一不可：
             //   ① 客户端本地解析 modelId —— 只有装了那个模型包的客户端才成功（能拿中文名）
             //   ② 服务端传来的 maidName —— 服务端汇总了各客户端上报的映射（B 功能），
