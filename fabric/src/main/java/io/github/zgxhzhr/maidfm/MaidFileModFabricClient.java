@@ -3,6 +3,7 @@ package io.github.zgxhzhr.maidfm;
 import io.github.zgxhzhr.maidfm.client.MaidBackupBrowserScreen;
 import io.github.zgxhzhr.maidfm.client.MaidFileManagerScreen;
 import io.github.zgxhzhr.maidfm.client.MaidFileKeyMappings;
+import io.github.zgxhzhr.maidfm.client.PlayerNameResolver;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
@@ -13,6 +14,7 @@ import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
 import io.github.zgxhzhr.maidfm.network.MaidPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
@@ -27,8 +29,47 @@ import net.minecraft.network.chat.Component;
 import java.util.List;
 
 public class MaidFileModFabricClient implements ClientModInitializer {
+
+    /** 本连接是否已上报模型名映射 */
+    private static boolean MODEL_NAMES_SENT;
+    /** 把本机认识的「模型 ID → 显示名」上报给服务端（每个连接只发一次） */
+    private static void sendModelNamesOnce() {
+        if (MODEL_NAMES_SENT) {
+            return;
+        }
+        MODEL_NAMES_SENT = true;
+        try {
+            java.util.Map<String, String> names =
+                    io.github.zgxhzhr.maidfm.client.ModelNames.exportModelNameMap();
+            if (names == null || names.isEmpty()) {
+                return;
+            }
+            java.util.List<String> pairs = new java.util.ArrayList<>(names.size() * 2);
+            for (java.util.Map.Entry<String, String> e : names.entrySet()) {
+                pairs.add(e.getKey());
+                pairs.add(e.getValue());
+            }
+            IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
+            if (net != null) {
+                net.sendModelNames(pairs);
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 上报模型名失败: {}", t.toString());
+        }
+    }
+
     @Override
     public void onInitializeClient() {
+        // 进入世界即开始解析属主名字（不等玩家打开备份界面）
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            java.nio.file.Path gameDir = client.gameDirectory.toPath();
+            PlayerNameResolver.loadCache(gameDir);
+            PlayerNameResolver.warmUpFromSaves(gameDir);
+            io.github.zgxhzhr.maidfm.client.ClientModelNameCache.load(gameDir);
+            io.github.zgxhzhr.maidfm.service.ModelNameRegistry.externalProvider =
+                    io.github.zgxhzhr.maidfm.client.ClientModelNameCache::lookup;
+            MODEL_NAMES_SENT = false;
+        });
         KeyBindingHelper.registerKeyBinding(MaidFileKeyMappings.OPEN_MANAGER);
         IMaidFileNetwork.Holder.set(new FabricNetwork());
 
@@ -280,6 +321,9 @@ public class MaidFileModFabricClient implements ClientModInitializer {
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
+            if (!MODEL_NAMES_SENT && mc.player != null) {
+                sendModelNamesOnce();
+            }
             if (mc.player == null || mc.screen != null) {
                 return;
             }

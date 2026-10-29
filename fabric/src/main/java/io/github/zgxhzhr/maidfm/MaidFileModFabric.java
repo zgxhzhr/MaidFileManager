@@ -32,6 +32,11 @@ import java.util.List;
 public class MaidFileModFabric implements ModInitializer {
     @Override
     public void onInitialize() {
+        // 模型名注册表：启动恢复 / 停止落盘
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(
+                server -> io.github.zgxhzhr.maidfm.service.ModelNameRegistry.loadFromServer(server));
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(
+                server -> io.github.zgxhzhr.maidfm.service.ModelNameRegistry.saveAndClear(server));
         Constants.LOG.info("Maid File Manager (Fabric) loading...");
 
         // 1.21+ Fabric 新 API：先注册全部通道编解码器（必须在任何收发之前）
@@ -371,6 +376,12 @@ public class MaidFileModFabric implements ModInitializer {
                 return;
             }
             ServerPlayNetworking.send(player, MaidPayload.of(MaidFilePackets.ID_BACKUP_LIST, out));
+        });
+        // 客户端上报的「模型 ID → 显示名」映射：合并进服务端汇总表，
+        // 备份列表解析模型名时优先查它（拿到别人私有模型中文名的唯一来源）
+        registerC2SReceiver(MaidFilePackets.ID_MODEL_NAMES, (server, player, buf) -> {
+            io.github.zgxhzhr.maidfm.service.ModelNameRegistry.mergeFromPairs(
+                    MaidFilePackets.readModelNames(buf));
         });
 
         // 备份管理：读取指定备份并回传为 .maid 数据（服务端只读不写；权限不足或体积超限时回执）
