@@ -29,12 +29,20 @@ public final class MaidProfileView {
     private final MaidProfile profile;
     /** 饰品图标：每件饰品 ItemStack 的同版本 NBT，客户端用平台层反序列化后渲染 */
     private final List<CompoundTag> baubleItems;
+    /**
+     * 是否由 YSM（Yes Steve Model）换模。
+     *
+     * <p>YSM 女仆的 {@link #modelId} 是 YSM 的模型路径 ID，无法通过 TLM 模型表解析；
+     * 真正的展示名在 {@link #displayName} 里，显示时必须优先用它。
+     */
+    private final boolean ysmModel;
 
     public MaidProfileView(int entityId, String maidUuid, String ownerName,
                            String modelId, String displayName, String customName,
                            float health, float maxHealth, float attackDamage, int favorability,
                            boolean struckByLightning,
-                           MaidProfile profile, List<CompoundTag> baubleItems) {
+                           MaidProfile profile, List<CompoundTag> baubleItems,
+                           boolean ysmModel) {
         this.entityId = entityId;
         this.maidUuid = maidUuid;
         this.ownerName = ownerName;
@@ -48,6 +56,7 @@ public final class MaidProfileView {
         this.struckByLightning = struckByLightning;
         this.profile = profile;
         this.baubleItems = baubleItems;
+        this.ysmModel = ysmModel;
     }
 
     public int entityId() {
@@ -100,5 +109,10 @@ public final class MaidProfileView {
 
     public List<CompoundTag> baubleItems() {
         return baubleItems;
+    }
+
+    /** 是否 YSM 换模；为 true 时 displayName 才是权威名字 */
+    public boolean ysmModel() {
+        return ysmModel;
     }
 }
