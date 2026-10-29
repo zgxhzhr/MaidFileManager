@@ -105,6 +105,12 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     private final Set<String> nameRequested = new HashSet<>();
 
     private EditBox offlineField;
+    /** 搜索框：按存档名 / 玩家名 / 女仆名 / 文件名过滤列表（纯本地） */
+    private EditBox searchField;
+    /** 搜索行标签的 Y 坐标（init 里算好，render 里画名字用） */
+    private int searchLabelY = -1;
+    /** 是否显示「名字匹配与查询」说明页 */
+    private boolean helpVisible;
     /** 「导出为 .maid」按钮：仅在有选中且功能可用时激活 */
     private WoodButton exportBtn;
     /** 「打开导出文件夹」按钮：功能可用时激活（扫描完成后刷新，避免常黑） */
@@ -150,12 +156,15 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     private static final class MaidNode {
         final String uuid;
         final String name;
+        /** 原始 TLM 模型 ID：客户端据此自行解析显示名，避免服务端缺资源时退化成「小女仆」 */
+        final String modelId;
         final List<String> files;
         boolean expanded;
 
-        MaidNode(String uuid, String name, List<String> files) {
+        MaidNode(String uuid, String name, String modelId, List<String> files) {
             this.uuid = uuid;
             this.name = name;
+            this.modelId = modelId;
             this.files = files;
         }
     }
@@ -221,9 +230,14 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     protected void init() {
         UiMusicManager.enter(this);
         super.init();
+        // 游戏运行中可能刚下载了新模型包：重扫一次，否则新包的女仆名永远显示英文
+        try {
+            ModelNames.reload();
+        } catch (Throwable ignored) {
+        }
         IMaidFileNetwork.ClientHandlerHolder.set(this);
         panelW = Math.min(PANEL_MAX_W, this.width - 16);
-        panelH = Math.min(this.height - 20, 230);
+        panelH = Math.min(this.height - 20, 252);
         panelX = (this.width - panelW) / 2;
         panelY = Math.max(6, (this.height - panelH) / 2);
 
@@ -236,13 +250,35 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         offlineField.setMaxLength(16);
         offlineField.setValue("");
         offlineField.setTextColor(TEXT_COLOR);
+        offlineField.setFocused(false);
         addRenderableWidget(offlineField);
         addRenderableWidget(new WoodButton(panelX + 12 + labelW + fieldW + 4, topY, matchW, TOP_ROW_H,
                 Component.translatable("gui.maid_file_manager.backup.match"), this::onOfflineMatch));
 
+        // 搜索行：纯本地过滤，不发网络请求
+        int searchY = topY + TOP_ROW_H + 2;
+        searchLabelY = searchY;
+        int searchLabelW = this.font.width(Component.translatable("gui.maid_file_manager.backup.search")) + 4;
+        // 按钮宽度按「说明」两个字算，原来 18px 的「?」太小、玩家看不出是干什么的
+        int helpW = Math.max(36, this.font.width(Component.translatable("gui.maid_file_manager.backup.help.btn")) + 8);
+        int searchW = panelW - 24 - searchLabelW - helpW - 8;
+        searchField = new EditBox(this.font, panelX + 12 + searchLabelW, searchY, searchW, TOP_ROW_H,
+                Component.translatable("gui.maid_file_manager.backup.search_hint"));
+        searchField.setMaxLength(64);
+        searchField.setValue("");
+        searchField.setTextColor(TEXT_COLOR);
+        searchField.setResponder(s -> {
+            scrollOffset = 0;
+            rebuildRows();
+        });
+        searchField.setFocused(false);
+        addRenderableWidget(searchField);
+        addRenderableWidget(new WoodButton(panelX + 12 + searchLabelW + searchW + 4, searchY, helpW, TOP_ROW_H,
+                Component.translatable("gui.maid_file_manager.backup.help.btn"), () -> helpVisible = !helpVisible));
+
         int bottomY = panelY + panelH - BTN_H - 6;
         listX = panelX + 10;
-        listY = topY + TOP_ROW_H + 6;
+        listY = searchY + TOP_ROW_H + 6;
         listW = panelW - 20 - SCROLL_W;
         listH = bottomY - listY - 4;
 
@@ -394,6 +430,13 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
 
     /** 专业服务端：只有当前存档的数据，包成单个「当前服务器」节点展示 */
     private void applyServerOwners(List<IMaidFileNetwork.BackupOwner> list) {
+        // 把服务端解析好的「modelId → 名字」学进本地缓存：
+        // 之后退到主界面走本地扫描时，注册表已空，就靠这份缓存保住名字
+        try {
+            ClientModelNameCache.learn(list);
+            ClientModelNameCache.flush();
+        } catch (Throwable ignored) {
+        }
         worlds.clear();
         nameRequested.clear();
         WorldNode world = new WorldNode(
@@ -417,7 +460,7 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         }
         List<IMaidFileNetwork.BackupMaid> maids = o.maids() == null ? List.of() : o.maids();
         for (IMaidFileNetwork.BackupMaid m : maids) {
-            owner.maids.add(new MaidNode(m.maidUuid(), m.maidName(),
+            owner.maids.add(new MaidNode(m.maidUuid(), m.maidName(), m.modelId(),
                     m.files() == null ? new ArrayList<>() : new ArrayList<>(m.files())));
         }
         owner.maids.sort(Comparator.comparing(m -> m.uuid));
@@ -513,25 +556,73 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
 
     private void rebuildRows() {
         rows.clear();
+        String q = searchField == null ? "" : searchField.getValue().trim().toLowerCase(java.util.Locale.ROOT);
+        boolean filtering = !q.isEmpty();
         for (WorldNode world : worlds) {
+            boolean worldHit = hit(world.name, q);
+            if (filtering && !worldHit) {
+                boolean anyChild = false;
+                for (OwnerNode owner : world.owners) {
+                    if (hit(owner.displayName, q) || hit(owner.uuid, q)) {
+                        anyChild = true;
+                        break;
+                    }
+                    for (MaidNode m : owner.maids) {
+                        if (hit(m.name, q) || hit(m.uuid, q) || hit(m.modelId, q)) {
+                            anyChild = true;
+                            break;
+                        }
+                    }
+                    if (anyChild) {
+                        break;
+                    }
+                }
+                if (!anyChild) {
+                    continue;
+                }
+            }
             rows.add(new Row(0, world, null, null, null));
-            if (!world.expanded) {
+            if (!filtering && !world.expanded) {
                 continue;
             }
             for (OwnerNode owner : world.owners) {
+                boolean ownerHit = worldHit || hit(owner.displayName, q) || hit(owner.uuid, q);
+                boolean maidAnyHit = false;
+                for (MaidNode m : owner.maids) {
+                    if (hit(m.name, q) || hit(m.uuid, q) || hit(m.modelId, q)) {
+                        maidAnyHit = true;
+                        break;
+                    }
+                }
+                if (filtering && !ownerHit && !maidAnyHit) {
+                    continue;
+                }
                 rows.add(new Row(1, world, owner, null, null));
                 for (MaidNode maid : owner.maids) {
+                    boolean maidHit = ownerHit || hit(maid.name, q) || hit(maid.uuid, q) || hit(maid.modelId, q);
+                    if (filtering && !maidHit) {
+                        continue;
+                    }
                     rows.add(new Row(2, world, owner, maid, null));
-                    if (maid.expanded) {
-                        for (String file : maid.files) {
-                            rows.add(new Row(3, world, owner, maid, file));
+                    if (!filtering && !maid.expanded) {
+                        continue;
+                    }
+                    for (String file : maid.files) {
+                        if (filtering && !maidHit && !hit(file, q)) {
+                            continue;
                         }
+                        rows.add(new Row(3, world, owner, maid, file));
                     }
                 }
             }
         }
         int maxScroll = Math.max(0, rows.size() - visibleRows());
         scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset));
+    }
+
+    /** 过滤用的子串匹配（忽略大小写，q 已小写化） */
+    private static boolean hit(String s, String q) {
+        return s != null && !q.isEmpty() && s.toLowerCase(java.util.Locale.ROOT).contains(q);
     }
 
     private int visibleRows() {
@@ -833,8 +924,26 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         }
     }
 
+    /** 「?」说明页：解释名字是怎么来的、为什么人多要等、离线玩家为什么要手动匹配 */
+    private void renderHelp(GuiGraphics graphics) {
+        int x = listX + 8;
+        int y = listY + 6;
+        graphics.drawString(this.font, Component.translatable("gui.maid_file_manager.backup.help.title"),
+                x, y, HEADER_COLOR, false);
+        y += 14;
+        for (int i = 1; i <= 10; i++) {
+            Component line = Component.translatable("gui.maid_file_manager.backup.help.line" + i);
+            graphics.drawString(this.font, line, x, y, SUBTEXT_COLOR, false);
+            y += 12;
+        }
+    }
+
     private void renderList(GuiGraphics graphics, int mouseX, int mouseY) {
         graphics.fill(listX, listY, listX + listW, listY + listH, LIST_BG);
+        if (helpVisible) {
+            renderHelp(graphics);
+            return;
+        }
         if (!available) {
             graphics.drawString(this.font,
                     Component.translatable("gui.maid_file_manager.backup.unavailable"),
@@ -897,7 +1006,37 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         } else if (row.type == 2) {
             String arrow = row.maid.expanded ? "▼ " : "▶ ";
             // 备份 index.dat 里存的是翻译键，显示前统一转换（服务端不会翻译）
-            String name = row.maid.name != null ? ModelNames.display(row.maid.name) : shortId(row.maid.uuid);
+            // 优先用原始 modelId 做客户端侧解析：服务端可能没装模型资源包，
+            // 它传来的 maidName 已是「小女仆」占位名，再解析也变不回来。
+            // 名字解析要分两层，缺一不可：
+            //   ① 客户端本地解析 modelId —— 只有装了那个模型包的客户端才成功（能拿中文名）
+            //   ② 服务端传来的 maidName —— 服务端汇总了各客户端上报的映射（B 功能），
+            //      即使本机没装该模型包也能拿到正确名字
+            // 之前无条件优先 ①，本机解析失败时会把 ② 里的正确名字覆盖成 path 美化名（如「001」）。
+            String name = null;
+            String rawModelId = row.maid.modelId;
+            if (rawModelId != null && !rawModelId.isEmpty()) {
+                String local = ModelNames.displayModelId(rawModelId);
+                // displayModelId 解析失败时返回的就是 prettifyModelPath(path)，据此判断是否真的解析成功
+                String pathOnly = rawModelId;
+                int c = rawModelId.indexOf(':');
+                if (c >= 0 && c + 1 < rawModelId.length()) {
+                    pathOnly = rawModelId.substring(c + 1);
+                }
+                String fallback = ModelNames.prettifyModelPath(pathOnly);
+                if (local != null && !local.isEmpty() && !local.equals(fallback)) {
+                    name = local;
+                }
+            }
+            if ((name == null || name.isEmpty())
+                    && row.maid.name != null && !row.maid.name.isEmpty()) {
+                name = ModelNames.display(row.maid.name);
+            }
+            if (name == null || name.isEmpty()) {
+                name = rawModelId != null && !rawModelId.isEmpty()
+                        ? ModelNames.displayModelId(rawModelId)
+                        : shortId(row.maid.uuid);
+            }
             graphics.drawString(this.font, Component.literal(arrow + name),
                     listX + 24, top + 3, ACCENT, false);
         } else {

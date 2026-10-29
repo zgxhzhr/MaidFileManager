@@ -78,6 +78,8 @@ public final class MaidFilePackets {
      * 注意：这只影响联机握手，`.maid` 文件格式与版本号无关，跨版本仍可互导。
      */
     public static final ResourceLocation ID_PROTOCOL_CHECK = id("protocol_check");
+    /** C2S：客户端上报「模型 ID → 显示名」映射 */
+    public static final ResourceLocation ID_MODEL_NAMES = id("model_names");
 
     /** OP 统一导出：请求服务端收集所有在线玩家（以各玩家为中心）的女仆列表 */
     public static final ResourceLocation ID_REQUEST_SERVER_EXPORT_LIST = id("request_server_export_list");
@@ -115,6 +117,8 @@ public final class MaidFilePackets {
     public static final int MAX_PLAYER_GROUPS = 128;
     /** 备份列表：主人（玩家）组数上限 */
     public static final int MAX_BACKUP_OWNERS = 128;
+    /** 模型名映射条目上限 */
+    public static final int MAX_MODEL_NAME_ENTRIES = 8192;
     /** 备份列表：单个主人名下的女仆数上限 */
     public static final int MAX_BACKUP_MAIDS = 256;
     /** 备份列表：单个女仆的备份文件数上限 */
@@ -160,7 +164,7 @@ public final class MaidFilePackets {
      *
      * <p>今后任何新增/删除网络包、或改动字段布局，<b>必须</b>把本值 +1，并同步更新 README 兼容性说明。
      */
-    public static final String PROTOCOL_VERSION = "2";
+    public static final String PROTOCOL_VERSION = "3";
 
     /** 字符串字段长度上限（模型 ID、玩家名、自定义名等） */
     public static final int MAX_TEXT_LEN = 256;
@@ -517,6 +521,31 @@ public final class MaidFilePackets {
     // ---------- 备份管理列表（主人 → 女仆 → 备份文件） ----------
 
     /** 写备份列表：主人组数、每组主人 UUID 与其女仆节点、每个节点的备份文件名 */
+    /** 写「模型 ID → 显示名」展平列表 */
+    public static void writeModelNames(FriendlyByteBuf buf, java.util.Map<String, String> map) {
+        java.util.Map<String, String> safe = map == null ? java.util.Map.of() : map;
+        int count = Math.min(safe.size(), MAX_MODEL_NAME_ENTRIES);
+        buf.writeVarInt(count);
+        int written = 0;
+        for (java.util.Map.Entry<String, String> e : safe.entrySet()) {
+            if (written >= count) break;
+            buf.writeUtf(e.getKey() == null ? "" : e.getKey(), MAX_TEXT_LEN);
+            buf.writeUtf(e.getValue() == null ? "" : e.getValue(), MAX_TEXT_LEN);
+            written++;
+        }
+    }
+
+    /** 读「模型 ID → 显示名」展平列表 */
+    public static List<String> readModelNames(FriendlyByteBuf buf) {
+        int count = checkSize(buf.readVarInt(), MAX_MODEL_NAME_ENTRIES, "modelNames");
+        List<String> out = new ArrayList<>(count * 2);
+        for (int i = 0; i < count; i++) {
+            out.add(buf.readUtf(MAX_TEXT_LEN));
+            out.add(buf.readUtf(MAX_TEXT_LEN));
+        }
+        return out;
+    }
+
     public static void writeBackupOwners(FriendlyByteBuf buf, List<IMaidFileNetwork.BackupOwner> owners) {
         List<IMaidFileNetwork.BackupOwner> safe = owners == null ? List.of() : owners;
         buf.writeVarInt(Math.min(safe.size(), MAX_BACKUP_OWNERS));
@@ -532,6 +561,7 @@ public final class MaidFilePackets {
                 IMaidFileNetwork.BackupMaid maid = maids.get(j);
                 buf.writeUtf(maid.maidUuid() == null ? "" : maid.maidUuid(), MAX_TEXT_LEN);
                 buf.writeUtf(maid.maidName() == null ? "" : maid.maidName(), MAX_TEXT_LEN);
+                buf.writeUtf(maid.modelId() == null ? "" : maid.modelId(), MAX_TEXT_LEN);
                 List<String> files = maid.files() == null ? List.of() : maid.files();
                 int fileCount = Math.min(files.size(), MAX_BACKUP_FILES);
                 buf.writeVarInt(fileCount);
@@ -554,12 +584,13 @@ public final class MaidFilePackets {
             for (int j = 0; j < maidCount; j++) {
                 String maidUuid = buf.readUtf(MAX_TEXT_LEN);
                 String maidName = buf.readUtf(MAX_TEXT_LEN);
+                String modelId = buf.readUtf(MAX_TEXT_LEN);
                 int fileCount = checkSize(buf.readVarInt(), MAX_BACKUP_FILES, "backupFiles");
                 List<String> files = new ArrayList<>(fileCount);
                 for (int k = 0; k < fileCount; k++) {
                     files.add(buf.readUtf(MAX_TEXT_LEN));
                 }
-                maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, maidName, files));
+                maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, maidName, modelId, files));
             }
             owners.add(new IMaidFileNetwork.BackupOwner(ownerUuid, ownerName.isEmpty() ? null : ownerName, maids));
         }

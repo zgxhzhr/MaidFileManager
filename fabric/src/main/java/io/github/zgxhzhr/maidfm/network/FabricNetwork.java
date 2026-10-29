@@ -180,4 +180,19 @@ public final class FabricNetwork implements IMaidFileNetwork {
         buf.writeBoolean(success);
         sendC2S(MaidFilePackets.ID_EXPORT_WRITE_ACK, buf);
     }
+
+    @Override
+    public void sendModelNames(java.util.List<String> pairs) {
+        if (pairs == null || pairs.isEmpty()) {
+            return;
+        }
+        FriendlyByteBuf buf = PacketByteBufs.create();
+        int n = Math.min(pairs.size(), MaidFilePackets.MAX_MODEL_NAME_ENTRIES * 2);
+        buf.writeVarInt(n / 2);
+        for (int i = 0; i + 1 < n; i += 2) {
+            buf.writeUtf(pairs.get(i) == null ? "" : pairs.get(i), MaidFilePackets.MAX_TEXT_LEN);
+            buf.writeUtf(pairs.get(i + 1) == null ? "" : pairs.get(i + 1), MaidFilePackets.MAX_TEXT_LEN);
+        }
+        sendC2S(MaidFilePackets.ID_MODEL_NAMES, buf);
+    }
 }

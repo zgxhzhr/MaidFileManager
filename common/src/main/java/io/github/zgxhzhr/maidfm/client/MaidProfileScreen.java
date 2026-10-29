@@ -254,6 +254,11 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
 
     @Override
     protected void init() {
+        // 重扫模型名表：运行中新下载的模型包也要能显示中文名
+        try {
+            ModelNames.reload();
+        } catch (Throwable ignored) {
+        }
         screenClosed = false;
         UiMusicManager.enter(this);
         super.init();
@@ -745,8 +750,14 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
     private void renderReadonly(GuiGraphics graphics) {
         String faction = view != null && view.ownerName() != null ? view.ownerName() : "-";
         // 姓名行：设有命名牌（自定义名称）时显示姓名，否则回退显示模型名
-        String modelName = view != null && view.displayName() != null
-                ? ModelNames.display(view.displayName()) : "-";
+        // 必须用 modelId 而不是 displayName：
+        //   displayName 是服务端解析出来的展示名，服务端没有该模型包时就是英文/path 形态
+        //   modelId 才是「ba_mutsuki_pack:ba_mutsuki」这种原始 ID，交给 displayModelId 才能拆开查中文表
+        String rawModelId = view != null ? view.modelId() : null;
+        if (rawModelId == null || rawModelId.isEmpty()) {
+            rawModelId = view != null ? view.displayName() : null;
+        }
+        String modelName = rawModelId != null ? ModelNames.displayModelId(rawModelId) : "-";
         String custom = view != null ? view.customName() : null;
         String shownName = custom != null && !custom.isBlank() ? custom : modelName;
         graphics.drawString(this.font,
