@@ -2,12 +2,14 @@ package io.github.zgxhzhr.maidfm;
 
 import io.github.zgxhzhr.maidfm.client.MaidBackupBrowserScreen;
 import io.github.zgxhzhr.maidfm.client.MaidFileKeyMappings;
+import io.github.zgxhzhr.maidfm.client.PlayerNameResolver;
 import io.github.zgxhzhr.maidfm.client.MaidFileManagerScreen;
 import io.github.zgxhzhr.maidfm.network.FabricClientPayloadRegistration;
 import io.github.zgxhzhr.maidfm.network.FabricNetwork;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.Screens;
@@ -28,6 +30,35 @@ import net.minecraft.network.chat.Component;
  */
 public class MaidFileClientFabric implements ClientModInitializer {
 
+    /** 本连接是否已上报模型名映射 */
+    private static boolean MODEL_NAMES_SENT;
+
+    /** 把本机认识的「模型 ID → 显示名」上报给服务端（每个连接只发一次） */
+    private static void sendModelNamesOnce() {
+        if (MODEL_NAMES_SENT) {
+            return;
+        }
+        MODEL_NAMES_SENT = true;
+        try {
+            java.util.Map<String, String> names = io.github.zgxhzhr.maidfm.client.ModelNames.exportModelNameMap();
+            if (names == null || names.isEmpty()) {
+                return;
+            }
+            java.util.List<String> pairs = new java.util.ArrayList<>(names.size() * 2);
+            for (java.util.Map.Entry<String, String> e : names.entrySet()) {
+                pairs.add(e.getKey());
+                pairs.add(e.getValue());
+            }
+            IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
+            if (net != null) {
+                net.sendModelNames(pairs);
+                Constants.LOG.info("[maid_file_manager] 已上报 {} 条模型名映射", names.size());
+            }
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 上报模型名失败（不影响功能）: {}", t.toString());
+        }
+    }
+
     @Override
     public void onInitializeClient() {
         Constants.LOG.info("========================================");
@@ -44,8 +75,23 @@ public class MaidFileClientFabric implements ClientModInitializer {
         // S2C 接收器
         FabricClientPayloadRegistration.registerClientReceivers();
 
+        // 进入世界即开始解析属主名字（不等玩家打开备份界面）。
+        // Mojang 查询接口约每分钟一次，提前在后台排队，打开界面时名字基本已就位。
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            java.nio.file.Path gameDir = client.gameDirectory.toPath();
+            PlayerNameResolver.loadCache(gameDir);
+            PlayerNameResolver.warmUpFromSaves(gameDir);
+            io.github.zgxhzhr.maidfm.client.ClientModelNameCache.load(gameDir);
+            io.github.zgxhzhr.maidfm.service.ModelNameRegistry.externalProvider =
+                    io.github.zgxhzhr.maidfm.client.ClientModelNameCache::lookup;
+            MODEL_NAMES_SENT = false;
+        });
+
         // 每 tick 消费一次按键：NeoForge 用 InputEvent.Key，Fabric 用 ClientTickEvents。
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
+            if (!MODEL_NAMES_SENT && mc.player != null) {
+                sendModelNamesOnce();
+            }
             if (mc.player == null || mc.screen != null) {
                 return;
             }

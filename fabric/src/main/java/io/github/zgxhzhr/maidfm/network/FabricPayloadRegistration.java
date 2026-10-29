@@ -32,6 +32,7 @@ public final class FabricPayloadRegistration {
         PayloadTypeRegistry.serverboundPlay().register(MaidFilePayloads.RequestMaidProfilePayload.TYPE, MaidFilePayloads.RequestMaidProfilePayload.STREAM_CODEC);
         PayloadTypeRegistry.serverboundPlay().register(MaidFilePayloads.SaveMaidProfilePayload.TYPE, MaidFilePayloads.SaveMaidProfilePayload.STREAM_CODEC);
         PayloadTypeRegistry.serverboundPlay().register(MaidFilePayloads.RequestBackupListPayload.TYPE, MaidFilePayloads.RequestBackupListPayload.STREAM_CODEC);
+PayloadTypeRegistry.serverboundPlay().register(MaidFilePayloads.ModelNamesPayload.TYPE, MaidFilePayloads.ModelNamesPayload.STREAM_CODEC);
         PayloadTypeRegistry.serverboundPlay().register(MaidFilePayloads.RequestBackupExportPayload.TYPE, MaidFilePayloads.RequestBackupExportPayload.STREAM_CODEC);
         PayloadTypeRegistry.serverboundPlay().register(MaidFilePayloads.ChunkedUploadPayload.TYPE, MaidFilePayloads.ChunkedUploadPayload.STREAM_CODEC);
         PayloadTypeRegistry.serverboundPlay().register(MaidFilePayloads.ExportWriteAckPayload.TYPE, MaidFilePayloads.ExportWriteAckPayload.STREAM_CODEC);

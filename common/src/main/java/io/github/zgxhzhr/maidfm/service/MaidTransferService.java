@@ -271,7 +271,9 @@ public final class MaidTransferService {
             return "unknown_model";
         }
         int colon = modelId.indexOf(':');
-        return colon >= 0 ? modelId.substring(colon + 1) : modelId;
+        String path = colon >= 0 ? modelId.substring(colon + 1) : modelId;
+        // 没有模型资源时的兜底名同样做可读化，避免备份列表里一堆同名占位
+        return io.github.zgxhzhr.maidfm.client.ModelNames.prettifyModelPath(path);
     }
 
     public static MaidFileData exportMaidToData(ServerPlayer player, int entityId) {

@@ -120,7 +120,88 @@ public final class ModelNames {
             }
         }
         int colon = raw.indexOf(':');
-        return colon >= 0 && colon + 1 < raw.length() ? raw.substring(colon + 1) : raw;
+        // 本地没有该模型资源时的兜底：把 path 美化成可读文本，避免一堆同名占位
+        return prettifyModelPath(colon >= 0 && colon + 1 < raw.length() ? raw.substring(colon + 1) : raw);
+    }
+
+
+    /**
+     * 把 model_id 的 path 部分美化成可读文本，作为「本地没有该模型资源」时的兜底显示。
+     *
+     * <p>典型场景：服务端/别的客户端没装某个玩家的私有模型包，翻译键与模型表都查不到，
+     * 只能拿到 {@code namespace:path}。直接把 {@code my_private_maid} 摆出来很难看，
+     * 这里转成 {@code My Private Maid}，至少能区分「这是谁的模型」而不至于全变成同一个占位名。
+     */
+    public static String prettifyModelPath(String path) {
+        if (path == null || path.isEmpty()) {
+            return "";
+        }
+        String s = path.replace('_', ' ').trim();
+        StringBuilder sb = new StringBuilder(s.length());
+        boolean upper = true;
+        for (int i = 0; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch == ' ') {
+                upper = true;
+                sb.append(ch);
+            } else if (upper) {
+                sb.append(Character.toUpperCase(ch));
+                upper = false;
+            } else {
+                sb.append(ch);
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 导出「模型 ID → 显示名」映射，供客户端上报给服务端汇总。
+     *
+     * <p>两个来源：
+     * <ul>
+     *   <li>{@code PACK_NAME_CACHE}：自定义模型包内 maid_model.json 读到的名字，键本来就是 modelId</li>
+     *   <li>{@code zhByKey}：语言文件里的 {@code model.<ns>.<path>.name} 翻译键，反推出 modelId</li>
+     * </ul>
+     *
+     * <p>只上报「确实存在」的条目，解析不出来的不进表——宁缺毋滥，
+     * 避免把回退出来的 path 当成真名污染服务端表。
+     */
+    public static java.util.Map<String, String> exportModelNameMap() {
+        java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
+        try {
+            out.putAll(PACK_NAME_CACHE);
+        } catch (Throwable ignored) {
+        }
+        try {
+            ensureModelNameTables();
+            if (zhByKey != null && !zhByKey.isEmpty()) {
+                for (java.util.Map.Entry<String, String> e : zhByKey.entrySet()) {
+                    String key = e.getKey();
+                    String value = e.getValue();
+                    if (key == null || value == null || value.isEmpty()) {
+                        continue;
+                    }
+                    if (!key.startsWith("model.") || !key.endsWith(".name")) {
+                        continue;
+                    }
+                    String mid = key.substring("model.".length(), key.length() - ".name".length());
+                    if (mid.isEmpty()) {
+                        continue;
+                    }
+                    int dot = mid.indexOf('.');
+                    String modelId;
+                    if (dot > 0 && dot + 1 < mid.length()) {
+                        modelId = mid.substring(0, dot) + ":" + mid.substring(dot + 1);
+                    } else {
+                        // 旧式 model.<id>.name：默认归到 TLM 命名空间
+                        modelId = "touhou_little_maid:" + mid;
+                    }
+                    out.putIfAbsent(modelId, value);
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+        return out;
     }
 
     private ModelNames() {
@@ -209,7 +290,7 @@ public final class ModelNames {
             if (packName != null && !packName.isEmpty()) {
                 return packName;
             }
-            return path;
+            return prettifyModelPath(path);
         }
         // 不带命名空间的裸模型 ID：同样先查中文表，再问客户端模型表
         if (isZhLikeLanguage()) {
@@ -258,6 +339,50 @@ public final class ModelNames {
 
     // ================= 模型中文名表（懒加载一次） =================
 
+
+    /**
+     * 强制重新扫描模型名表。
+     *
+     * <p>玩家可能在游戏运行中下载新的模型包（TLM 的模型包市场），
+     * 而 {@link #ensureModelNameTables()} 只会加载一次 —— 不重新扫就永远看不到新包的中文名。
+     * 打开备份 / 档案 / 导出界面时调用一次，代价是重读几个 zip（通常几十毫秒）。
+     */
+    public static void reload() {
+        int before = zhByKey == null ? 0 : zhByKey.size();
+        modelNamesLoaded = false;
+        try {
+            ensureModelNameTables();
+        } catch (Throwable t) {
+            io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                    "[maid_file_manager] 重新扫描模型名表失败（沿用旧表）: {}", t.toString());
+            return;
+        }
+        int after = zhByKey == null ? 0 : zhByKey.size();
+        if (after > before) {
+            // 扫到了新模型名（玩家在游戏运行中下载了新模型包）→ 补报给服务端，
+            // 否则服务端解析备份列表时仍然拿不到这些名字
+            io.github.zgxhzhr.maidfm.Constants.LOG.info(
+                    "[maid_file_manager] 模型名表刷新：{} -> {} 条，补报服务端", before, after);
+            try {
+                java.util.Map<String, String> names = exportModelNameMap();
+                if (!names.isEmpty()) {
+                    java.util.List<String> pairs = new java.util.ArrayList<>(names.size() * 2);
+                    for (java.util.Map.Entry<String, String> e : names.entrySet()) {
+                        pairs.add(e.getKey());
+                        pairs.add(e.getValue());
+                    }
+                    io.github.zgxhzhr.maidfm.network.IMaidFileNetwork net =
+                            io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.Holder.get();
+                    if (net != null) {
+                        net.sendModelNames(pairs);
+                    }
+                }
+            } catch (Throwable ignored) {
+                // 补报失败不影响本地解析
+            }
+        }
+    }
+
     private static void ensureModelNameTables() {
         if (modelNamesLoaded) {
             return;
@@ -267,6 +392,8 @@ public final class ModelNames {
         Map<String, String> en = new HashMap<>();
         int fromResourcePack = collectFromResourceManager(zh, en);
         int fromDisk = collectFromModelPackDir(zh, en);
+        // TLM 模型包（zip + .lang）：前两个来源都覆盖不到真机上的私有模型包
+        fromDisk += collectFromTlmPacks(zh, en);
         zhByKey = zh;
         Map<String, String> byEn = new HashMap<>();
         for (Map.Entry<String, String> e : zh.entrySet()) {
@@ -385,6 +512,97 @@ public final class ModelNames {
                     "[maid_file_manager] 扫描 tlm_custom_pack 失败: {}", t.toString());
         }
         return count;
+    }
+
+
+    /**
+     * 来源三：TLM 模型包 zip（{@code config/touhou_little_maid/file/*.zip}）。
+     *
+     * <p>TLM 的第三方模型包是 **zip 压缩包**，里面的语言文件是 **老式 {@code .lang}（key=value）**，
+     * 既不在 {@code tlm_custom_pack} 解压目录里，也不是 {@code .json} 格式——
+     * 前两个来源都覆盖不到，于是自定义模型（如 {@code cao_dong:001}）永远解析不出中文名。
+     */
+    private static int collectFromTlmPacks(Map<String, String> zh, Map<String, String> en) {
+        int count = 0;
+        try {
+            Path gameDir = io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getGameDir();
+            if (gameDir == null) {
+                return 0;
+            }
+            Path[] dirs = new Path[]{
+                    gameDir.resolve("config/touhou_little_maid/file"),
+                    gameDir.getParent() == null ? null
+                            : gameDir.getParent().resolve("config/touhou_little_maid/file")
+            };
+            for (Path dir : dirs) {
+                if (dir == null || !Files.isDirectory(dir)) {
+                    continue;
+                }
+                try (java.util.stream.Stream<Path> list = Files.list(dir)) {
+                    for (Path zip : list.toList()) {
+                        String n = zip.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+                        if (!n.endsWith(".zip")) {
+                            continue;
+                        }
+                        count += readLangFromZip(zip, zh, en);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                    "[maid_file_manager] 扫描 TLM 模型包失败: {}", t.toString());
+        }
+        return count;
+    }
+
+    /** 读一个模型包 zip 里所有 {@code zh_cn.lang} / {@code en_us.lang} */
+    private static int readLangFromZip(Path zip, Map<String, String> zh, Map<String, String> en) {
+        int n = 0;
+        try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip.toFile(), StandardCharsets.UTF_8)) {
+            java.util.Enumeration<? extends java.util.zip.ZipEntry> entries = zf.entries();
+            while (entries.hasMoreElements()) {
+                java.util.zip.ZipEntry ze = entries.nextElement();
+                String name = ze.getName();
+                if (!name.endsWith(".lang")) {
+                    continue;
+                }
+                boolean isZh = name.endsWith("zh_cn.lang");
+                boolean isEn = name.endsWith("en_us.lang");
+                if (!isZh && !isEn) {
+                    continue;
+                }
+                try (java.io.InputStream in = zf.getInputStream(ze)) {
+                    String text = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+                    mergeLangProperties(text, isZh ? zh : en);
+                    n++;
+                }
+            }
+        } catch (Throwable ignored) {
+            // 单个包损坏不影响其它
+        }
+        return n;
+    }
+
+    /** 解析老式 {@code .lang}（key=value），只收 {@code model.*.name} 条目 */
+    private static void mergeLangProperties(String text, Map<String, String> out) {
+        if (text == null || text.isEmpty() || out == null) {
+            return;
+        }
+        for (String line : text.split("\\R")) {
+            String s = line.trim();
+            if (s.isEmpty() || s.startsWith("#")) {
+                continue;
+            }
+            int eq = s.indexOf('=');
+            if (eq <= 0) {
+                continue;
+            }
+            String key = s.substring(0, eq).trim();
+            String val = s.substring(eq + 1).trim();
+            if (key.startsWith("model.") && key.endsWith(".name") && !val.isEmpty()) {
+                out.putIfAbsent(key, val);
+            }
+        }
     }
 
     /** 把一份语言 JSON 里 {@code model.*.name} 的条目并入目标表（先到先得）。 */

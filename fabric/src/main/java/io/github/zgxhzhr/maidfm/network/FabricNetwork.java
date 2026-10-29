@@ -100,6 +100,15 @@ public class FabricNetwork implements IMaidFileNetwork {
     }
 
     @Override
+    public void sendModelNames(java.util.List<String> pairs) {
+        if (pairs == null || pairs.isEmpty()) {
+            return;
+        }
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(
+                new MaidFilePayloads.ModelNamesPayload(pairs));
+    }
+
+    @Override
     public void sendRequestBackupExport(String ownerUuid, String maidUuid, String fileName) {
         ClientPlayNetworking.send(
                 new MaidFilePayloads.RequestBackupExportPayload(ownerUuid, maidUuid, fileName));

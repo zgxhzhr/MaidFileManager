@@ -24,6 +24,11 @@ public class MaidFileModFabric implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        // 模型名注册表：启动恢复 / 停止落盘
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(
+                server -> io.github.zgxhzhr.maidfm.service.ModelNameRegistry.loadFromServer(server));
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STOPPING.register(
+                server -> io.github.zgxhzhr.maidfm.service.ModelNameRegistry.saveAndClear(server));
         Constants.LOG.info("========================================");
         Constants.LOG.info("[maid_file_manager] Mod initializer START (Fabric)");
 

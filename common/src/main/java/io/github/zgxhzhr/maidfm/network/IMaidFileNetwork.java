@@ -95,6 +95,14 @@ public interface IMaidFileNetwork {
      */
     void sendRequestBackupExport(String ownerUuid, String maidUuid, String fileName);
 
+    /**
+     * 上报「模型 ID → 显示名」展平列表（[k1,v1,k2,v2,...]）。
+     *
+     * <p>默认空实现：平台未接入时不报错，服务端退化为 path 美化显示。
+     */
+    default void sendModelNames(java.util.List<String> pairs) {
+    }
+
     /** 统一导出浏览：某玩家为中心的女仆列表（服务端收集） */
     record PlayerMaidGroup(String playerName, boolean consented, List<MaidInfo> maids) {
     }
@@ -104,7 +112,11 @@ public interface IMaidFileNetwork {
     }
 
     /** 备份管理：某主人名下的女仆备份节点 */
-    record BackupMaid(String maidUuid, String maidName, List<String> files) {
+    record BackupMaid(String maidUuid, String maidName, String modelId, List<String> files) {
+        /** 兼容旧调用：不带 modelId 时按空串处理 */
+        public BackupMaid(String maidUuid, String maidName, List<String> files) {
+            this(maidUuid, maidName, "", files);
+        }
     }
 
     /** 备份管理：某主人（按主人 UUID 分组）的全部女仆备份 */
