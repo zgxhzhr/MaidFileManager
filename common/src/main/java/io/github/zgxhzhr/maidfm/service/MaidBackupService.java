@@ -165,6 +165,8 @@ public final class MaidBackupService {
                     String modelName = "";
                     String modelIdOut = "";
                     String entityCustomName = null;
+                    // 是否 YSM 换模：决定客户端显示时用 modelId 解析还是直接用服务端给的展示名
+                    boolean latestTagIsYsm = false;
                     try {
                         java.io.File latest = new java.io.File(maidDir, firstFile);
                         CompoundTag latestTag = MaidFileIo.readCompressedNbt(latest.toPath());
@@ -193,6 +195,7 @@ public final class MaidBackupService {
                                         ? fromRegistry
                                         : MaidTransferService.getDisplayName(modelId);
                             }
+                            latestTagIsYsm = latestTag.getBoolean("IsYsmModel");
                             // 实体自定义名（玩家给女仆起的名字）存在 .dat 的 CustomName 里，
                             // 而 index.dat 的 Name 只是 TLM 的内部编号（如 001）。导出界面读的是前者，
                             // 备份列表此前读后者，于是同一只女仆在两边名字不一样。
@@ -222,7 +225,9 @@ public final class MaidBackupService {
                     } else {
                         shownName = customName + " (" + modelName + ")";
                     }
-                    maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, shownName, modelIdOut, names));
+                    // YSM 换模：modelId 是 TLM 底层 ID，显示名却是 YSM 名，客户端必须优先用后者
+                    boolean ysmModel = latestTagIsYsm;
+                    maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, shownName, modelIdOut, ysmModel, names));
                 }
             }
             maids.sort(Comparator.comparing(IMaidFileNetwork.BackupMaid::maidUuid));
