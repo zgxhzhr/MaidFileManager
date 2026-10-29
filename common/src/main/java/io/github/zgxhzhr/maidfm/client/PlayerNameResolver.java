@@ -219,6 +219,66 @@ public final class PlayerNameResolver {
         ensureWorker();
     }
 
+    /**
+     * 进游戏时预热：扫本机所有存档的备份目录，把还没解析过的属主 UUID 排入名字查询队列。
+     * 只扫目录名（属主 UUID），不读任何 NBT。
+     */
+    public static void warmUpFromSaves(Path gameDir) {
+        Thread t = new Thread(() -> {
+            try {
+                Path saves = gameDir.resolve("saves");
+                if (!Files.isDirectory(saves)) {
+                    return;
+                }
+                java.util.Set<UUID> owners = new java.util.HashSet<>();
+                try (var worlds = Files.list(saves)) {
+                    for (Path w : worlds.toList()) {
+                        if (!Files.isDirectory(w)) {
+                            continue;
+                        }
+                        collectOwnerDirs(w.resolve("data").resolve(Constants.MAID_BACKUPS_DIR), owners);
+                        collectOwnerDirs(w.resolve("dimensions").resolve("minecraft").resolve("overworld")
+                                .resolve("data").resolve(Constants.MAID_BACKUPS_DIR), owners);
+                    }
+                }
+                int queued = 0;
+                for (UUID u : owners) {
+                    if (getCached(u) == null) {
+                        resolve(u, (id, name) -> {
+                        });
+                        queued++;
+                    }
+                }
+                if (queued > 0) {
+                    Constants.LOG.info("[maid_file_manager] 名字预热：{} 个属主 UUID 已排入查询队列", queued);
+                }
+            } catch (Throwable t2) {
+                Constants.LOG.warn("[maid_file_manager] 名字预热失败（不影响功能）: {}", t2.toString());
+            }
+        }, "maidfm-name-warmup");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /** 收集备份根目录下以 UUID 命名的子目录（即属主） */
+    private static void collectOwnerDirs(Path backupRoot, java.util.Set<UUID> out) {
+        if (!Files.isDirectory(backupRoot)) {
+            return;
+        }
+        try (var dirs = Files.list(backupRoot)) {
+            for (Path d : dirs.toList()) {
+                if (!Files.isDirectory(d)) {
+                    continue;
+                }
+                try {
+                    out.add(UUID.fromString(d.getFileName().toString()));
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
     /** 按离线模式规则计算 UUID（与 Minecraft 服务端 OfflinePlayer 规则一致） */
     public static UUID offlineUuid(String name) {
         return UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes(StandardCharsets.UTF_8));

@@ -750,6 +750,40 @@ public final class MaidFilePayloads {
     }
 
     /** C2S：备份管理——请求服务端返回可浏览的自动备份列表（服务端按权限过滤后回发 BackupListPayload） */
+    /** C2S：客户端上报「模型 ID → 显示名」映射，服务端合并后用于解析备份列表的模型名 */
+    public record ModelNamesPayload(List<String> pairs) implements CustomPacketPayload {
+        public static final Type<ModelNamesPayload> TYPE = new Type<>(MaidFilePackets.ID_MODEL_NAMES);
+
+        public static final StreamCodec<net.minecraft.network.FriendlyByteBuf, ModelNamesPayload> STREAM_CODEC =
+                StreamCodec.of(
+                        (buf, p) -> {
+                            List<String> safe = p.pairs() == null ? List.of() : p.pairs();
+                            int n = Math.min(safe.size(), MaidFilePackets.MAX_MODEL_NAME_ENTRIES * 2);
+                            buf.writeVarInt(n / 2);
+                            for (int i = 0; i + 1 < n; i += 2) {
+                                buf.writeUtf(safe.get(i) == null ? "" : safe.get(i), MaidFilePackets.MAX_TEXT_LEN);
+                                buf.writeUtf(safe.get(i + 1) == null ? "" : safe.get(i + 1), MaidFilePackets.MAX_TEXT_LEN);
+                            }
+                        },
+                        buf -> new ModelNamesPayload(MaidFilePackets.readModelNames(buf)));
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+
+        public void handle(IPayloadContext ctx) {
+            ctx.enqueueWork(() -> {
+                if (ctx.player() instanceof net.minecraft.server.level.ServerPlayer sp) {
+                    if (!RequestThrottle.allow(sp.getUUID(), "model_names", 10000L)) {
+                        return;
+                    }
+                    io.github.zgxhzhr.maidfm.service.ModelNameRegistry.mergeFromPairs(pairs());
+                }
+            });
+        }
+    }
+
     public record RequestBackupListPayload() implements CustomPacketPayload {
         public static final Type<RequestBackupListPayload> TYPE =
                 new Type<>(MaidFilePackets.ID_REQUEST_BACKUP_LIST);

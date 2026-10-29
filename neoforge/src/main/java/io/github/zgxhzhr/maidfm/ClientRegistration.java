@@ -2,6 +2,7 @@ package io.github.zgxhzhr.maidfm;
 
 import io.github.zgxhzhr.maidfm.client.MaidBackupBrowserScreen;
 import io.github.zgxhzhr.maidfm.client.MaidFileKeyMappings;
+import io.github.zgxhzhr.maidfm.client.PlayerNameResolver;
 import io.github.zgxhzhr.maidfm.client.MaidFileManagerScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
@@ -12,12 +13,60 @@ import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
 
 @EventBusSubscriber(modid = Constants.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.GAME)
 public class ClientRegistration {
+
+    /** 本连接是否已上报模型名映射 */
+    private static boolean MODEL_NAMES_SENT;
+
+    /** 进入世界即开始解析属主名字（不等玩家打开备份界面） */
+    @SubscribeEvent
+    public static void onClientLogin(ClientPlayerNetworkEvent.LoggingIn event) {
+        java.nio.file.Path gameDir = net.minecraft.client.Minecraft.getInstance().gameDirectory.toPath();
+        PlayerNameResolver.loadCache(gameDir);
+        PlayerNameResolver.warmUpFromSaves(gameDir);
+        io.github.zgxhzhr.maidfm.client.ClientModelNameCache.load(gameDir);
+        io.github.zgxhzhr.maidfm.service.ModelNameRegistry.externalProvider =
+                io.github.zgxhzhr.maidfm.client.ClientModelNameCache::lookup;
+        MODEL_NAMES_SENT = false;
+        Minecraft mc2 = Minecraft.getInstance();
+        if (mc2 != null) {
+            mc2.execute(ClientRegistration::sendModelNamesOnce);
+        }
+    }
+
+    /** 把本机认识的「模型 ID → 显示名」上报给服务端（每个连接只发一次） */
+    private static void sendModelNamesOnce() {
+        if (MODEL_NAMES_SENT) {
+            return;
+        }
+        MODEL_NAMES_SENT = true;
+        try {
+            java.util.Map<String, String> names =
+                    io.github.zgxhzhr.maidfm.client.ModelNames.exportModelNameMap();
+            if (names == null || names.isEmpty()) {
+                return;
+            }
+            java.util.List<String> pairs = new java.util.ArrayList<>(names.size() * 2);
+            for (java.util.Map.Entry<String, String> e : names.entrySet()) {
+                pairs.add(e.getKey());
+                pairs.add(e.getValue());
+            }
+            io.github.zgxhzhr.maidfm.network.IMaidFileNetwork net =
+                    io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.Holder.get();
+            if (net != null) {
+                net.sendModelNames(pairs);
+            }
+        } catch (Throwable t) {
+            io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                    "[maid_file_manager] 上报模型名失败: {}", t.toString());
+        }
+    }
 
     @SubscribeEvent(priority = EventPriority.NORMAL)
     public static void onKey(InputEvent.Key event) {

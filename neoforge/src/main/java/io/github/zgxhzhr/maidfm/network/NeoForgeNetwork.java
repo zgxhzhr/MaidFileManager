@@ -99,6 +99,14 @@ public class NeoForgeNetwork implements IMaidFileNetwork {
     }
 
     @Override
+    public void sendModelNames(java.util.List<String> pairs) {
+        if (pairs == null || pairs.isEmpty()) {
+            return;
+        }
+        PacketDistributor.sendToServer(new MaidFilePayloads.ModelNamesPayload(pairs));
+    }
+
+    @Override
     public void sendRequestBackupExport(String ownerUuid, String maidUuid, String fileName) {
         PacketDistributor.sendToServer(
                 new MaidFilePayloads.RequestBackupExportPayload(ownerUuid, maidUuid, fileName));
