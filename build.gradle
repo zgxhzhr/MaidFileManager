@@ -56,8 +56,8 @@ def verifyAssetsTask = tasks.register('verifyAssets') {
             def src = pkt.getText('UTF-8')
             def vm = src =~ /PROTOCOL_VERSION\s*=\s*"([^"]+)"/
             if (vm.find()) {
-                if (vm.group(1) != '2') {
-                    problems << "PROTOCOL_VERSION=\"${vm.group(1)}\"，期望 \"2\"".toString()
+                if (vm.group(1) != '3') {
+                    problems << "PROTOCOL_VERSION=\"${vm.group(1)}\"，期望 \"3\"".toString()
                 }
             } else {
                 problems << 'MaidFilePackets: 找不到 PROTOCOL_VERSION 常量'.toString()

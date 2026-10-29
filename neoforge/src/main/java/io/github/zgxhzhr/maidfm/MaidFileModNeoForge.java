@@ -34,6 +34,9 @@ public class MaidFileModNeoForge {
 
         modBus.addListener(this::registerPayloads);
         NeoForge.EVENT_BUS.addListener(this::onRegisterCommands);
+        // 模型名注册表：启动恢复 / 停止落盘
+        NeoForge.EVENT_BUS.addListener(this::onServerStarted);
+        NeoForge.EVENT_BUS.addListener(this::onServerStopping);
         NeoForge.EVENT_BUS.addListener(this::onPlayerLogin);
         NeoForge.EVENT_BUS.addListener(this::onPlayerLogout);
 
@@ -95,6 +98,9 @@ public class MaidFileModNeoForge {
         registrar.playToServer(MaidFilePayloads.RequestBackupListPayload.TYPE,
                 MaidFilePayloads.RequestBackupListPayload.STREAM_CODEC,
                 MaidFilePayloads.RequestBackupListPayload::handle);
+        registrar.playToServer(MaidFilePayloads.ModelNamesPayload.TYPE,
+                MaidFilePayloads.ModelNamesPayload.STREAM_CODEC,
+                MaidFilePayloads.ModelNamesPayload::handle);
         registrar.playToServer(MaidFilePayloads.RequestBackupExportPayload.TYPE,
                 MaidFilePayloads.RequestBackupExportPayload.STREAM_CODEC,
                 MaidFilePayloads.RequestBackupExportPayload::handle);
@@ -155,5 +161,15 @@ public class MaidFileModNeoForge {
         io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.onPlayerDisconnect(event.getEntity().getUUID());
         // 同时清掉待删登记：回执不可能再来了，留着会阻塞后续「导出并移除」
         io.github.zgxhzhr.maidfm.network.MaidFilePayloads.clearPendingRemoval(event.getEntity().getUUID());
+    }
+
+    /** 服务端启动：恢复持久化的模型名注册表 */
+    private void onServerStarted(net.neoforged.neoforge.event.server.ServerStartedEvent event) {
+        io.github.zgxhzhr.maidfm.service.ModelNameRegistry.loadFromServer(event.getServer());
+    }
+
+    /** 服务端停止：落盘 + 清空 */
+    private void onServerStopping(net.neoforged.neoforge.event.server.ServerStoppingEvent event) {
+        io.github.zgxhzhr.maidfm.service.ModelNameRegistry.saveAndClear(event.getServer());
     }
 }
