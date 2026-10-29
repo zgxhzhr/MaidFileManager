@@ -108,10 +108,16 @@ public interface IMaidFileNetwork {
     }
 
     /** 备份管理：某主人名下的女仆备份节点 */
-    record BackupMaid(String maidUuid, String maidName, String modelId, List<String> files) {
-        /** 兼容旧调用：不带 modelId 时按空串处理 */
+    record BackupMaid(String maidUuid, String maidName, String modelId, boolean ysmModel,
+                      List<String> files) {
+        /** 兼容旧调用：不带 ysmModel 时按 false 处理 */
+        public BackupMaid(String maidUuid, String maidName, String modelId, List<String> files) {
+            this(maidUuid, maidName, modelId, false, files);
+        }
+
+        /** 兼容更旧调用：连 modelId 都没有 */
         public BackupMaid(String maidUuid, String maidName, List<String> files) {
-            this(maidUuid, maidName, "", files);
+            this(maidUuid, maidName, "", false, files);
         }
     }
 

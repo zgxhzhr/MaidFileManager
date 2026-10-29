@@ -2019,9 +2019,14 @@ setScrollAmount(0);
                 int contentW = contentRight - textLeft;
                 net.minecraft.client.gui.Font font = MaidFileManagerScreen.this.font;
                 // 第一行：name 超长 → 截断+省略号…（不滚避免勾选框右晃动）
-                String name = info.customName() != null
-                        ? info.customName() + " · " + ModelNames.displayModelId(info.modelId())
+                // YSM 女仆的 modelId 是 YSM 模型路径（ysm:Wine Fox/02 New Year），
+                // displayModelId 解析不了，只能用服务端给的 displayName（YSM 真名）。
+                String baseName = info.ysmModel()
+                        ? (info.displayName() != null ? info.displayName() : "")
                         : ModelNames.displayModelId(info.modelId());
+                String name = info.customName() != null
+                        ? info.customName() + " · " + baseName
+                        : baseName;
                 String drawName;
                 if (font.width(name) > contentW) {
                     drawName = font.plainSubstrByWidth(name, contentW - font.width("…")) + "…";
