@@ -73,70 +73,14 @@ public class MaidFileModFabric implements ModInitializer {
         });
 
         registerC2SReceiver(MaidFilePackets.ID_EXPORT_MAID, (server, player, buf) -> {
-            // 旧单发通道不能成为频控绕过口（第六轮 N3）
-            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "export_maid", 1000L)) { return; }
-            int entityId = buf.readInt();
-            MaidFileData data = MaidTransferService.exportMaidToData(player, entityId);
-            if (data != null && !sendExportResults(player, List.of(data))) {
-                return; // 超负载上限时已发送失败反馈
-            }
-            if (data == null) {
-                sendFeedback(player, Component.translatable("maid_file_manager.export.fail.unknown"));
-            }
+            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.exportMaid(player, buf.readInt());
         });
 
         // 批量导出：数据发回客户端写文件；removeAfter=true 时移除已导出的女仆
         registerC2SReceiver(MaidFilePackets.ID_EXPORT_BATCH, (server, player, buf) -> {
-            // 频次限制：写盘/生成实体类 handler，原先只有只读请求有节流
-            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "export_batch", 1000L)) {
-                return;
-            }
-            List<Integer> ids = MaidFilePackets.readIntList(buf);
+            java.util.List<Integer> ids = MaidFilePackets.readIntList(buf);
             boolean removeAfter = buf.readBoolean();
-            // 两阶段处理：先完成全部序列化并通过体积预检、确认结果包已发送，之后才允许删除实体。
-            // 若边导出边删除，预检失败时女仆已被 discard 而文件未送达，构成不可逆数据丢失
-            List<MaidFileData> results = new ArrayList<>(ids.size());
-            List<Integer> exportedIds = new ArrayList<>(ids.size());
-            for (Integer entityId : ids) {
-                if (entityId == null) {
-                    continue;
-                }
-                MaidFileData data = MaidTransferService.exportMaidToData(player, entityId);
-                if (data != null) {
-                    results.add(data);
-                    exportedIds.add(entityId);
-                }
-            }
-            if (!sendExportResults(player, results)) {
-                return; // 数据体积超 1 MiB 负载上限，已回执明确失败原因（非静默），实体一律未删除
-            }
-            int removedCount = 0;
-            // 空批次绝不能登记待删：客户端对空结果**不发 ack**（onExportResultReceived 拿到空表直接返回），
-            // 登记项会一直占到 TTL 过期，期间下一次「导出并移除」被误报 remove_busy、静默降级成只导出（第六轮 N4）。
-            if (removeAfter && !exportedIds.isEmpty()) {
-                // 【P2-10】不再立刻 discard：服务端无法确认客户端写盘成功。
-                // 改为登记待删，等客户端回执 ID_EXPORT_WRITE_ACK 再删；不回执则永不删除。
-                // 同一玩家同一时刻只允许一笔待删登记。已有登记时不覆盖 —— 覆盖会让「旧回执」
-                // 删除**新批次**的女仆，而新批次文件可能根本没写成功，构成不可逆数据丢失。
-                // putIfAbsent 前先清掉已过 TTL 的陈旧登记：TTL 原先只在 ack 到达时判，
-                // 回执永远不来时该玩家会一直命中 putIfAbsent != null → 「导出并移除」永久失效。
-                io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.RegisterResult reg =
-                        io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.register(player.getUUID(), exportedIds);
-                if (reg == io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.RegisterResult.BUSY) {
-                    Constants.LOG.warn("[maid_file_manager] 上一笔待删回执未到，本次导出不执行移除: player={}, 本批 {} 个",
-                            player.getName().getString(), exportedIds.size());
-                    sendFeedback(player, Component.translatable("maid_file_manager.server.remove_busy"));
-                } else {
-                    if (reg == io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.RegisterResult.REGISTERED_AFTER_EXPIRY) {
-                        Constants.LOG.warn("[maid_file_manager] 陈旧待删登记已过 TTL，清掉后重建: player={}",
-                                player.getName().getString());
-                    }
-                    Constants.LOG.info("[maid_file_manager] 导出并移除：登记待删 {} 个实体，等待客户端写盘回执 player={}",
-                            exportedIds.size(), player.getName().getString());
-                }
-            }
-            Constants.LOG.debug("[maid_file_manager] EXPORT_BATCH: player={} sent={} removed={}",
-                    player.getName().getString(), results.size(), removedCount);
+            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.exportBatch(player, ids, removeAfter);
         });
 
         registerC2SReceiver(MaidFilePackets.ID_IMPORT_FILE, (server, player, buf) -> {
@@ -374,69 +318,6 @@ public class MaidFileModFabric implements ModInitializer {
         Constants.LOG.info("Maid File Manager network registered");
     }
 
-    /**
-     * 发送导出数据回客户端写文件。
-     * 发送前按客户端解码端的全部契约维度（512 条目/单文件 512 KiB/整包 1 MiB 自律红线）预检，
-     * 序列化字节在预检与实际发包间复用；任一维度不过只回执明确失败并返回 false，
-     * 调用方（尤其 removeAfter 路径）据此保证实体绝不被 discard。
-     *
-     * @return true=已发送；false=序列化失败或契约预检被拒（调用方不得删除实体）
-     */
-    private static boolean sendExportResults(ServerPlayer player, List<MaidFileData> results) {
-        // Curios 饰品裁剪提示：未声明模组的饰品不会随女仆迁移，必须明确告知发起导出的人。
-        // curiosDropTip() 取出即清零，同一批次只提示一次。
-        net.minecraft.network.chat.Component curiosTip =
-                io.github.zgxhzhr.maidfm.service.BaubleHandler.curiosDropTip();
-        if (curiosTip != null) {
-            sendFeedback(player, curiosTip);
-        }
-        List<byte[]> blobs = MaidFilePackets.serializeMaidDataBatch(results);
-        if (blobs == null) {
-            Constants.LOG.error("[maid_file_manager] 导出结果序列化失败，拒绝发送: player={}",
-                    player.getName().getString());
-            sendFeedback(player, Component.translatable("maid_file_manager.server.serialize_failed"));
-            return false;
-        }
-        String reject = MaidFilePackets.checkMaidDataBatchForWire(blobs, MaidFilePackets.MAX_EXPORT_IDS, true);
-        if (reject != null) {
-            Constants.LOG.warn("[maid_file_manager] 导出结果预检被拒绝: player={}, count={}, reason={}",
-                    player.getName().getString(), blobs.size(), reject);
-            sendFeedback(player, Component.translatable("maid_file_manager.server.prefix").append(reject));
-            return false;
-        }
-        // 提前按整包体积预检（第六轮 N2）：原先只在 sendChunkedDownload 里判，
-        // 那时 blobs + buf + encoded 三份副本都已分配（最坏主线程瞬时占用数倍于负载）。
-        long declaredTotal = (long) blobs.size() * 4L;
-        for (byte[] oneBlob : blobs) {
-            declaredTotal += oneBlob.length;
-        }
-        if (declaredTotal > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES) {
-            Constants.LOG.warn("[maid_file_manager] 导出结果整包超上限，拒绝发送: player={} bytes={}",
-                    player.getName().getString(), declaredTotal);
-            sendFeedback(player, Component.translatable(
-                    "maid_file_manager.server.export_too_large",
-                    declaredTotal / 1024, io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES / 1024));
-            return false;
-        }
-        // 导出侧没有独立上限，但导入侧 MAX_NBT_DECOMPRESSED_BYTES(4 MiB) 是硬闸门：
-        // 超过它的档案「导得出、导不回」，这里留一条 WARN 便于排查（第六轮 D4）。
-        if (declaredTotal > MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES) {
-            Constants.LOG.warn("[maid_file_manager] 导出数据 {} 字节超过导入侧 4 MiB 上限，该 .maid 可能无法再导入: player={}",
-                    declaredTotal, player.getName().getString());
-        }
-        FriendlyByteBuf out = MaidPayload.buffer();
-        MaidFilePackets.writeMaidDataBlobs(out, blobs);
-        byte[] encoded = new byte[out.readableBytes()];
-        out.getBytes(0, encoded);
-        if (encoded.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES) {
-            if (!sendChunkedDownload(player, io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.KIND_EXPORT_BATCH, encoded)) {
-                return false;
-            }
-        } else {
-            ServerPlayNetworking.send(player, MaidPayload.of(MaidFilePackets.ID_EXPORT_BATCH_RESULT, out));
-        }
-        return true;
-    }
 
     /** 把服务端配置单播给指定玩家（登录同步用） */
     public static void sendServerConfig(ServerPlayer player) {
@@ -523,7 +404,7 @@ public class MaidFileModFabric implements ModInitializer {
     }
 
     /** 分片下发（服务端 → 客户端）；1.20.x 的 32767 限制对 S2C 同样生效 */
-    private static boolean sendChunkedDownload(ServerPlayer player, String kind, byte[] payload) {
+    public static boolean sendChunkedDownload(ServerPlayer player, String kind, byte[] payload) {
         if (payload == null || payload.length == 0) {
             return true;
         }
