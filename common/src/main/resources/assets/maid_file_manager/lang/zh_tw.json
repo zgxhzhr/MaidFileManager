@@ -273,5 +273,5 @@
   "maid_file_manager.export.migration_details": "。其他模組資料說明：",
   "maid_file_manager.export.migration.more": "（另有 %s 條說明）",
   "maid_file_manager.import.migration.provider_note": "%s：%s",
-  "maid_file_manager.export.quota_exceeded": "本次匯出的資料約 %s KB（壓縮後）。匯入端對解壓後的資料有 %s KB 的讀取配額，超過的檔案可能無法再匯入。"
+  "maid_file_manager.export.quota_exceeded": "有 %s 個匯出檔案的資料超過匯入讀取配額（%s KB），這些 .maid 之後可能無法再匯入。"
 }

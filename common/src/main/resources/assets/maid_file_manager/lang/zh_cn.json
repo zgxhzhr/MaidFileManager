@@ -273,5 +273,5 @@
   "maid_file_manager.export.migration_details": "。其他模组数据说明：",
   "maid_file_manager.export.migration.more": "（另有 %s 条说明）",
   "maid_file_manager.import.migration.provider_note": "%s：%s",
-  "maid_file_manager.export.quota_exceeded": "本次导出的数据约 %s KB（压缩后）。导入侧对解压后的数据有 %s KB 的读取配额，超过的档案可能无法再导入。"
+  "maid_file_manager.export.quota_exceeded": "有 %s 个导出文件的档案数据超过导入读取配额（%s KB），这些 .maid 以后可能无法再导入。"
 }
