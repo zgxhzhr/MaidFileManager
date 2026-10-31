@@ -136,16 +136,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         ctx.setPacketHandled(true);
     }
 
+    /** 业务逻辑已下沉到 {@link ServerPacketHandlers}（六端共用一份）；本端只做转发。 */
     private static void handleRequestMaidList(ServerPlayer player) {
-        // 频次限制：同一玩家 1~5 秒内重复请求直接丢弃（这类请求在主线程同步跑，
-        // 循环发包能把服务器卡死，且不需要 OP 权限）
-        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "maid_list", 1000L)) {
-            return;
-        }
-        List<MaidInfo> list = MaidTransferService.listOwnMaids(player);
-        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        MaidInfoCodec.writeMaidInfoList(buf, list);
-        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_MAID_LIST, buf);
+        ServerPacketHandlers.requestMaidList(player);
     }
 
     private static void handleExportMaid(ServerPlayer player, int entityId) {

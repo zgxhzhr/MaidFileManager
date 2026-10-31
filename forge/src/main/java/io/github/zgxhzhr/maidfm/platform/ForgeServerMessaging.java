@@ -33,4 +33,11 @@ public final class ForgeServerMessaging implements ServerMessaging {
         MaidFilePackets.writeBooleanList(buf, spawned);
         ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_IMPORT_BATCH_RESULT, buf);
     }
+
+    @Override
+    public void sendMaidList(ServerPlayer player, java.util.List<io.github.zgxhzhr.maidfm.data.MaidInfo> list) {
+        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        io.github.zgxhzhr.maidfm.network.MaidInfoCodec.writeMaidInfoList(buf, list);
+        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_MAID_LIST, buf);
+    }
 }
