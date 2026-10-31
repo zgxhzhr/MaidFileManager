@@ -331,46 +331,52 @@ public final class ServerPacketHandlers {
             return;
         }
         MigrationNoteCollector.discard();
-        List<MaidFileData> results = new java.util.ArrayList<>(ids.size());
-        List<Integer> exportedIds = new java.util.ArrayList<>(ids.size());
-        for (Integer entityId : ids) {
-            if (entityId == null) {
-                continue;
+        // 必须用 finally：下面有多条提前 return（发送失败 / 未勾选移除 / 待删登记忙）。
+        // 尤其「未勾选移除」那条：GUI 默认 keepMaidsInWorldState=true → removeAfter=false
+        // → 每次都从这里早退，提示会永远发不出去（这条本来是 bug）。
+        try {
+            List<MaidFileData> results = new java.util.ArrayList<>(ids.size());
+            List<Integer> exportedIds = new java.util.ArrayList<>(ids.size());
+            for (Integer entityId : ids) {
+                if (entityId == null) {
+                    continue;
+                }
+                MaidFileData data = MaidTransferService.exportMaidToData(player, entityId);
+                if (data != null) {
+                    results.add(data);
+                    exportedIds.add(entityId);
+                }
             }
-            MaidFileData data = MaidTransferService.exportMaidToData(player, entityId);
-            if (data != null) {
-                results.add(data);
-                exportedIds.add(entityId);
+            if (!sendExportResults(player, results)) {
+                return;
             }
-        }
-        if (!sendExportResults(player, results)) {
-            return;
-        }
-        // 空批次绝不能登记待删：客户端对空结果不发 ack，登记项会一直占到 TTL 过期，
-        // 期间下一次「导出并移除」被误报 remove_busy、静默降级成只导出
-        if (!removeAfter || exportedIds.isEmpty()) {
+            // 空批次绝不能登记待删：客户端对空结果不发 ack，登记项会一直占到 TTL 过期，
+            // 期间下一次「导出并移除」被误报 remove_busy、静默降级成只导出
+            if (!removeAfter || exportedIds.isEmpty()) {
+                Constants.LOG.debug("[maid_file_manager] EXPORT_BATCH: player={} sent={} removed=0",
+                        player.getName().getString(), results.size());
+                return;
+            }
+            PendingRemovalRegistry.RegisterResult reg =
+                    PendingRemovalRegistry.register(player.getUUID(), exportedIds);
+            if (reg == PendingRemovalRegistry.RegisterResult.BUSY) {
+                Constants.LOG.warn("[maid_file_manager] 上一笔待删回执未到，本次导出不执行移除: player={}, 本批 {} 个",
+                        player.getName().getString(), exportedIds.size());
+                PacketSender.sendFeedback(player,
+                        Component.translatable("maid_file_manager.server.remove_busy"));
+                return;
+            }
+            if (reg == PendingRemovalRegistry.RegisterResult.REGISTERED_AFTER_EXPIRY) {
+                Constants.LOG.warn("[maid_file_manager] 陈旧待删登记已过 TTL，清掉后重建: player={}",
+                        player.getName().getString());
+            }
+            Constants.LOG.info("[maid_file_manager] 导出并移除：登记待删 {} 个实体，等待客户端写盘回执 player={}",
+                    exportedIds.size(), player.getName().getString());
             Constants.LOG.debug("[maid_file_manager] EXPORT_BATCH: player={} sent={} removed=0",
                     player.getName().getString(), results.size());
-            return;
+        } finally {
+            flushExportMigrationNotes(player);
         }
-        PendingRemovalRegistry.RegisterResult reg =
-                PendingRemovalRegistry.register(player.getUUID(), exportedIds);
-        if (reg == PendingRemovalRegistry.RegisterResult.BUSY) {
-            Constants.LOG.warn("[maid_file_manager] 上一笔待删回执未到，本次导出不执行移除: player={}, 本批 {} 个",
-                    player.getName().getString(), exportedIds.size());
-            PacketSender.sendFeedback(player,
-                    Component.translatable("maid_file_manager.server.remove_busy"));
-            return;
-        }
-        if (reg == PendingRemovalRegistry.RegisterResult.REGISTERED_AFTER_EXPIRY) {
-            Constants.LOG.warn("[maid_file_manager] 陈旧待删登记已过 TTL，清掉后重建: player={}",
-                    player.getName().getString());
-        }
-        Constants.LOG.info("[maid_file_manager] 导出并移除：登记待删 {} 个实体，等待客户端写盘回执 player={}",
-                exportedIds.size(), player.getName().getString());
-        Constants.LOG.debug("[maid_file_manager] EXPORT_BATCH: player={} sent={} removed=0",
-                player.getName().getString(), results.size());
-        flushExportMigrationNotes(player);
     }
 
     // ==================== 列表类请求 ====================

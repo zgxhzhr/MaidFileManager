@@ -270,7 +270,7 @@
   "maid_file_manager.import.migration.failed_unclassified": "%s: some data could not be migrated; see the server log.",
   "maid_file_manager.import.migration.more": " (%s more)",
   "maid_file_manager.export.migration.failed": "Data from %s could not be exported (the mod reported an error).",
-  "maid_file_manager.export.migration_details": ". Other mod data notes: ",
+  "maid_file_manager.export.migration_details": "Other mod data notes: ",
   "maid_file_manager.export.migration.more": " (%s more)",
   "maid_file_manager.import.migration.provider_note": "%s: %s",
   "maid_file_manager.export.quota_exceeded": "%s exported file(s) have archive data over the %s KB import limit; those .maid files may not be importable later."
