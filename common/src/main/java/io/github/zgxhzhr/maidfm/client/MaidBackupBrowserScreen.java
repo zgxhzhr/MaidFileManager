@@ -55,6 +55,8 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     private static final int HEADER_COLOR = 0xFFFFE082;
     private static final int TEXT_COLOR = 0xFFFFFFFF;
     private static final int SUBTEXT_COLOR = 0xFFB0B0B0;
+    /** 提醒色：用于「结果不完整」这类需要玩家注意但不阻断操作的提示 */
+    private static final int WARN_COLOR = 0xFFFFA726;
     private static final int ACCENT = 0xFFD0A060;
     private static final int LIST_BG = 0xFF181008;
     private static final int ROW_SELECTED = 0xFF2E3820;
@@ -366,28 +368,37 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         Thread scanWorker = new Thread(() -> {
             try {
                 if (server != null) {
-                    final java.util.List<IMaidFileNetwork.BackupOwner> owners =
+                    final MaidBackupService.ScanResult result =
                             MaidBackupService.scan(server, scanRequester, true);
                     // 26.1：getWorldPath(ROOT) 的语义变了，服务端侧可能扫不到备份；
                     // 扫不到就回退到「遍历本机全部存档」，避免单人世界内备份界面恒为空。
                     // 26.1：getWorldPath(ROOT) 语义可能已变，服务端侧偶尔扫不到；
                     // 兜底只匹配「当前存档」——遍历全部存档会把别的世界也倒进列表。
-                    if (owners.isEmpty()) {
+                    if (result.owners().isEmpty()) {
                         final String currentWorld = server.getWorldData().getLevelName();
-                        final java.util.List<IMaidFileNetwork.BackupWorld> all =
+                        final MaidBackupService.WorldScanResult all =
                                 MaidBackupService.scanAllWorlds(scanGameDir);
                         final java.util.List<IMaidFileNetwork.BackupWorld> only = new java.util.ArrayList<>();
-                        for (IMaidFileNetwork.BackupWorld w : all) {
+                        for (IMaidFileNetwork.BackupWorld w : all.worlds()) {
                             if (currentWorld != null && currentWorld.equals(w.worldName())) {
                                 only.add(w);
                             }
                         }
                         io.github.zgxhzhr.maidfm.Constants.LOG.info(
                                 "[maid_file_manager] 服务端备份为空，当前存档={} 命中 {} 个（全部 {} 个）",
-                                currentWorld, only.size(), all.size());
+                                currentWorld, only.size(), all.worlds().size());
                         if (!only.isEmpty() && this.minecraft != null) {
                             final java.util.List<IMaidFileNetwork.BackupWorld> fo = only;
-                            this.minecraft.execute(() -> { loading = false; loadingSince = 0L; applyWorlds(fo); });
+                            final boolean truncatedFallback = all.truncated();
+                            this.minecraft.execute(() -> {
+                                loading = false;
+                                loadingSince = 0L;
+                                applyWorlds(fo);
+                                if (truncatedFallback) {
+                                    setFeedback(Component.translatable(
+                                            "gui.maid_file_manager.backup.truncated"), WARN_COLOR);
+                                }
+                            });
                             return;
                         }
                     }
@@ -397,10 +408,16 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
                     this.minecraft.execute(() -> {
                         loading = false;
                         loadingSince = 0L;
-                        applyServerOwners(owners);
+                        applyServerOwners(result.owners());
+                        // 截断提示必须排在 applyXxx 之后：后者的「列表为空」提示会覆盖它，
+                        // 而「列表不全」比「列表为空」更应该被玩家看到
+                        if (result.truncated()) {
+                            setFeedback(Component.translatable(
+                                    "gui.maid_file_manager.backup.truncated"), WARN_COLOR);
+                        }
                     });
                 } else {
-                    final java.util.List<IMaidFileNetwork.BackupWorld> list =
+                    final MaidBackupService.WorldScanResult result =
                             MaidBackupService.scanAllWorlds(scanGameDir);
                     if (this.minecraft == null) {
                         return;
@@ -408,7 +425,11 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
                     this.minecraft.execute(() -> {
                         loading = false;
                         loadingSince = 0L;
-                        applyWorlds(list);
+                        applyWorlds(result.worlds());
+                        if (result.truncated()) {
+                            setFeedback(Component.translatable(
+                                    "gui.maid_file_manager.backup.truncated"), WARN_COLOR);
+                        }
                     });
                 }
             } catch (Throwable t) {

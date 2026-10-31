@@ -148,6 +148,8 @@
   "gui.maid_file_manager.backup.world.server": "Current Server",
   "gui.maid_file_manager.backup.back": "Back",
   "gui.maid_file_manager.backup.unavailable": "Backup browsing is currently unavailable",
+  "gui.maid_file_manager.backup.truncated": "Too many backup directories — list truncated (showing scanned portion only)",
+  "maid_file_manager.server.backup_list_truncated": "Backup list truncated: too many directories on the server, only the scanned portion is returned",
   "gui.maid_file_manager.backup.empty": "No maid backups found",
   "gui.maid_file_manager.backup.no_selection": "Select a backup file first",
   "gui.maid_file_manager.backup.exported": "Exported: %s",

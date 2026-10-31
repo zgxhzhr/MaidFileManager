@@ -80,18 +80,19 @@ public final class MaidBackupService {
      * @param requester 请求者 UUID
      * @param op        true=可见全部主人；false=仅可见 requester 名下的备份
      */
-    public static List<IMaidFileNetwork.BackupOwner> scan(MinecraftServer server, UUID requester, boolean op) {
-        List<IMaidFileNetwork.BackupOwner> all = scanRoot(backupRoot(server));
+    public static ScanResult scan(MinecraftServer server, UUID requester, boolean op) {
+        ScanResult root = scanRoot(backupRoot(server));
         if (op) {
-            return all;
+            return root;
         }
         List<IMaidFileNetwork.BackupOwner> filtered = new ArrayList<>();
-        for (IMaidFileNetwork.BackupOwner owner : all) {
+        for (IMaidFileNetwork.BackupOwner owner : root.owners()) {
             if (requester != null && owner.ownerUuid().equalsIgnoreCase(requester.toString())) {
                 filtered.add(owner);
             }
         }
-        return filtered;
+        // 截断标志原样传递：权限过滤只减少条目，不会让「本来没扫完」变得完整
+        return new ScanResult(filtered, root.truncated());
     }
 
     /**
@@ -100,25 +101,48 @@ public final class MaidBackupService {
      * <p>用于单人世界、局域网主机与游戏主菜单（主菜单无「当前存档」上下文，
      * 故按存档逐层展示本机所有存档的备份；没有备份的存档不进入列表）。
      */
-    public static List<IMaidFileNetwork.BackupWorld> scanAllWorlds(Path gameDir) {
+    public static WorldScanResult scanAllWorlds(Path gameDir) {
         List<IMaidFileNetwork.BackupWorld> worlds = new ArrayList<>();
+        boolean truncated = false;
         Path saves = gameDir.resolve("saves");
         File[] worldDirs = Files.isDirectory(saves) ? saves.toFile().listFiles(File::isDirectory) : null;
         if (worldDirs == null) {
-            return worlds;
+            return new WorldScanResult(worlds, false);
         }
         for (File world : worldDirs) {
-            List<IMaidFileNetwork.BackupOwner> owners = scanRoot(backupsDir(world.toPath()));
-            if (owners.isEmpty()) {
+            ScanResult one = scanRoot(backupsDir(world.toPath()));
+            // 任一存档被截断，整体就算截断——玩家看到的是合并列表，任一段缺失都要提示
+            truncated |= one.truncated();
+            if (one.owners().isEmpty()) {
                 continue;
             }
-            worlds.add(new IMaidFileNetwork.BackupWorld(world.getName(), owners));
+            worlds.add(new IMaidFileNetwork.BackupWorld(world.getName(), one.owners()));
         }
         worlds.sort(Comparator.comparing(IMaidFileNetwork.BackupWorld::worldName, String.CASE_INSENSITIVE_ORDER));
-        return worlds;
+        return new WorldScanResult(worlds, truncated);
     }
 
     /** 扫描指定备份根目录：返回「主人 → 女仆 → 备份文件」三层结构（不涉及权限） */
+    /**
+     * 扫描结果。
+     *
+     * @param owners    扫到的备份（已按权限过滤）
+     * @param truncated 是否因为上限/时间预算提前结束——此时 {@code owners} 只是全部备份的
+     *                  一部分，调用方<b>必须</b>把这个事实告诉玩家，否则玩家会以为
+     *                  「就这么多」，从而误判某只女仆没有备份
+     */
+    public record ScanResult(List<IMaidFileNetwork.BackupOwner> owners, boolean truncated) {
+    }
+
+    /**
+     * 多存档扫描结果。
+     *
+     * @param worlds    按存档分组的备份
+     * @param truncated 是否被上限/时间预算截断
+     */
+    public record WorldScanResult(List<IMaidFileNetwork.BackupWorld> worlds, boolean truncated) {
+    }
+
     /** 备份扫描上限：主线程同步扫描，设上限避免目录极多时长时间卡死 */
     private static final int MAX_SCAN_OWNER_DIRS = 200;
     private static final int MAX_SCAN_MAID_DIRS_PER_OWNER = 200;
@@ -131,22 +155,25 @@ public final class MaidBackupService {
      */
     private static final long SCAN_TIME_BUDGET_MS = 1500L;
 
-    private static List<IMaidFileNetwork.BackupOwner> scanRoot(Path root) {
+    private static ScanResult scanRoot(Path root) {
         ensureUsernameCacheLoaded();
         final long scanDeadline = System.currentTimeMillis() + SCAN_TIME_BUDGET_MS;
         List<IMaidFileNetwork.BackupOwner> owners = new ArrayList<>();
+        // 是否因为上限/时间预算提前结束；一旦置真就必须让调用方知道
+        boolean truncated = false;
         if (root == null || !Files.isDirectory(root)) {
-            return owners;
+            return new ScanResult(owners, false);
         }
         File[] ownerDirs = root.toFile().listFiles(File::isDirectory);
         if (ownerDirs == null) {
-            return owners;
+            return new ScanResult(owners, false);
         }
         for (File ownerDir : ownerDirs) {
             // 时间预算兜底：超过就停止扫描，返回已扫到的部分
             if (System.currentTimeMillis() > scanDeadline) {
                 Constants.LOG.warn("[maid_file_manager] 备份扫描超过时间预算 {} ms，已提前结束（已扫 {} 个玩家目录）",
                         SCAN_TIME_BUDGET_MS, owners.size());
+                truncated = true;
                 break;
             }
             String ownerUuid = ownerDir.getName();
@@ -156,6 +183,7 @@ public final class MaidBackupService {
             if (owners.size() >= MAX_SCAN_OWNER_DIRS) {
                 Constants.LOG.warn("[maid_file_manager] 备份扫描达到玩家目录上限 {}，其余目录已跳过（避免长时间占用主线程）",
                         MAX_SCAN_OWNER_DIRS);
+                truncated = true;
                 break;
             }
             Map<String, String> nameByMaid = readIndexNames(ownerDir.toPath().resolve("index.dat"));
@@ -166,6 +194,7 @@ public final class MaidBackupService {
                 Constants.LOG.warn("[maid_file_manager] 玩家 {} 下有 {} 个备份女仆目录，仅扫描前 {} 个",
                         ownerDir.getName(), maidDirs.length, MAX_SCAN_MAID_DIRS_PER_OWNER);
                 maidDirs = java.util.Arrays.copyOf(maidDirs, MAX_SCAN_MAID_DIRS_PER_OWNER);
+                truncated = true;
             }
             if (maidDirs != null) {
                 for (File maidDir : maidDirs) {
@@ -258,7 +287,7 @@ public final class MaidBackupService {
             owners.add(new IMaidFileNetwork.BackupOwner(ownerUuid, resolveOwnerName(ownerUuid), maids));
         }
         owners.sort(Comparator.comparing(IMaidFileNetwork.BackupOwner::ownerUuid));
-        return owners;
+        return new ScanResult(owners, truncated);
     }
 
     /**

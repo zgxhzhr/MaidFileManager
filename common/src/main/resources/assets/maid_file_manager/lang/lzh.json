@@ -148,6 +148,8 @@
   "gui.maid_file_manager.backup.world.server": "今之伺服",
   "gui.maid_file_manager.backup.back": "還",
   "gui.maid_file_manager.backup.unavailable": "備冊今不可用",
+  "gui.maid_file_manager.backup.truncated": "備份目錄過多，列表已截斷（僅顯示已掃描之部分）",
+  "maid_file_manager.server.backup_list_truncated": "備份列表已截斷：伺服端備份目錄過多，僅返還已掃描之部分",
   "gui.maid_file_manager.backup.empty": "未見女侍之備",
   "gui.maid_file_manager.backup.no_selection": "請先擇一備卷",
   "gui.maid_file_manager.backup.exported": "已錄：%s",
