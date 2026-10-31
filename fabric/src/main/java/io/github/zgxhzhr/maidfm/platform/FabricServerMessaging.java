@@ -27,4 +27,10 @@ public final class FabricServerMessaging implements ServerMessaging {
         ServerPlayNetworking.send(player,
                 new MaidFilePayloads.ImportBatchResultPayload(summary, spawned));
     }
+
+    @Override
+    public void sendMaidList(ServerPlayer player, java.util.List<io.github.zgxhzhr.maidfm.data.MaidInfo> list) {
+        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(
+                player, new io.github.zgxhzhr.maidfm.network.MaidFilePayloads.MaidListPayload(list));
+    }
 }

@@ -137,16 +137,8 @@ public final class MaidFilePayloads {
         public void handle(PayloadCtx ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
-                    // 频次限制：这类请求在主线程同步跑，循环发包能把服务器卡死（不需 OP）
-                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "maid_list", 1000L)) {
-                        return;
-                    }
-                    try {
-                        var list = MaidTransferService.listOwnMaids(sp);
-                        ServerPlayNetworking.send(sp, new MaidListPayload(list));
-                    } catch (Throwable t) {
-                        handleError(sp, "REQUEST_MAID_LIST", t);
-                    }
+                    // 业务逻辑已下沉到 ServerPacketHandlers（六端共用一份）；本端只做转发
+                    io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestMaidList(sp);
                 }
             });
         }
