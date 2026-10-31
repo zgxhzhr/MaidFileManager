@@ -490,6 +490,64 @@ def _find_empty_pkg_dirs(pkg_root):
     return sorted(out)
 
 
+def _check_spi(port_root):
+    """检查 META-INF/services 与源码的一致性。
+
+    这是血的教训：把 ServerMessaging 接口从 platform.services 移到 service 包时，
+    只改了 Java 的 package 声明和所有 import，忘了改 META-INF/services 下的文件名。
+    后果是 ServiceLoader.load(ServerMessaging.class) 找不到实现 → 返回 null →
+    PacketSender 退回 NOOP → 所有服务端消息被静默丢弃。
+    表现是「客户端一直停在『正在查询附近的女仆…』」，而 compileJava 通过、
+    396 个断言全过、包依赖 DAG 也干净 —— 三项检查都看不见它，
+    因为这是纯资源文件，不参与编译也不参与断言。
+
+    检查两件事：
+    1. services 文件名对应的接口，在源码里必须存在
+    2. 文件内容列出的实现类，在源码里必须存在
+    """
+    problems = []
+    java_dirs = []
+    for sub in ("common", "forge", "fabric", "neoforge"):
+        d = os.path.join(port_root, sub, "src", "main", "java")
+        if os.path.isdir(d):
+            java_dirs.append(d)
+    res_dir = os.path.join(port_root, "common", "src", "main", "resources", "META-INF", "services")
+
+    # 收集所有 resources/META-INF/services 目录（各模块都可能有）
+    svc_dirs = []
+    for sub in ("common", "forge", "fabric", "neoforge"):
+        d = os.path.join(port_root, sub, "src", "main", "resources", "META-INF", "services")
+        if os.path.isdir(d):
+            svc_dirs.append(d)
+
+    if not svc_dirs:
+        return None   # 该端没有 SPI，跳过
+
+    def class_exists(fqn):
+        rel = fqn.replace(".", os.sep) + ".java"
+        return any(os.path.isfile(os.path.join(jd, rel)) for jd in java_dirs)
+
+    count = 0
+    for sd in svc_dirs:
+        for fn in sorted(os.listdir(sd)):
+            fp = os.path.join(sd, fn)
+            if not os.path.isfile(fp):
+                continue
+            count += 1
+            if not class_exists(fn):
+                problems.append("META-INF/services/%s 对应的接口在源码中不存在"
+                                "（移包后忘了重命名这个文件？）" % fn)
+            with io.open(fp, encoding="utf-8") as f:
+                for line in f:
+                    impl = line.strip()
+                    if not impl or impl.startswith("#"):
+                        continue
+                    if not class_exists(impl):
+                        problems.append("META-INF/services/%s 声明了不存在的实现类 %s"
+                                        % (fn, impl))
+    return (count, problems)
+
+
 def cmd_arch(args):
     check_all = "--all" in args
     ports = list(PORTS.keys()) if check_all else [MASTER]
@@ -566,7 +624,25 @@ def cmd_arch(args):
         else:
             print("    [ OK ] 无空包")
 
-    # 4) 六端包结构一致
+    # 4) META-INF/services 与源码一致性（纯资源文件，编译与断言都看不见）
+    print()
+    print("--- META-INF/services 一致性")
+    spi_ok = True
+    for port in ports:
+        r = _check_spi(port_root(port))
+        if r is None:
+            continue
+        n, probs = r
+        if probs:
+            spi_ok = False
+            failed = True
+            print("    [FAIL] %s（%d 个 services 文件）" % (port, n))
+            for pr in probs:
+                print("           " + pr)
+        else:
+            print("    [ OK ] %-18s %d 个 services 文件，接口与实现均存在" % (port, n))
+
+    # 5) 六端包结构一致
     if len(pkg_sets) > 1:
         print()
         print("--- 六端包结构一致性")
