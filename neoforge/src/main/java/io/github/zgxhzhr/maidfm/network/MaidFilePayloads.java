@@ -423,35 +423,7 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
-                        if (!sp.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_MODERATOR)) {
-                            feedback(sp, Component.translatable("maid_file_manager.server.bulk_export_op_only"));
-                            return;
-                        }
-                        var groups = io.github.zgxhzhr.maidfm.service.MaidServerCommands
-                                .collectOnlinePlayerMaids(((net.minecraft.server.level.ServerLevel) sp.level()).getServer());
-                        // 组数维度预检：接收端 readPlayerMaidGroups 硬上限 128，必须在分配 probe 前拒绝，
-                        // 否则数千在线时会先按真实条目分配 GB 级缓冲，且坏包必然在客户端解码端断连
-                        if (groups.size() > MaidFilePackets.MAX_PLAYER_GROUPS) {
-                            feedback(sp, Component.translatable("maid_file_manager.server.too_many_players", groups.size(), MaidFilePackets.MAX_PLAYER_GROUPS));
-                            return;
-                        }
-                        // 发送前按真实线格式预检总字节：全服女仆聚合可能远超单包上限，
-                        // 超限必须回执明确提示而非发出坏包把 OP 客户端断连
-                        FriendlyByteBuf probe =
-                                new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-                        try {
-                            MaidInfoCodec.writePlayerMaidGroups(probe, groups);
-                            int size = probe.readableBytes();
-                            if (size > MaidFilePackets.MAX_PACKET_BYTES) {
-                                Constants.LOG.warn("[maid_file_manager] 统一导出列表 {} 字节超过单包上限 {}，拒绝发送",
-                                        size, MaidFilePackets.MAX_PACKET_BYTES);
-                                feedback(sp, Component.translatable("maid_file_manager.server.list_too_large", size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024));
-                                return;
-                            }
-                        } finally {
-                            probe.release();
-                        }
-                        PacketDistributor.sendToPlayer(sp, new ServerExportListPayload(groups));
+                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestServerExportList(sp);
                     } catch (Throwable t) {
                         handleError(sp, "REQUEST_SERVER_EXPORT_LIST", t);
                     }
@@ -695,41 +667,8 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
-                    // 频次限制：这类请求在主线程同步跑，循环发包能把服务器卡死（不需 OP）
-                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "backup_list", 5000L)) {
-                        return;
-                    }
                     try {
-                        // 权限：OP 可见全部玩家备份，非 OP 仅可见自己名下的备份
-                        io.github.zgxhzhr.maidfm.service.MaidBackupService.ScanResult scanResult =
-                                io.github.zgxhzhr.maidfm.service.MaidBackupService.scan(
-                                        ((net.minecraft.server.level.ServerLevel) sp.level()).getServer(), sp.getUUID(), sp.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_MODERATOR));
-                        List<IMaidFileNetwork.BackupOwner> owners = scanResult.owners();
-                        // 扫描被上限/时间预算截断时明确告知：否则玩家会以为「就这么多备份」，
-                        // 从而误判某只女仆没有备份。走已有 feedback 通道，不改协议。
-                        if (scanResult.truncated()) {
-                            feedback(sp, Component.translatable("maid_file_manager.server.backup_list_truncated"));
-                        }
-                        // 发送前按接收端解码维度预检：主人组数、总字节均需在上限内，
-                        // 超限只回执提示，绝不发坏包把客户端断连
-                        if (owners.size() > MaidFilePackets.MAX_BACKUP_OWNERS) {
-                            feedback(sp, Component.translatable("maid_file_manager.server.too_many_backup_owners", owners.size(), MaidFilePackets.MAX_BACKUP_OWNERS));
-                            return;
-                        }
-                        FriendlyByteBuf probe = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-                        try {
-                            MaidBackupCodec.writeBackupOwners(probe, owners);
-                            int size = probe.readableBytes();
-                            if (size > MaidFilePackets.MAX_PACKET_BYTES) {
-                                Constants.LOG.warn("[maid_file_manager] 备份列表 {} 字节超过单包上限 {}，拒绝发送",
-                                        size, MaidFilePackets.MAX_PACKET_BYTES);
-                                feedback(sp, Component.translatable("maid_file_manager.server.backup_list_too_large", size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024));
-                                return;
-                            }
-                        } finally {
-                            probe.release();
-                        }
-                        PacketDistributor.sendToPlayer(sp, new BackupListPayload(owners));
+                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestBackupList(sp);
                     } catch (Throwable t) {
                         handleError(sp, "REQUEST_BACKUP_LIST", t);
                     }

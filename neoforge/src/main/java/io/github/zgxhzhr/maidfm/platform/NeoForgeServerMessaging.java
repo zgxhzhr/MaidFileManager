@@ -67,4 +67,18 @@ public final class NeoForgeServerMessaging implements ServerMessaging {
     public boolean sendChunkedDownload(ServerPlayer player, String kind, byte[] payload) {
         return io.github.zgxhzhr.maidfm.network.MaidFilePayloads.ChunkedDownloadPayload.sendChunks(player, kind, payload);
     }
+
+    @Override
+    public void sendServerExportList(ServerPlayer player,
+                                     java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.PlayerMaidGroup> groups) {
+        net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                new io.github.zgxhzhr.maidfm.network.MaidFilePayloads.ServerExportListPayload(groups));
+    }
+
+    @Override
+    public void sendBackupList(ServerPlayer player,
+                               java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.BackupOwner> owners) {
+        net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                new io.github.zgxhzhr.maidfm.network.MaidFilePayloads.BackupListPayload(owners));
+    }
 }

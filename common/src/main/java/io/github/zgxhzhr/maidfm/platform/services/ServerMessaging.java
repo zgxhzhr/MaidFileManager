@@ -106,4 +106,21 @@ public interface ServerMessaging {
      * @return true=全部发出；false=超总量上限（已回执失败）
      */
     boolean sendChunkedDownload(ServerPlayer player, String kind, byte[] payload);
+
+    /**
+     * 发送 OP 统一导出用的「全服玩家女仆分组列表」。
+     *
+     * <p>收的是已算好的分组，编码在各端实现里（{@code MaidInfoCodec.writePlayerMaidGroups}），
+     * 与 sendMaidList 同一考虑：跨版本编码方式不同。
+     */
+    void sendServerExportList(ServerPlayer player,
+                              java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.PlayerMaidGroup> groups);
+
+    /**
+     * 发送「可浏览的自动备份列表」。
+     *
+     * <p>编码在各端实现里（{@code MaidBackupCodec.writeBackupOwners}）。
+     */
+    void sendBackupList(ServerPlayer player,
+                        java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.BackupOwner> owners);
 }
