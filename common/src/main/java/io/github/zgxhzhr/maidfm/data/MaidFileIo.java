@@ -1,7 +1,6 @@
 package io.github.zgxhzhr.maidfm.data;
 
 import io.github.zgxhzhr.maidfm.Constants;
-import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
@@ -382,7 +381,7 @@ public final class MaidFileIo {
             // 这里与网络反序列化一样手动复刻 GZIP->Buffered->DataInput 管线
             try (DataInputStream dis = new DataInputStream(new BufferedInputStream(
                     new GZIPInputStream(Files.newInputStream(file))))) {
-                CompoundTag root = NbtIo.read(dis, new NbtAccounter(MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES));
+                CompoundTag root = NbtIo.read(dis, new NbtAccounter(io.github.zgxhzhr.maidfm.Constants.MAX_NBT_DECOMPRESSED_BYTES));
                 if (root == null) {
                     return null;
                 }
@@ -409,7 +408,7 @@ public final class MaidFileIo {
     public static CompoundTag readCompressedNbt(Path file) {
         try (DataInputStream dis = new DataInputStream(new BufferedInputStream(
                 new GZIPInputStream(Files.newInputStream(file))))) {
-            return NbtIo.read(dis, new NbtAccounter(MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES));
+            return NbtIo.read(dis, new NbtAccounter(io.github.zgxhzhr.maidfm.Constants.MAX_NBT_DECOMPRESSED_BYTES));
         } catch (IOException | RuntimeException e) {
             Constants.LOG.error("读取压缩 NBT 文件失败: {}", file, e);
             return null;
