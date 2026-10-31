@@ -465,6 +465,11 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         world.owners.sort(Comparator.comparing(o -> o.uuid));
         worlds.add(world);
         resolveAllNames();
+        // 必须显式重建：applyWorlds 一直这么写，而这里此前漏了，结果就是单人世界打开
+        // 备份界面永远显示「未找到任何女仆备份」——worlds 已经填好，但渲染用的 rows 一直是空。
+        // resolveAllNames 是同步的纯本地解析，不存在「异步回调里重建」这条路径。
+        rebuildRows();
+        refreshButtons();
     }
 
     private OwnerNode buildOwner(IMaidFileNetwork.BackupOwner o) {
