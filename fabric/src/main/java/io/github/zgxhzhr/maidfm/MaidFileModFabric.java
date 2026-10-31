@@ -61,7 +61,7 @@ public class MaidFileModFabric implements ModInitializer {
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             java.util.UUID uuid = handler.player.getUUID();
             MaidConfigManager.removeClientConsent(uuid);
-            io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.onPlayerDisconnect(uuid);
+            io.github.zgxhzhr.maidfm.service.ChunkedUploadDispatcher.onPlayerDisconnect(uuid);
             MaidFilePayloads.clearPendingRemoval(uuid);
         });
 

@@ -1,8 +1,11 @@
-package io.github.zgxhzhr.maidfm.network;
+package io.github.zgxhzhr.maidfm.service;
 
 import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.data.MaidProfile;
-import io.github.zgxhzhr.maidfm.service.MaidProfileService;
+import io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler;
+import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
+import io.github.zgxhzhr.maidfm.network.MaidProfileCodec;
+import io.github.zgxhzhr.maidfm.network.RequestThrottle;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -112,10 +115,10 @@ public final class ChunkedUploadDispatcher {
                         Component.translatable("maid_file_manager.import.fail.invalid")));
                 continue;
             }
-            results.add(io.github.zgxhzhr.maidfm.service.MaidTransferService.importMaidFromData(
+            results.add(MaidTransferService.importMaidFromData(
                     player, d, true, stripAttributes, blocked));
         }
-        Component summary = io.github.zgxhzhr.maidfm.service.MaidTransferService.buildBatchSummary(results);
+        Component summary = MaidTransferService.buildBatchSummary(results);
         player.sendSystemMessage(summary, false);
     }
 }
