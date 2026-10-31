@@ -99,4 +99,15 @@ public final class FabricServerMessaging implements ServerMessaging {
         net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
                 io.github.zgxhzhr.maidfm.network.MaidFilePackets.ID_BACKUP_LIST, out2);
     }
+
+    @Override
+    public void sendBackupExportResult(ServerPlayer player, byte[] encodedMaidFile) {
+        // 线格式：VarInt 长度 + 字节（客户端 readMaidFileData 按同样顺序解）
+        net.minecraft.network.FriendlyByteBuf out =
+                net.fabricmc.fabric.api.networking.v1.PacketByteBufs.create();
+        out.writeVarInt(encodedMaidFile.length);
+        out.writeBytes(encodedMaidFile);
+        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(
+                player, io.github.zgxhzhr.maidfm.network.MaidFilePackets.ID_BACKUP_EXPORT_RESULT, out);
+    }
 }
