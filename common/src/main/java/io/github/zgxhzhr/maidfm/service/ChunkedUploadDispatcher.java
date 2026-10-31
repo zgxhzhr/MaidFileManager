@@ -1,8 +1,13 @@
-package io.github.zgxhzhr.maidfm.network;
+package io.github.zgxhzhr.maidfm.service;
 
 import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.data.MaidProfile;
-import io.github.zgxhzhr.maidfm.service.MaidProfileService;
+import io.github.zgxhzhr.maidfm.data.MaidFileData;
+import io.github.zgxhzhr.maidfm.data.ImportResult;
+import io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler;
+import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
+import io.github.zgxhzhr.maidfm.network.MaidProfileCodec;
+import io.github.zgxhzhr.maidfm.network.RequestThrottle;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -15,6 +20,12 @@ import java.util.UUID;
  *
  * <p>调用约定：各平台收到 {@code ID_CHUNKED_UPLOAD} 包后，先交给
  * {@link ChunkedUploadAssembler#accept}，收齐时把完整字节交给本类 {@link #dispatch}。
+ *
+ * <p><b>为什么在 service 包而不是 network 包</b>：本类做的是「收到完整字节之后
+ * 该干什么」——保存档案、导入女仆——是业务编排，不是传输。它原先放在 network 包，
+ * 导致 network 反向依赖 service，包依赖图出现环（network -> service -> network）。
+ * 字节组装（{@link ChunkedUploadAssembler}）留在 network，业务分发放这里，
+ * 依赖方向就变成单向的 service -> network。
  */
 public final class ChunkedUploadDispatcher {
 
@@ -112,10 +123,10 @@ public final class ChunkedUploadDispatcher {
                         Component.translatable("maid_file_manager.import.fail.invalid")));
                 continue;
             }
-            results.add(io.github.zgxhzhr.maidfm.service.MaidTransferService.importMaidFromData(
+            results.add(MaidTransferService.importMaidFromData(
                     player, d, true, stripAttributes, blocked));
         }
-        Component summary = io.github.zgxhzhr.maidfm.service.MaidTransferService.buildBatchSummary(results);
+        Component summary = MaidTransferService.buildBatchSummary(results);
         player.displayClientMessage(summary, false);
     }
 }

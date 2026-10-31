@@ -612,7 +612,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
             byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
                     player.getUUID(), kind, sessionId, total, index, chunk);
             if (full != null) {
-                io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.dispatch(player, kind, full);
+                io.github.zgxhzhr.maidfm.service.ChunkedUploadDispatcher.dispatch(player, kind, full);
             }
         } catch (Throwable e) {
             Constants.LOG.warn("[maid_file_manager] 分片上传处理失败: {}", e.toString());
