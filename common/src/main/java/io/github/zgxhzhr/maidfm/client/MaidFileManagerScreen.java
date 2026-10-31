@@ -1076,7 +1076,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         if (this.font.width(titleStr) > titleAvail) {
             titleStr = this.font.plainSubstrByWidth(titleStr, Math.max(1, titleAvail - this.font.width("…"))) + "…";
         }
-        drawCenteredStringNoShadow(graphics, this.font, Component.literal(titleStr),
+        MaidScreenDraw.drawCenteredStringNoShadow(graphics, this.font, Component.literal(titleStr),
                 (titleLeft + titleRight) / 2, panelY + 10, HEADER_COLOR);
         Button activeTab = currentTab == Tab.EXPORT ? exportTabBtn : importTabBtn;
         graphics.fill(activeTab.getX(), activeTab.getY() + activeTab.getHeight(),
@@ -1087,10 +1087,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         //    盖色后按钮/开关全部隐形（只剩文字），是界面缺件的根因。
         super.render(graphics, mouseX, mouseY, partialTick);
         // ④ 工具按钮左侧的手绘复选框（按钮文本不含 ☐/☑ 缺字字符，框体统一在这里画）
-        drawButtonCheckBox(graphics, selectAllBtn, selectAllState);
-        drawButtonCheckBox(graphics, selectAllImportBtn, selectAllImportState);
-        drawButtonCheckBox(graphics, keepMaidsBtn, keepMaidsInWorldState);
-        drawButtonCheckBox(graphics, deleteImportFileBtn, deleteImportFileState);
+        MaidScreenDraw.drawButtonCheckBox(graphics, selectAllBtn, selectAllState);
+        MaidScreenDraw.drawButtonCheckBox(graphics, selectAllImportBtn, selectAllImportState);
+        MaidScreenDraw.drawButtonCheckBox(graphics, keepMaidsBtn, keepMaidsInWorldState);
+        MaidScreenDraw.drawButtonCheckBox(graphics, deleteImportFileBtn, deleteImportFileState);
         // ⑤ 反馈消息（fbX=面板中心；无阴影文字保持锐利；超长自动按面板宽度换行，
         //    行数受"底部按钮上沿"限制，超出部分截断加省略号——完整文本仍会进聊天栏）
         if (!feedbackMsg.getString().isEmpty() && System.currentTimeMillis() < feedbackExpireAt) {
@@ -1105,7 +1105,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             int maxLines = Math.max(1, (btnTop - startY) / 9);
             List<String> lines = wrapFeedback(feedbackMsg.getString(), Math.max(80, panelW - 16), maxLines);
             for (int i = 0; i < lines.size(); i++) {
-                drawCenteredStringNoShadow(graphics, this.font, Component.literal(lines.get(i)),
+                MaidScreenDraw.drawCenteredStringNoShadow(graphics, this.font, Component.literal(lines.get(i)),
                         fbX, startY + i * 9, 0xFFFFAA00);
             }
         }
@@ -1185,8 +1185,8 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         dlgCheckX = lineX;
         dlgCheckY = textY + gapTextCheck;
         dlgCheckH = checkH;
-        drawCheckBox(graphics, dlgCheckX, dlgCheckY, removeConfirmDontAsk);
-        graphics.drawString(this.font, dontAsk, dlgCheckX + CHECK_SIZE + 6,
+        MaidScreenDraw.drawCheckBox(graphics, dlgCheckX, dlgCheckY, removeConfirmDontAsk);
+        graphics.drawString(this.font, dontAsk, dlgCheckX + MaidScreenDraw.CHECK_SIZE + 6,
                 dlgCheckY, removeConfirmDontAsk ? ACCENT : SUBTEXT_COLOR, false);
 
         // —— 取消 / 确认导出 两个手绘按钮 ——
@@ -1196,9 +1196,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         dlgCancelX = dlgX + 16;
         dlgConfirmX = dlgX + dlgW - 16 - dlgBtnW;
         drawDialogButton(graphics, dlgCancelX, dlgBtnY, dlgBtnW, btnH, cancel,
-                inside(dlgCancelX, dlgBtnY, dlgBtnW, btnH, mouseX, mouseY), false);
+                MaidScreenDraw.inside(dlgCancelX, dlgBtnY, dlgBtnW, btnH, mouseX, mouseY), false);
         drawDialogButton(graphics, dlgConfirmX, dlgBtnY, dlgBtnW, btnH, ok,
-                inside(dlgConfirmX, dlgBtnY, dlgBtnW, btnH, mouseX, mouseY), true);
+                MaidScreenDraw.inside(dlgConfirmX, dlgBtnY, dlgBtnW, btnH, mouseX, mouseY), true);
 
         graphics.pose().popPose();
     }
@@ -1224,10 +1224,6 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
                 x + (w - this.font.width(text)) / 2, y + (h - 8) / 2, color, false);
     }
 
-    private static boolean inside(int x, int y, int w, int h, double mouseX, double mouseY) {
-        return mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
-    }
-
     /** 弹窗显示时吞掉所有鼠标点击：背景界面（列表/按钮）一律不响应，仅弹窗控件可点 */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
@@ -1239,9 +1235,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
             if (mouseX >= dlgCheckX && mouseX < dlgX + dlgW - 16
                     && mouseY >= dlgCheckY - 3 && mouseY < dlgCheckY + dlgCheckH + 3) {
                 removeConfirmDontAsk = !removeConfirmDontAsk;
-            } else if (inside(dlgCancelX, dlgBtnY, dlgBtnW, dlgBtnH, mouseX, mouseY)) {
+            } else if (MaidScreenDraw.inside(dlgCancelX, dlgBtnY, dlgBtnW, dlgBtnH, mouseX, mouseY)) {
                 closeRemoveConfirm();
-            } else if (inside(dlgConfirmX, dlgBtnY, dlgBtnW, dlgBtnH, mouseX, mouseY)) {
+            } else if (MaidScreenDraw.inside(dlgConfirmX, dlgBtnY, dlgBtnW, dlgBtnH, mouseX, mouseY)) {
                 confirmRemoveExport();
             } else {
                 // 契约（记忆 F/J-11）：点击弹窗外部视为取消，不能像以前那样「点了没反应」。
@@ -1291,52 +1287,10 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
     }
 
-    /** 在工具按钮左侧绘制手绘复选框（不可见时跳过） */
-    private static void drawButtonCheckBox(GuiGraphics graphics, Button button, boolean checked) {
-        if (button != null && button.visible) {
-            drawCheckBox(graphics, button.getX() + 5,
-                    button.getY() + (button.getHeight() - CHECK_SIZE) / 2, checked);
-        }
-    }
-
     /**
      * 手绘复选框：MC 默认字体不含 U+2610/U+2611（☐/☑）字形，直接写字符只会得到空方框（豆腐块），
      * 因此所有勾选状态一律用像素绘制：1px 暗色边框 + 深色内底 + 选中时金色对勾。
      */
-    private static final int CHECK_SIZE = 9;
-    private static final int CHECK_BORDER = 0xFFA89070;
-    private static final int CHECK_INNER = 0xFF18120C;
-    private static final int CHECK_MARK = 0xFFFFD700;
-    /** 对勾图案（7×7 网格内 1=填充像素）：左下短笔 + 向右上挑的长笔 */
-    private static final int[][] CHECK_PIXELS = {
-            {5, 0},
-            {4, 1}, {5, 1},
-            {3, 2}, {4, 2},
-            {1, 3}, {2, 3}, {3, 3}, {4, 3},
-            {0, 4}, {1, 4}, {2, 4}, {3, 4},
-            {1, 5}, {2, 5},
-            {2, 6}
-    };
-
-    /** 在 (x,y) 绘制 CHECK_SIZE×CHECK_SIZE 复选框；checked=true 时填充金色对勾 */
-    private static void drawCheckBox(GuiGraphics graphics, int x, int y, boolean checked) {
-        graphics.fill(x, y, x + CHECK_SIZE, y + CHECK_SIZE, CHECK_BORDER);
-        graphics.fill(x + 1, y + 1, x + CHECK_SIZE - 1, y + CHECK_SIZE - 1, CHECK_INNER);
-        if (checked) {
-            for (int[] p : CHECK_PIXELS) {
-                // 内底区域为 7×7（x+1..x+7），像素逐格填充
-                graphics.fill(x + 1 + p[0], y + 1 + p[1], x + 2 + p[0], y + 2 + p[1], CHECK_MARK);
-            }
-        }
-    }
-
-    /** 1.21 GuiGraphics.drawCenteredString 默认 dropShadow=true，阴影会把彩色字糊成一团。
-     *  这里手动计算居中 + drawString(Component, ..., shadow=false) 得到干净的文字。 */
-    private static void drawCenteredStringNoShadow(GuiGraphics g, net.minecraft.client.gui.Font font,
-                                                   Component text, int centerX, int y, int color) {
-        int w = font.width(text);
-        g.drawString(font, text, centerX - w / 2, y, color, false);
-    }
 
     /**
      * 按像素宽度把反馈文本折成多行（最多 maxLines 行，超出部分以省略号标注截断；
@@ -2012,7 +1966,7 @@ setScrollAmount(0);
                     graphics.fill(rowX, top - 1, rowX + rowW, top + height + 1, ROW_HOVER);
                 }
                 // 勾选框 + 文字：rowX 对齐 LIST_BG 左边缘（框体手绘，避免 ☐/☑ 豆腐块）
-                drawCheckBox(graphics, rowX + (rowW < 190 ? 4 : 28), top + 4, selected);
+                MaidScreenDraw.drawCheckBox(graphics, rowX + (rowW < 190 ? 4 : 28), top + 4, selected);
                 int textLeft = rowX + (rowW < 190 ? 18 : 49);
                 // 右侧为「档案」按钮预留空间，文字区主动避让，避免被按钮压住
                 int contentRight = rowW < 190 ? rowX + rowW - 4 : rowX + rowW - 10 - PROFILE_BTN_W - 6;
@@ -2313,7 +2267,7 @@ setScrollAmount(0);
                     graphics.fill(rowX, top - 1, rowX + rowW, top + height + 1, ROW_HOVER);
                 }
                 // 勾选框：rowX 对齐 LIST_BG 左边缘（框体手绘，避免 ☐/☑ 豆腐块）
-                drawCheckBox(graphics, rowX + (rowW < 190 ? 4 : 28), top + 4, selected);
+                MaidScreenDraw.drawCheckBox(graphics, rowX + (rowW < 190 ? 4 : 28), top + 4, selected);
                 int textLeft = rowX + (rowW < 190 ? 18 : 49);
                 // 右侧为「档案」按钮预留空间，文字区主动避让，避免被按钮压住
                 int contentRight = rowW < 190 ? rowX + rowW - 4 : rowX + rowW - 10 - PROFILE_BTN_W - 6;
