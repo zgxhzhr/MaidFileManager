@@ -53,6 +53,8 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
     private static final int HEADER_COLOR = 0xFFFFE082;
     private static final int TEXT_COLOR = 0xFFFFFFFF;
     private static final int SUBTEXT_COLOR = 0xFFB0B0B0;
+    /** 提醒色：用于「结果不完整」这类需要玩家注意但不阻断操作的提示 */
+    private static final int WARN_COLOR = 0xFFFFA726;
     private static final int ACCENT = 0xFFD0A060;
     private static final int LIST_BG = 0xFF181008;
     private static final int ROW_SELECTED = 0xFF2E3820;
@@ -361,7 +363,7 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         Thread scanWorker = new Thread(() -> {
             try {
                 if (server != null) {
-                    final java.util.List<IMaidFileNetwork.BackupOwner> owners =
+                    final MaidBackupService.ScanResult result =
                             MaidBackupService.scan(server, scanRequester, true);
                     if (this.minecraft == null) {
                         return;
@@ -369,10 +371,16 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
                     this.minecraft.execute(() -> {
                         loading = false;
                         loadingSince = 0L;
-                        applyServerOwners(owners);
+                        applyServerOwners(result.owners());
+                        // 截断提示必须排在 applyXxx 之后：后者的「列表为空」提示会覆盖它，
+                        // 而「列表不全」比「列表为空」更应该被玩家看到
+                        if (result.truncated()) {
+                            setFeedback(Component.translatable(
+                                    "gui.maid_file_manager.backup.truncated"), WARN_COLOR);
+                        }
                     });
                 } else {
-                    final java.util.List<IMaidFileNetwork.BackupWorld> list =
+                    final MaidBackupService.WorldScanResult result =
                             MaidBackupService.scanAllWorlds(scanGameDir);
                     if (this.minecraft == null) {
                         return;
@@ -380,7 +388,11 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
                     this.minecraft.execute(() -> {
                         loading = false;
                         loadingSince = 0L;
-                        applyWorlds(list);
+                        applyWorlds(result.worlds());
+                        if (result.truncated()) {
+                            setFeedback(Component.translatable(
+                                    "gui.maid_file_manager.backup.truncated"), WARN_COLOR);
+                        }
                     });
                 }
             } catch (Throwable t) {

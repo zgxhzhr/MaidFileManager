@@ -148,6 +148,8 @@
   "gui.maid_file_manager.backup.world.server": "目前伺服器",
   "gui.maid_file_manager.backup.back": "返回",
   "gui.maid_file_manager.backup.unavailable": "備份功能目前無法使用",
+  "gui.maid_file_manager.backup.truncated": "備份目錄過多，列表已截斷（僅顯示已掃描到的部分）",
+  "maid_file_manager.server.backup_list_truncated": "備份列表已截斷：伺服器備份目錄過多，僅回傳已掃描到的部分",
   "gui.maid_file_manager.backup.empty": "找不到任何女僕備份",
   "gui.maid_file_manager.backup.no_selection": "請先選擇一個備份檔案",
   "gui.maid_file_manager.backup.exported": "已匯出：%s",
