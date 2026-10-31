@@ -15,7 +15,7 @@ import java.util.UUID;
  * {@code MaidFilePackets.checkSize} 做读端自律——线格式里的 VarInt 长度不可信，
  * 直接 {@code new ArrayList<>(len)} 会被畸形包打爆内存。
  *
- * <p>写端截断上限必须与读端 {@code checkSize} 的上限完全一致，否则超过上限时
+ * <p>写端截断上限必须与读端 {@code MaidFilePackets.checkSize} 的上限完全一致，否则超过上限时
  * 整包错位（历史上 {@code writeStringList} 出过这个 bug）。
  */
 public final class MaidInfoCodec {

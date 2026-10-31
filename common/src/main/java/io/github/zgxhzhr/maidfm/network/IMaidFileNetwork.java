@@ -95,11 +95,7 @@ public interface IMaidFileNetwork {
      */
     void sendRequestBackupExport(String ownerUuid, String maidUuid, String fileName);
 
-    /**
-     * 上报「模型 ID → 显示名」展平列表（[k1,v1,k2,v2,...]）。
-     *
-     * <p>默认空实现：平台未接入时不报错，服务端退化为 path 美化显示。
-     */
+    /** 上报「模型 ID → 显示名」展平列表；默认空实现 */
     default void sendModelNames(java.util.List<String> pairs) {
     }
 

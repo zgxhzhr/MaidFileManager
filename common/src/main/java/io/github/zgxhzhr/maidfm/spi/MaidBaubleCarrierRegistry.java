@@ -79,8 +79,8 @@ public final class MaidBaubleCarrierRegistry {
 
     static {
         // 内置声明：保持既有行为（车万本体 + 万法皆通）。
-        // 注意：这里直接登记命名空间、不构造 Identifier —— 1.21 起
-        // Identifier(String,String) 构造器已变为 private，
+        // 注意：这里直接登记命名空间、不构造 ResourceLocation —— 1.21 起
+        // ResourceLocation(String,String) 构造器已变为 private，
         // common 层无法让两代共用同一写法（外部接入方在自己版本编译，写对本版本的 API 即可）。
         declareBuiltin("touhou_little_maid");
         declareBuiltin("touhou_little_maid_spell");
