@@ -400,13 +400,13 @@ public final class MaidTransferService {
             // 键名双兼容：1.20.x 为 "ActiveEffects"，1.21 起 LivingEntity 改存 "active_effects"，
             // 两个键都必须识别并从实体 NBT 移除（恢复统一由导入端按配置执行，避免 load 绕过配置）。
             CompoundTag effectsTag = null;
-            ListTag rawEffectList = removeEffectList(fullNbt);
+            ListTag rawEffectList = MaidEffectCodec.removeEffectList(fullNbt);
             if (rawEffectList != null) {
                 effectsTag = new CompoundTag();
                 // 原始 NBT 副本：同版本直读（MobEffectInstance.load）
                 effectsTag.put("active_effects", rawEffectList.copy());
                 // 标准化数据：跨版本重建 MobEffectInstance（按 Identifier 查注册表）
-                effectsTag.put("normalized", buildNormalizedEffects(rawEffectList));
+                effectsTag.put("normalized", MaidEffectCodec.buildNormalizedEffects(rawEffectList));
             }
             // 检查实体持久化标签中是否有存储的效果（禁药水服务器再导出的场景）
         // 注：1.6.3 起不再读取/写入 maid_file_manager:stored_effects；万法皆通特殊女仆的永久效果由该模组自行维护
@@ -509,28 +509,9 @@ public final class MaidTransferService {
      * 效果列表在不同 MC 版本的实体 NBT 键名：
      * 1.20.x 为 PascalCase 的 "ActiveEffects"，1.21 起改为小写驼峰 "active_effects"。
      */
-    private static final String[] EFFECT_LIST_KEYS = {"ActiveEffects", "active_effects"};
-
     /** 读取实体 NBT 中的效果列表（双键名兼容），不存在返回 null */
-    private static ListTag getEffectList(CompoundTag root) {
-        for (String key : EFFECT_LIST_KEYS) {
-            if (root.contains(key)) {
-                return root.getListOrEmpty(key);
-            }
-        }
-        return null;
-    }
 
     /** 读取并从实体 NBT 中移除效果列表（双键名均清除），不存在返回 null */
-    private static ListTag removeEffectList(CompoundTag root) {
-        ListTag list = getEffectList(root);
-        if (list != null) {
-            for (String key : EFFECT_LIST_KEYS) {
-                root.remove(key);
-            }
-        }
-        return list;
-    }
 
     /**
      * 构建标准化效果数据列表，用于跨 MC 版本重建 MobEffectInstance。
@@ -546,96 +527,12 @@ public final class MaidTransferService {
      * <p>normalized 统一存小写驼峰键名，导入端用 Identifier 查 BuiltInRegistries.MOB_EFFECT 重建，
      * 不依赖任何版本特定的字段名或数字 ID。
      */
-    private static ListTag buildNormalizedEffects(ListTag rawList) {
-        ListTag out = new ListTag();
-        for (int i = 0; i < rawList.size(); i++) {
-            CompoundTag src = rawList.getCompoundOrEmpty(i);
-            CompoundTag item = new CompoundTag();
-            // 解析效果 Identifier 字符串
-            //   1.20.x: 优先读 forge:id（Forge 写入），其次用 Id 数字 ID 反查
-            //   1.21+:  直接读 id 字符串
-            String effectId = "";
-            if (src.contains("forge:id")) {
-                effectId = src.getStringOr("forge:id", "");
-            } else if (src.contains("id")) {
-                effectId = src.getStringOr("id", "");
-            }
-            if (effectId.isEmpty() && src.contains("Id")) {
-                // 兜底：同版本导出时，数字 ID 反查 Identifier
-                int numericId = src.getIntOr("Id", 0);
-                net.minecraft.world.effect.MobEffect effect =
-                        net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT.byId(numericId);
-                if (effect != null) {
-                    net.minecraft.resources.Identifier rl =
-                            net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT.getKey(effect);
-                    if (rl != null) {
-                        effectId = rl.toString();
-                    }
-                }
-            }
-            if (effectId.isEmpty()) {
-                Constants.LOG.warn("[maid_file_manager] 药水效果 #{} 无法解析 Identifier，已跳过", i);
-                continue;
-            }
-            item.putString("id", effectId);
-            // PascalCase 与小写驼峰双兼容读取（1.20 用 PascalCase，1.21 用小写驼峰）
-            int amplifier = src.contains("Amplifier")
-                    ? src.getIntOr("Amplifier", 0)
-                    : src.getIntOr("amplifier", 0);
-            int duration = src.contains("Duration")
-                    ? src.getIntOr("Duration", 0)
-                    : src.getIntOr("duration", 0);
-            byte ambient = src.contains("Ambient")
-                    ? src.getByteOr("Ambient", (byte) 0)
-                    : src.getByteOr("ambient", (byte) 0);
-            byte showParticles = src.contains("ShowParticles")
-                    ? src.getByteOr("ShowParticles", (byte) 0)
-                    : src.getByteOr("show_particles", (byte) 0);
-            byte showIcon = src.contains("ShowIcon")
-                    ? src.getByteOr("ShowIcon", (byte) 0)
-                    : src.getByteOr("show_icon", (byte) 0);
-            item.putInt("amplifier", amplifier);
-            item.putInt("duration", duration);
-            item.putByte("ambient", ambient);
-            item.putByte("show_particles", showParticles);
-            item.putByte("show_icon", showIcon);
-            out.add(item);
-        }
-        return out;
-    }
 
     /**
      * 从 normalized 标准化数据重建 MobEffectInstance（跨版本恢复路径）。
      * 通过 Identifier 查 BuiltInRegistries.MOB_EFFECT，避免数字 ID 跨版本漂移。
      * <p>1.21+: MobEffectInstance 构造器接受 {@code Holder<MobEffect>}。
      */
-    private static net.minecraft.world.effect.MobEffectInstance rebuildEffectFromNormalized(CompoundTag item) {
-        try {
-            String idStr = item.getStringOr("id", "");
-            if (idStr.isEmpty()) return null;
-            net.minecraft.resources.Identifier rl =
-                    net.minecraft.resources.Identifier.tryParse(idStr);
-            if (rl == null) return null;
-            net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect =
-                    net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT.get(
-                            net.minecraft.resources.ResourceKey.create(
-                                    net.minecraft.core.registries.Registries.MOB_EFFECT, rl)).orElse(null);
-            if (effect == null) {
-                Constants.LOG.warn("[maid_file_manager] 跨版本恢复：目标世界未注册效果 {}，已跳过", idStr);
-                return null;
-            }
-            int duration = item.getIntOr("duration", 0);
-            int amplifier = item.getIntOr("amplifier", 0);
-            boolean ambient = item.getByteOr("ambient", (byte) 0) != 0;
-            boolean showParticles = item.getByteOr("show_particles", (byte) 0) != 0;
-            boolean showIcon = item.getByteOr("show_icon", (byte) 0) != 0;
-            return new net.minecraft.world.effect.MobEffectInstance(
-                    effect, duration, amplifier, ambient, showParticles, showIcon);
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] rebuildEffectFromNormalized 失败: {}", t.toString());
-            return null;
-        }
-    }
 
     // ============================ 导入 ============================
 
@@ -854,7 +751,7 @@ public final class MaidTransferService {
                 // "active_effects" 导致效果未提取）：效果仍留在原始实体 NBT 中，迁移前按
                 // 双键名兜底提取。仅含原始列表（同版本直读可靠，无 normalized 跨版本路径）；
                 // 跨版本恢复失败会被下方双路径逻辑跳过并告警，不会崩溃
-                ListTag legacyEffects = getEffectList(originalNbt);
+                ListTag legacyEffects = MaidEffectCodec.getEffectList(originalNbt);
                 if (legacyEffects != null) {
                     CompoundTag fallback = new CompoundTag();
                     fallback.put("active_effects", legacyEffects.copy());
@@ -883,7 +780,7 @@ public final class MaidTransferService {
                             // 同版本直读异常（跨版本字段名/格式不匹配），下面走 normalized 重建
                         }
                         if (instance == null && normalized != null && i < normalized.size()) {
-                            instance = rebuildEffectFromNormalized(normalized.getCompoundOrEmpty(i));
+                            instance = MaidEffectCodec.rebuildEffectFromNormalized(normalized.getCompoundOrEmpty(i));
                             if (instance != null) {
                                 rebuildCount++;
                             }
@@ -1552,7 +1449,6 @@ public final class MaidTransferService {
         }
         return List.copyOf(out);
     }
-
 
 
     private static void rebuildAttributesAndModel(EntityMaid maid, MaidFileData data,
