@@ -282,18 +282,14 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         }
     }
 
+    /** 发送反馈消息（实现已收敛到 {@link io.github.zgxhzhr.maidfm.platform.PacketSender}） */
     private static void sendFeedback(ServerPlayer player, Component message) {
-        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        buf.writeComponent(message);
-        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_FEEDBACK, buf);
+        io.github.zgxhzhr.maidfm.platform.PacketSender.sendFeedback(player, message);
     }
 
     /** 批量导入 + 删除源文件：汇总文案 + 逐项 spawned 标志（顺序与请求对齐） */
     private static void sendImportBatchResult(ServerPlayer player, Component summary, List<Boolean> spawned) {
-        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        buf.writeComponent(summary);
-        MaidFilePackets.writeBooleanList(buf, spawned);
-        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_IMPORT_BATCH_RESULT, buf);
+        io.github.zgxhzhr.maidfm.platform.PacketSender.sendImportBatchResult(player, summary, spawned);
     }
 
     /**
