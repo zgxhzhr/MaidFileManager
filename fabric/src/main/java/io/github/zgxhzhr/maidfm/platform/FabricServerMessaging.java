@@ -83,4 +83,24 @@ public final class FabricServerMessaging implements ServerMessaging {
     public boolean sendChunkedDownload(ServerPlayer player, String kind, byte[] payload) {
         return MaidFileModFabric.sendChunkedDownload(player, kind, payload);
     }
+
+    @Override
+    public void sendServerExportList(ServerPlayer player,
+                                     java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.PlayerMaidGroup> groups) {
+        net.minecraft.network.FriendlyByteBuf out1 = io.github.zgxhzhr.maidfm.network.MaidPayload.buffer();
+        io.github.zgxhzhr.maidfm.network.MaidInfoCodec.writePlayerMaidGroups(out1, groups);
+        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
+                io.github.zgxhzhr.maidfm.network.MaidPayload.of(
+                        io.github.zgxhzhr.maidfm.network.MaidFilePackets.ID_SERVER_EXPORT_LIST, out1));
+    }
+
+    @Override
+    public void sendBackupList(ServerPlayer player,
+                               java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.BackupOwner> owners) {
+        net.minecraft.network.FriendlyByteBuf out2 = io.github.zgxhzhr.maidfm.network.MaidPayload.buffer();
+        io.github.zgxhzhr.maidfm.network.MaidBackupCodec.writeBackupOwners(out2, owners);
+        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
+                io.github.zgxhzhr.maidfm.network.MaidPayload.of(
+                        io.github.zgxhzhr.maidfm.network.MaidFilePackets.ID_BACKUP_LIST, out2));
+    }
 }

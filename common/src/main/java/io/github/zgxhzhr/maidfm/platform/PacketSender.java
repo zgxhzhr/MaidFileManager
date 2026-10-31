@@ -63,6 +63,18 @@ public final class PacketSender {
         }
 
         @Override
+        public void sendServerExportList(ServerPlayer player, java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.PlayerMaidGroup> groups) {
+            Constants.LOG.error("[maid_file_manager] ServerMessaging 未加载，统一导出列表被丢弃（{} 组）",
+                    groups.size());
+        }
+
+        @Override
+        public void sendBackupList(ServerPlayer player, java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.BackupOwner> owners) {
+            Constants.LOG.error("[maid_file_manager] ServerMessaging 未加载，备份列表被丢弃（{} 组）",
+                    owners.size());
+        }
+
+        @Override
         public boolean hasOpPermission(ServerPlayer player) {
             return false;
         }
@@ -170,5 +182,23 @@ public final class PacketSender {
             return false;
         }
         return messaging().sendChunkedDownload(player, kind, payload);
+    }
+
+    /** 发送 OP 统一导出用的分组列表。 */
+    public static void sendServerExportList(net.minecraft.server.level.ServerPlayer player,
+                                            java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.PlayerMaidGroup> groups) {
+        if (player == null) {
+            return;
+        }
+        messaging().sendServerExportList(player, groups == null ? java.util.List.of() : groups);
+    }
+
+    /** 发送可浏览的备份列表。 */
+    public static void sendBackupList(net.minecraft.server.level.ServerPlayer player,
+                                      java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.BackupOwner> owners) {
+        if (player == null) {
+            return;
+        }
+        messaging().sendBackupList(player, owners == null ? java.util.List.of() : owners);
     }
 }
