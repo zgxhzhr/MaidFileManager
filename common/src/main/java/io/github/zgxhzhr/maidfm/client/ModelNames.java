@@ -106,25 +106,8 @@ public final class ModelNames {
      * 这里转成 {@code My Private Maid}，至少能区分「这是谁的模型」而不至于全变成同一个占位名。
      */
     public static String prettifyModelPath(String path) {
-        if (path == null || path.isEmpty()) {
-            return "";
-        }
-        String s = path.replace('_', ' ').trim();
-        StringBuilder sb = new StringBuilder(s.length());
-        boolean upper = true;
-        for (int i = 0; i < s.length(); i++) {
-            char ch = s.charAt(i);
-            if (ch == ' ') {
-                upper = true;
-                sb.append(ch);
-            } else if (upper) {
-                sb.append(Character.toUpperCase(ch));
-                upper = false;
-            } else {
-                sb.append(ch);
-            }
-        }
-        return sb.toString();
+        // 实现已下沉到 util.ModelDisplayNames：service 层也要用，而 client 包不能出现在服务端
+        return io.github.zgxhzhr.maidfm.util.ModelDisplayNames.prettify(path);
     }
 
     /**

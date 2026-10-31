@@ -251,7 +251,7 @@ public final class MaidTransferService {
         int colon = modelId.indexOf(':');
         String path = colon >= 0 ? modelId.substring(colon + 1) : modelId;
         // 没有模型资源时的兜底名同样做可读化，避免备份列表里一堆同名占位
-        return io.github.zgxhzhr.maidfm.client.ModelNames.prettifyModelPath(path);
+        return io.github.zgxhzhr.maidfm.util.ModelDisplayNames.prettify(path);
     }
 
     public static MaidFileData exportMaidToData(ServerPlayer player, int entityId) {
