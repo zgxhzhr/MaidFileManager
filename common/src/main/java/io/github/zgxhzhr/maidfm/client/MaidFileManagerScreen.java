@@ -41,7 +41,8 @@ import java.util.Set;
  *
  * <p>交互流程：玩家在列表里勾选条目 → 底部【批量导出/批量导入】按钮执行动作。
  */
-public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.ClientHandler {
+public class MaidFileManagerScreen extends Screen
+        implements IMaidFileNetwork.ClientHandler, MaidListView {
     private enum Tab {EXPORT, IMPORT}
 
     /** 全屏深色背景（替代 Minecraft 默认泥土背景） */
@@ -49,12 +50,12 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     /** 主面板颜色（不透明深棕） */
     static final int PANEL_BG = 0xFF282018;
     static final int PANEL_BORDER = 0xFF8B5A2B;
-    private static final int LIST_BG = 0xFF1A1510;
-    private static final int ROW_HOVER = 0x40FFFFFF;
+    static final int LIST_BG = 0xFF1A1510;
+    static final int ROW_HOVER = 0x40FFFFFF;
     static final int HEADER_COLOR = 0xFFFFE082;
     static final int TEXT_COLOR = 0xFFFFFFFF;
     static final int SUBTEXT_COLOR = 0xFFB0B0B0;
-    private static final int ACCENT = 0xFFD0A060;
+    static final int ACCENT = 0xFFD0A060;
 
     private static final int MARGIN = 30;
     /** 主面板宽度砍一砍（反馈太宽太乱） */
@@ -64,15 +65,15 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     /** 运行期实际工具列宽：窄屏（panelW 小）时收窄，把宽度让给列表 */
     private int sidebarW = SIDEBAR_W;
     /** 列表行内「档案」按钮尺寸 */
-    private static final int PROFILE_BTN_W = 34;
-    private static final int PROFILE_BTN_H = 12;
+    static final int PROFILE_BTN_W = 34;
+    static final int PROFILE_BTN_H = 12;
     /** 列表与左侧工具列之间内间距 */
     private static final int INNER_GAP = 8;
     /** 列表底部距离主动作按钮上方留多少（给 feedback 居中文字） */
     private static final int LIST_BOTTOM_PAD = 68;
     /** 标题/Tab 占多少高度（列表 startY 从 Tab 底 + 8 开始） */
     private static final int HEADER_TOTAL_H = 64;
-    private static final int ROW_HEIGHT = 22;
+    static final int ROW_HEIGHT = 22;
 
     private Tab currentTab = Tab.EXPORT;
     private List<MaidInfo> maidList = new ArrayList<>();
@@ -401,7 +402,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         if (listBottom > maxBottom) {
             listBottom = maxBottom;   // 空间真不够时允许低于 minH，但绝不越过按钮
         }
-        maidListWidget = new MaidListWidget(listAreaX, listAreaW, listTop, listBottom);
+        maidListWidget = new MaidListWidget(this.minecraft, this, listAreaX, listAreaW, listTop, listBottom);
         fileListWidget = new FileListWidget(listAreaX, listAreaW, listTop, listBottom);
         updateListVisibility();
 
@@ -610,7 +611,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         return Component.translatable("maid_file_manager.gui.label.keep_maids")
                 .withStyle(keep ? ChatFormatting.GOLD : ChatFormatting.GRAY, ChatFormatting.BOLD);
     }
-    private void refreshSelectAllLabel() {
+    public void refreshSelectAllLabel() {
         if (selectAllBtn != null) selectAllBtn.setMessage(selectAllLabel(selectAllState));
     }
     private void refreshSelectAllImportLabel() {
@@ -692,7 +693,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
      * 若仍拿展平全集 maidList 比较，selectedMaidIds.size() 永远追不上 maidList.size()，
      * 「全选」勾选状态与计数就永久不一致（第六轮 M5）。
      */
-    private boolean computeAllSelected() {
+    public boolean computeAllSelected() {
         List<MaidInfo> selectable = selectableMaids();
         if (selectable.isEmpty()) {
             return false;
@@ -724,7 +725,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
 
     /** 切换某一行的复选框状态（被 MaidListWidget.Entry 调用） */
-    private void toggleRowSelection(MaidInfo info, boolean selected) {
+    public void toggleRowSelection(MaidInfo info, boolean selected) {
         if (selected) {
             selectedMaidIds.add(info.entityId());
         } else {
@@ -1065,6 +1066,41 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
 
     /** 非暂停界面：阻止暂停菜单模糊效果（1.21.x 官方映射方法名为 isPauseScreen） */
+
+    // ==================== MaidListView 实现（供 MaidListWidget 使用） ====================
+
+    @Override
+    public List<MaidInfo> maidList() {
+        return this.maidList;
+    }
+
+    @Override
+    public List<IMaidFileNetwork.PlayerMaidGroup> serverGroups() {
+        return this.serverGroups;
+    }
+
+    @Override
+    public Set<Integer> selectedMaidIds() {
+        return this.selectedMaidIds;
+    }
+
+    @Override
+    public Set<String> collapsedPlayers() {
+        return this.collapsedPlayers;
+    }
+
+    @Override
+    public boolean serverExportMode() {
+        return this.serverExportMode;
+    }
+
+    /** 重算「全选」按钮三态并刷新文字（宿主内部状态机，不拆给 Widget 操作）。 */
+    @Override
+    public void syncSelectAllState() {
+        this.selectAllState = this.computeAllSelected();
+        this.refreshSelectAllLabel();
+    }
+
     @Override
     public boolean isPauseScreen() {
         return false;
@@ -1647,7 +1683,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
 
     /** 请求某女仆的档案：服务端读取后回发，由 {@link #onMaidProfileReceived} 打开档案界面 */
-    private void requestMaidProfile(int entityId) {
+    public void requestMaidProfile(int entityId) {
         IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
         if (net == null) {
             Constants.LOG.warn("[maid_file_manager] 网络实现缺失，无法请求女仆档案");
@@ -1683,431 +1719,6 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
 
     // ---------- MaidListWidget ----------
-
-    private final class MaidListWidget extends ObjectSelectionList<MaidListWidget.ListRow> {
-        private final int listX, listW, listTop, listBottom;
-
-        /** 列表行基类：让女仆行 Entry 与玩家标题行 HeaderEntry 可共存于同一个列表 */
-        abstract static class ListRow extends ObjectSelectionList.Entry<ListRow> {
-            /** 清掉上一帧记录的命中区：只有本帧真正渲染过的行才允许被点中 */
-            void resetHitArea() {
-            }
-        }
-
-        MaidListWidget(int listX, int listW, int listTop, int listBottom) {
-            super(MaidFileManagerScreen.this.minecraft, listW,
-                    listBottom - listTop, listTop, ROW_HEIGHT);
-            this.listX = listX;
-            this.listW = listW;
-            this.listTop = listTop;
-            this.listBottom = listBottom;
-            // 1.21 起列表继承 AbstractWidget，几何直接走公开 setter；
-            // 自绘 renderWidget 的 scissor、行定位与滚动量计算都以这四个值为唯一基准
-            this.setX(listX);
-            this.setY(listTop);
-            this.setWidth(listW);
-            this.setHeight(listBottom - listTop);
-            refresh();
-        }
-
-        @Override
-        public int getRowWidth() {
-            return this.listW - 8;
-        }
-
-        @Override
-        protected void renderListBackground(GuiGraphics graphics) {
-            graphics.fill(this.listX, this.listTop,
-                    this.listX + this.listW, this.listBottom, LIST_BG);
-        }
-
-        public ListRow getHovered(double mouseX, double mouseY) {
-            return this.hitRow(mouseX, mouseY);
-        }
-
-        /** v14b FabricFix：父类 getEntryAtPosition 是 final 不能覆写 → 命中逻辑独立成 hitRow（自有 listX/listTop 直判，滚动量仍复用 getScrollAmount()） */
-        private ListRow hitRow(double mouseX, double mouseY) {
-            if (mouseX < (double) this.listX || mouseX > (double) (this.listX + this.listW)) {
-                return null;
-            }
-            if (mouseY < (double) this.listTop || mouseY > (double) this.listBottom) {
-                return null;
-            }
-            int index = (int) ((mouseY - this.listTop - 4 + this.getScrollAmount()) / ROW_HEIGHT);
-            java.util.List<ListRow> rows = this.children();
-            if (index < 0 || index >= rows.size()) {
-                return null;
-            }
-            return rows.get(index);
-        }
-
-        void refresh() {
-clearEntries();
-// 父类 clearEntries() 不重置滚动量：残留 scrollAmount 会让列表白屏、hitRow 算错行
-setScrollAmount(0);
-            if (serverExportMode) {
-                // 统一导出浏览：玩家标题行（点击展开/收起）+ 展开玩家的女仆行
-                for (IMaidFileNetwork.PlayerMaidGroup g : serverGroups) {
-                    addEntry(new HeaderEntry(g));
-                    if (!collapsedPlayers.contains(g.playerName())) {
-                        for (MaidInfo info : g.maids()) {
-                            addEntry(new Entry(info));
-                        }
-                    }
-                }
-                if (serverGroups.isEmpty()) {
-                    addEntry(new HeaderEntry(null));
-                }
-            } else {
-                for (MaidInfo info : maidList) {
-                    addEntry(new Entry(info));
-                }
-            }
-        }
-
-        // ====== v13 交互兜底：完全绕开父类 getEntryAtPosition 的 rowLeft 旧公式 ======
-        // 第一层 Widget 范围命中：LIST_BG ± 12 像素（父类 scissor 放宽 12px）
-        @Override
-        public boolean isMouseOver(double mouseX, double mouseY) {
-            // 容错从 ±12 收窄到 ±2：原先可以把鼠标放到面板外一整条区域仍命中，容易点穿到相邻控件
-            return mouseX >= this.listX - 2 && mouseX <= this.listX + this.listW + 2
-                    && mouseY >= this.listTop - 2 && mouseY <= this.listBottom + 2;
-        }
-
-        // 第二层 Entry 命中：自遍历 Entry.isMouseOver（我们 Entry 已经判 LIST_BG 矩形）
-        @Override
-        public boolean mouseClicked(double mouseX, double mouseY, int button) {
-            if (!this.isMouseOver(mouseX, mouseY)) return false;
-            for (ListRow entry : this.children()) {
-                if (entry.isMouseOver(mouseX, mouseY)) {
-                    if (entry.mouseClicked(mouseX, mouseY, button)) {
-                        this.setSelected(entry);
-                        return true;
-                    }
-                }
-            }
-            return super.mouseClicked(mouseX, mouseY, button);
-        }
-
-        @Override
-        public boolean mouseReleased(double mouseX, double mouseY, int button) {
-            for (ListRow entry : this.children()) {
-                if (entry.isMouseOver(mouseX, mouseY)) {
-                    entry.mouseReleased(mouseX, mouseY, button);
-                }
-            }
-            return super.mouseReleased(mouseX, mouseY, button);
-        }
-
-        // NeoForge 1.21.x mouseScrolled 4 参：horizontal + vertical
-        @Override
-        public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
-            if (!this.isMouseOver(mouseX, mouseY)) return false;
-            return super.mouseScrolled(mouseX, mouseY, horizontal, vertical);
-        }
-
-        /** v14 FabricFix【Fabric 生产环境列表行不可见根治】：Fabric 运行时的字段/方法全是 intermediary 名，
-         *  官方名(top/y0/setX)的字符串反射全部静默失败 → 父类 scissor/行坐标/滚动条全部错位（行画在看不见的位置）。
-         *  改为完全自绘：不调 super.render，用本类 listX/listTop/listW/listBottom 裁剪+摆行+画滚动条；
-         *  滚动量复用父类 getScrollAmount()（构造期已正确；编译期调用会被 loom 重映射，跨加载器稳定）。 */
-        @Override
-        public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            if (!this.visible) {
-                return;
-            }
-            this.renderListBackground(graphics);
-            java.util.List<ListRow> rows = this.children();
-            // 每帧在**画行之前**清命中区：只有本帧真正画过的行才可命中。
-            // 不能放 hitRow()：它被 drawHoverTooltip 每帧调用，放那里会在帧末把所有行清成 -1，
-            // 导致行内「档案」按钮与 isMouseOver 永久拿不到 lastTop（第六轮 P1-1）。
-            for (ListRow row : rows) {
-                row.resetHitArea();
-            }
-            int viewH = this.listBottom - this.listTop;
-            int scroll = (int) this.getScrollAmount();
-            graphics.enableScissor(this.listX, this.listTop, this.listX + this.listW, this.listBottom);
-            for (int i = 0; i < rows.size(); i++) {
-                int top = this.listTop + 4 - scroll + i * ROW_HEIGHT;
-                if (top >= this.listBottom || top + ROW_HEIGHT <= this.listTop) {
-                    continue;
-                }
-                boolean hovering = mouseX >= this.listX && mouseX < this.listX + this.listW
-                        && mouseY >= top && mouseY < top + ROW_HEIGHT;
-                rows.get(i).render(graphics, i, top, this.listX + 2,
-                        this.getRowWidth(), ROW_HEIGHT, mouseX, mouseY, hovering, partialTick);
-            }
-            graphics.disableScissor();
-            // 滚动条：内容溢出时贴列表右缘画（位置基于我们自己的 listX/listW，不再依赖父类内部几何）
-            int contentH = rows.size() * ROW_HEIGHT + 8;
-            if (contentH > viewH) {
-                int trackH = viewH - 4;
-                int thumbH = Math.max(20, trackH * viewH / contentH);
-                int maxScroll = contentH - viewH;
-                int progress = Math.min(trackH - thumbH,
-                        (int) ((long) scroll * (trackH - thumbH) / Math.max(1, maxScroll)));
-                int barX = this.listX + this.listW - 3;
-                graphics.fill(barX, this.listTop + 2 + progress, barX + 2,
-                        this.listTop + 2 + progress + thumbH, 0x66FFFFFF);
-            }
-        }
-
-        /** 统一导出浏览：玩家标题行（可点击展开/收起该玩家的女仆列表） */
-        final class HeaderEntry extends ListRow {
-            final IMaidFileNetwork.PlayerMaidGroup group;
-            int lastTop = -1;
-            int lastHeight = -1;
-
-            @Override
-            void resetHitArea() {
-                this.lastTop = -1;
-                this.lastHeight = -1;
-            }
-
-            HeaderEntry(IMaidFileNetwork.PlayerMaidGroup group) {
-                this.group = group;
-            }
-
-            @Override
-            public void render(GuiGraphics graphics, int index, int top, int left,
-                               int width, int height, int mouseX, int mouseY, boolean hovering,
-                               float partialTick) {
-                this.lastTop = top;
-                this.lastHeight = height;
-                int rowX = MaidListWidget.this.listX;
-                // 右侧留 5px 给自绘滚动条：滚动条画在 listX+listW-3..+2，完全落在行矩形内，
-                // 不剔除的话点滚动条会被判成点行（切换勾选），且命中即 return true，
-                // 父类 updateScrollingState() 永远拿不到点击 → 滚动条无法拖动。
-                int rowW = MaidListWidget.this.listW - 5;
-                if (hovering) {
-                    graphics.fill(rowX, top - 1, rowX + rowW, top + height + 1, ROW_HOVER);
-                }
-                net.minecraft.client.gui.Font font = MaidFileManagerScreen.this.font;
-                if (group == null) {
-                    graphics.drawString(font, Component.translatable("maid_file_manager.gui.server_export.empty"),
-                            rowX + 28, top + 6, SUBTEXT_COLOR, false);
-                    return;
-                }
-                boolean collapsed = collapsedPlayers.contains(group.playerName());
-                String arrow = collapsed ? "▶" : "▼";
-                String consentTag = group.consented() ? "" : Component.translatable("maid_file_manager.gui.server_export.no_consent_tag").getString();
-                String line = Component.translatable("maid_file_manager.gui.server_export.player_row",
-                        arrow, group.playerName(), group.maids().size(), consentTag).getString();
-                int color = group.consented() ? ACCENT : SUBTEXT_COLOR;
-                graphics.fill(rowX, top, rowX + rowW, top + height, 0x30FFFFFF);
-                graphics.drawString(font, Component.literal(line), rowX + 28, top + 6, color, false);
-            }
-
-            @Override
-            public boolean isMouseOver(double mouseX, double mouseY) {
-                int rowX = MaidListWidget.this.listX;
-                int rowW = MaidListWidget.this.listW;
-                return mouseX >= rowX && mouseX <= rowX + rowW - 5
-                        && this.lastTop >= 0
-                        && mouseY >= this.lastTop - 2
-                        && mouseY <= this.lastTop + this.lastHeight + 2;
-            }
-
-            @Override
-            public boolean mouseClicked(double mouseX, double mouseY, int button) {
-                if (group == null) {
-                    return true;
-                }
-                String name = group.playerName();
-                if (!collapsedPlayers.remove(name)) {
-                    collapsedPlayers.add(name);
-                    // 折叠时把该组女仆从选中集移除：否则「全选」勾中的是展平全集（含不可见行），
-                    // 界面显示的勾选数比屏幕上能看到的行多很多，且 allSelected 判断永远算不出
-                    // 「已全选」，导出时那些看不见的条目仍会被提交。
-                    for (IMaidFileNetwork.PlayerMaidGroup g : MaidFileManagerScreen.this.serverGroups) {
-                        if (g.playerName().equals(name)) {
-                            for (MaidInfo info : g.maids()) {
-                                MaidFileManagerScreen.this.selectedMaidIds.remove(info.entityId());
-                            }
-                            break;
-                        }
-                    }
-                    // 折叠/展开后按「可选集合」重算，而不是硬置 false（否则展开回来也永远不显示已全选）
-                    MaidFileManagerScreen.this.selectAllState = MaidFileManagerScreen.this.computeAllSelected();
-                    MaidFileManagerScreen.this.refreshSelectAllLabel();
-                }
-                // 展开后也要重算：展开意味着可选集合变大、新可见的女仆尚未选中，
-                // 原先只在折叠分支重算，展开回来仍显示「已全选」（第六轮 M5）。
-                MaidFileManagerScreen.this.selectAllState = MaidFileManagerScreen.this.computeAllSelected();
-                MaidFileManagerScreen.this.refreshSelectAllLabel();
-                MaidListWidget.this.refresh();
-                return true;
-            }
-
-            @Override
-            public Component getNarration() {
-                return group == null ? Component.translatable("maid_file_manager.gui.server_export.empty_group")
-                        : Component.literal(group.playerName() + " " + group.maids().size());
-            }
-        }
-
-        final class Entry extends ListRow {
-            final MaidInfo info;
-            // 修复 v1.1.2 UI bug：反馈「点哪个女仆都只能选中第一个」
-            // 根因：isMouseOver 只检查 mouseX 不检查 mouseY，导致所有 entry 都返回 true → mouseClicked 遍历 children() 时第一个命中
-            // 修复：移植 1.20.1 的 lastTop/lastHeight 机制，render 时记录自己的行 top/height，isMouseOver 用它限定 mouseY 范围
-            int lastTop = -1;
-            int lastHeight = -1;
-
-            @Override
-            void resetHitArea() {
-                this.lastTop = -1;
-                this.lastHeight = -1;
-            }
-
-            Entry(MaidInfo info) {
-                this.info = info;
-            }
-
-            @Override
-            public void render(GuiGraphics graphics, int index, int top, int left,
-                               int width, int height, int mouseX, int mouseY, boolean hovering,
-                               float partialTick) {
-                this.lastTop = top;
-                this.lastHeight = height;
-                boolean selected = selectedMaidIds.contains(info.entityId());
-                int rowX = MaidListWidget.this.listX;
-                int rowW = MaidListWidget.this.listW;
-                if (hovering) {
-                    graphics.fill(rowX, top - 1, rowX + rowW, top + height + 1, ROW_HOVER);
-                }
-                // 勾选框 + 文字：rowX 对齐 LIST_BG 左边缘（框体手绘，避免 ☐/☑ 豆腐块）
-                MaidScreenDraw.drawCheckBox(graphics, rowX + (rowW < 190 ? 4 : 28), top + 4, selected);
-                int textLeft = rowX + (rowW < 190 ? 18 : 49);
-                // 右侧为「档案」按钮预留空间，文字区主动避让，避免被按钮压住
-                int contentRight = rowW < 190 ? rowX + rowW - 4 : rowX + rowW - 10 - PROFILE_BTN_W - 6;
-                int contentW = contentRight - textLeft;
-                net.minecraft.client.gui.Font font = MaidFileManagerScreen.this.font;
-                // 第一行：name 超长 → 截断+省略号…（不滚避免勾选框右晃动）
-                // YSM 女仆的 modelId 是 YSM 模型路径（ysm:Wine Fox/02 New Year），
-                // displayModelId 解析不了，只能用服务端给的 displayName（YSM 真名）。
-                String baseName = info.ysmModel()
-                        ? (info.displayName() != null ? info.displayName() : "")
-                        : ModelNames.displayModelId(info.modelId());
-                String name = info.customName() != null
-                        ? info.customName() + " · " + baseName
-                        : baseName;
-                String drawName;
-                if (font.width(name) > contentW) {
-                    drawName = font.plainSubstrByWidth(name, contentW - font.width("…")) + "…";
-                } else {
-                    drawName = name;
-                }
-                graphics.drawString(font, Component.literal(drawName), textLeft, top + 2, TEXT_COLOR, false);
-                // 第二行：detail 超长 → 左右自动跑马灯（1.2s头停→向左滚60px/s→1.2s尾停→400ms快速回卷）
-                String detail = Component.translatable("maid_file_manager.gui.maid_row.detail",
-                        info.modelId(), info.favorability(),
-                        String.format(Locale.ROOT, "%.0f", info.health()),
-                        String.format(Locale.ROOT, "%.0f", info.maxHealth()),
-                        info.tamed()
-                                ? Component.translatable("maid_file_manager.gui.label.tamed")
-                                : Component.translatable("maid_file_manager.gui.label.untamed")).getString();
-                int detailW = font.width(detail);
-                if (detailW <= contentW) {
-                    graphics.drawString(font, Component.literal(detail), textLeft, top + 12, SUBTEXT_COLOR, false);
-                } else {
-                    final int pauseMs = 1200;
-                    final int scrollMs = (int)((detailW - contentW) * 1000L / 60L); // 60px/s
-                    final int rewindMs = 400;
-                    final int cycleMs = pauseMs + scrollMs + pauseMs + rewindMs;
-                    long t = System.currentTimeMillis() % cycleMs;
-                    int offset;
-                    if (t < pauseMs) {
-                        offset = 0;
-                    } else if (t < pauseMs + scrollMs) {
-                        long tt = t - pauseMs;
-                        offset = (int)(tt * 60L / 1000L);
-                    } else if (t < pauseMs + scrollMs + pauseMs) {
-                        offset = detailW - contentW;
-                    } else {
-                        long tt = t - (pauseMs + scrollMs + pauseMs);
-                        offset = (int)((detailW - contentW) * (1L - tt * 1000L / (rewindMs * 1000L)));
-                        if (offset < 0) offset = 0;
-                    }
-                    graphics.enableScissor(textLeft, top + 10, contentRight, top + 22);
-                    graphics.drawString(font, Component.literal(detail), textLeft - offset, top + 12, SUBTEXT_COLOR, false);
-                    graphics.disableScissor();
-                }
-                drawProfileButton(graphics, rowX + rowW, top, height, mouseX, mouseY);
-            }
-
-            /** 绘制行内「档案」按钮（右边缘对齐 rowRight） */
-            private void drawProfileButton(GuiGraphics graphics, int rowRight, int top, int height,
-                                           int mouseX, int mouseY) {
-                // 统一导出模式下列表含其他玩家的女仆，不提供「档案」入口（仅本人女仆可查看档案）
-                if (MaidFileManagerScreen.this.serverExportMode) {
-                    return;
-                }
-                // 窄屏（列表区放不下按钮+文字）时不画/不命中「档案」按钮
-                if (listW < 190) {
-                    return;
-                }
-                int bx = rowRight - PROFILE_BTN_W - 4;
-                int by = top + (height - PROFILE_BTN_H) / 2;
-                boolean hover = mouseX >= bx && mouseX <= bx + PROFILE_BTN_W
-                        && mouseY >= by && mouseY <= by + PROFILE_BTN_H;
-                graphics.fill(bx, by, bx + PROFILE_BTN_W, by + PROFILE_BTN_H, hover ? 0xFF4A3826 : 0xFF3A2C1C);
-                graphics.renderOutline(bx, by, PROFILE_BTN_W, PROFILE_BTN_H, PANEL_BORDER);
-                Component label = Component.translatable("maid_file_manager.gui.button.profile");
-                int tx = bx + (PROFILE_BTN_W - MaidFileManagerScreen.this.font.width(label)) / 2;
-                graphics.drawString(MaidFileManagerScreen.this.font, label, tx,
-                        by + (PROFILE_BTN_H - 8) / 2, TEXT_COLOR, false);
-            }
-
-            /** 是否命中行内「档案」按钮 */
-            private boolean isProfileButtonHit(double mouseX, double mouseY) {
-                if (MaidFileManagerScreen.this.serverExportMode || lastTop < 0) {
-                    return false;
-                }
-                int rowRight = MaidListWidget.this.listX + MaidListWidget.this.listW;
-                // 窄屏（列表区放不下按钮+文字）时不画/不命中「档案」按钮
-                if (listW < 190) {
-                    return false;
-                }
-                int bx = rowRight - PROFILE_BTN_W - 4;
-                int by = lastTop + (lastHeight - PROFILE_BTN_H) / 2;
-                return mouseX >= bx && mouseX <= bx + PROFILE_BTN_W
-                        && mouseY >= by && mouseY <= by + PROFILE_BTN_H;
-            }
-
-            @Override
-            public boolean isMouseOver(double mouseX, double mouseY) {
-                int rowX = MaidListWidget.this.listX;
-                int rowW = MaidListWidget.this.listW;
-                return mouseX >= rowX && mouseX <= rowX + rowW - 5
-                        && this.lastTop >= 0
-                        && mouseY >= this.lastTop - 2
-                        && mouseY <= this.lastTop + this.lastHeight + 2;
-            }
-
-            @Override
-            public boolean mouseClicked(double mouseX, double mouseY, int button) {
-                // 命中「档案」按钮 → 请求该女仆档案（不再触发勾选）
-                if (button == 0 && isProfileButtonHit(mouseX, mouseY)) {
-                    requestMaidProfile(info.entityId());
-                    return true;
-                }
-                boolean newVal = !selectedMaidIds.contains(info.entityId());
-                toggleRowSelection(info, newVal);
-                return true;
-            }
-
-            @Override
-            public Component getNarration() {
-                boolean sel = selectedMaidIds.contains(info.entityId());
-                String name = info.customName() != null
-                        ? info.customName() + " · " + ModelNames.displayModelId(info.modelId())
-                        : ModelNames.displayModelId(info.modelId());
-                return Component.translatable(sel
-                        ? "maid_file_manager.gui.label.selected"
-                        : "maid_file_manager.gui.label.not_selected").append(name);
-            }
-        }
-    }
 
     // ---------- FileListWidget ----------
 
