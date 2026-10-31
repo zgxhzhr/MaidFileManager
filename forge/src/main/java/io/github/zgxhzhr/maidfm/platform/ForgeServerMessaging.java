@@ -89,4 +89,52 @@ public final class ForgeServerMessaging implements ServerMessaging {
     public net.minecraft.server.MinecraftServer serverOf(ServerPlayer player) {
         return player == null ? null : player.server;
     }
+
+    @Override
+    public void sendExportBatchResult(ServerPlayer player, byte[] encodedPayload) {
+        // 已编码好的字节：包成 buf 后走 ID_EXPORT_BATCH_RESULT
+        net.minecraft.network.FriendlyByteBuf buf = new FriendlyByteBuf(
+                io.netty.buffer.Unpooled.wrappedBuffer(encodedPayload));
+        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_EXPORT_BATCH_RESULT, buf);
+    }
+
+    @Override
+    public boolean sendChunkedDownload(ServerPlayer player, String kind, byte[] payload) {
+        if (payload == null || payload.length == 0) {
+            return true;
+        }
+        // 总量预检：接收端 ChunkedUploadAssembler 在首片就按 declared > MAX_TOTAL_BYTES 拒收，
+        // 发送端照样发满几百片纯属浪费。超限直接回执失败并返回 false ——
+        // 调用方据此不登记待删，避免「文件没发出去却删了女仆」。
+        if (payload.length > io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES) {
+            io.github.zgxhzhr.maidfm.Constants.LOG.warn(
+                    "[maid_file_manager] 分片下发超总量上限，拒绝发送: player={} bytes={} limit={}",
+                    player.getName().getString(), payload.length,
+                    io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES);
+            sendFeedback(player, net.minecraft.network.chat.Component.translatable(
+                    "maid_file_manager.server.export_too_large",
+                    payload.length / 1024,
+                    io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.MAX_TOTAL_BYTES / 1024));
+            return false;
+        }
+        int chunkBytes = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES;
+        int total = (payload.length + chunkBytes - 1) / chunkBytes;
+        int sessionId = java.util.concurrent.ThreadLocalRandom.current().nextInt();
+        for (int i = 0; i < total; i++) {
+            int off = i * chunkBytes;
+            int len = Math.min(chunkBytes, payload.length - off);
+            byte[] chunk = java.util.Arrays.copyOfRange(payload, off, off + len);
+            FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+            buf.writeUtf(kind == null ? "" : kind, MaidFilePackets.MAX_TEXT_LEN);
+            buf.writeVarInt(sessionId);
+            buf.writeVarInt(total);
+            buf.writeVarInt(i);
+            buf.writeByteArray(chunk);
+            ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_CHUNKED_DOWNLOAD, buf);
+        }
+        io.github.zgxhzhr.maidfm.Constants.LOG.info(
+                "[maid_file_manager] 导出结果分片下发: player={} bytes={} chunks={}",
+                player.getName().getString(), payload.length, total);
+        return true;
+    }
 }
