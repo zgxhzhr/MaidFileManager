@@ -12,7 +12,7 @@ import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
 import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import io.github.zgxhzhr.maidfm.data.MaidProfileView;
-import io.github.zgxhzhr.maidfm.platform.PacketSender;
+import io.github.zgxhzhr.maidfm.service.PacketSender;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 
