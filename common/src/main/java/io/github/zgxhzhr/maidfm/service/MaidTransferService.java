@@ -478,6 +478,10 @@ public final class MaidTransferService {
                 } catch (Throwable t) {
                     Constants.LOG.warn("[maid_file_manager] provider {} 导出失败（已跳过）: {}",
                             p.getId(), t.toString());
+                    // 不能只写日志：玩家会以为整只女仆（含归档）都导出成功了。
+                    // 记进累积器，导出结束点汇总成一条反馈。
+                    io.github.zgxhzhr.maidfm.data.MigrationNoteCollector.add(Component.translatable(
+                            "maid_file_manager.export.migration.failed", p.getId().toString()));
                 }
             }
             if (!extras.isEmpty()) {
