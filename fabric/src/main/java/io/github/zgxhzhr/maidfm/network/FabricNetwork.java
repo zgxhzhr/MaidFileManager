@@ -82,7 +82,7 @@ public final class FabricNetwork implements IMaidFileNetwork {
     @Override
     public void sendServerExportBatch(List<PlayerExportRequest> groups) {
         FriendlyByteBuf buf = MaidPayload.buffer();
-        MaidFilePackets.writePlayerExportRequests(buf, groups);
+        MaidInfoCodec.writePlayerExportRequests(buf, groups);
         sendC2S(MaidFilePackets.ID_SERVER_EXPORT_BATCH, buf);
     }
 
@@ -98,7 +98,7 @@ public final class FabricNetwork implements IMaidFileNetwork {
         // 先把负载编码成「VarInt entityId + 档案 NBT」字节：分片路径与普通包共用这一格式。
         FriendlyByteBuf probe = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
         probe.writeVarInt(entityId);
-        MaidFilePackets.writeMaidProfile(probe, profile);
+        MaidProfileCodec.writeMaidProfile(probe, profile);
         byte[] encoded = new byte[probe.readableBytes()];
         probe.getBytes(0, encoded);
         // 不需要 isLegacyPayloadLimit：那个判定在 1.21 上恒 false（只为 1.20.x 的 32767 上限存在），

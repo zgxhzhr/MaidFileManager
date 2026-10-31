@@ -11,6 +11,9 @@ import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import io.github.zgxhzhr.maidfm.network.FabricNetwork;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
+import io.github.zgxhzhr.maidfm.network.MaidProfileCodec;
+import io.github.zgxhzhr.maidfm.network.MaidBackupCodec;
+import io.github.zgxhzhr.maidfm.network.MaidInfoCodec;
 import io.github.zgxhzhr.maidfm.network.MaidPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -87,7 +90,7 @@ public class MaidFileModFabricClient implements ClientModInitializer {
 
         ClientPlayNetworking.registerGlobalReceiver(MaidPayload.typeOf(MaidFilePackets.ID_MAID_LIST), (payload, context) -> {
             try {
-            List<MaidInfo> list = MaidFilePackets.readMaidInfoList(payload.body());
+            List<MaidInfo> list = MaidInfoCodec.readMaidInfoList(payload.body());
             context.client().execute(() -> {
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
                 if (h != null) {
@@ -226,7 +229,7 @@ public class MaidFileModFabricClient implements ClientModInitializer {
         // OP 统一导出：收到服务端收集的所有在线玩家女仆分组列表
         ClientPlayNetworking.registerGlobalReceiver(MaidPayload.typeOf(MaidFilePackets.ID_SERVER_EXPORT_LIST), (payload, context) -> {
             try {
-            List<IMaidFileNetwork.PlayerMaidGroup> groups = MaidFilePackets.readPlayerMaidGroups(payload.body());
+            List<IMaidFileNetwork.PlayerMaidGroup> groups = MaidInfoCodec.readPlayerMaidGroups(payload.body());
             context.client().execute(() -> {
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
                 if (h != null) {
@@ -273,7 +276,7 @@ public class MaidFileModFabricClient implements ClientModInitializer {
         // 女仆档案视图：服务端校验归属后返回，交由当前活跃界面展示
         ClientPlayNetworking.registerGlobalReceiver(MaidPayload.typeOf(MaidFilePackets.ID_MAID_PROFILE), (payload, context) -> {
             try {
-            MaidProfileView view = MaidFilePackets.readMaidProfileView(payload.body());
+            MaidProfileView view = MaidProfileCodec.readMaidProfileView(payload.body());
             context.client().execute(() -> {
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
                 if (h != null) {
@@ -288,7 +291,7 @@ public class MaidFileModFabricClient implements ClientModInitializer {
         // 备份管理：收到服务端按权限过滤后的备份列表（OP 见全部玩家，非 OP 仅自己）
         ClientPlayNetworking.registerGlobalReceiver(MaidPayload.typeOf(MaidFilePackets.ID_BACKUP_LIST), (payload, context) -> {
             try {
-            List<IMaidFileNetwork.BackupOwner> owners = MaidFilePackets.readBackupOwners(payload.body());
+            List<IMaidFileNetwork.BackupOwner> owners = MaidBackupCodec.readBackupOwners(payload.body());
             context.client().execute(() -> {
                 IMaidFileNetwork.ClientHandler h = IMaidFileNetwork.ClientHandlerHolder.get();
                 if (h != null) {
