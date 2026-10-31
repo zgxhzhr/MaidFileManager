@@ -65,18 +65,18 @@ public class MaidFileModFabric implements ModInitializer {
 
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_MAID_LIST, (server, player, buf) -> {
             // 业务逻辑已下沉到 ServerPacketHandlers（六端共用一份）；本端只做转发
-            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestMaidList(player);
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.requestMaidList(player);
         });
 
         registerC2SReceiver(MaidFilePackets.ID_EXPORT_MAID, (server, player, buf) -> {
-            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.exportMaid(player, buf.readInt());
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.exportMaid(player, buf.readInt());
         });
 
         // 批量导出：数据发回客户端写文件；removeAfter=true 时移除已导出的女仆
         registerC2SReceiver(MaidFilePackets.ID_EXPORT_BATCH, (server, player, buf) -> {
             java.util.List<Integer> ids = MaidFilePackets.readIntList(buf);
             boolean removeAfter = buf.readBoolean();
-            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.exportBatch(player, ids, removeAfter);
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.exportBatch(player, ids, removeAfter);
         });
 
         registerC2SReceiver(MaidFilePackets.ID_IMPORT_FILE, (server, player, buf) -> {
@@ -168,19 +168,19 @@ public class MaidFileModFabric implements ModInitializer {
         registerC2SReceiver(MaidFilePackets.ID_SET_SERVER_CONFIG, (server, player, buf) -> {
             String key = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
             boolean value = buf.readBoolean();
-            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.setServerConfig(player, key, value);
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.setServerConfig(player, key, value);
         });
 
         // OP 修改自己维护的禁用清单（物品 / 模组 / Curios 槽位）：权限校验 → 收窄写入 → 广播同步
         registerC2SReceiver(MaidFilePackets.ID_SET_SERVER_BAUBLE_BLOCKED_LIST, (server, player, buf) -> {
             String listKey = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
             java.util.List<String> ids = MaidFilePackets.readStringList(buf);
-            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.setServerListConfig(player, listKey, ids);
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.setServerListConfig(player, listKey, ids);
         });
 
         // OP 统一导出：返回所有在线玩家（以各玩家为中心）的女仆分组列表
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_SERVER_EXPORT_LIST, (server, player, buf) -> {
-            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestServerExportList(player);
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.requestServerExportList(player);
         });
 
         // OP 统一导出提交：代各玩家导出女仆到服务端磁盘 maid_exports/<玩家名>/
@@ -196,19 +196,19 @@ public class MaidFileModFabric implements ModInitializer {
         // 请求女仆档案：非本人直接拒绝（不返回任何只读数据），本人则回发档案视图
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_MAID_PROFILE, (server, player, buf) -> {
             int entityId = buf.readVarInt();
-            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestMaidProfile(player, entityId);
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.requestMaidProfile(player, entityId);
         });
 
         // 保存女仆档案：校验归属后写入实体并回执（复用 ID_FEEDBACK）
         registerC2SReceiver(MaidFilePackets.ID_SAVE_MAID_PROFILE, (server, player, buf) -> {
             int entityId = buf.readVarInt();
             MaidProfile profile = MaidProfileCodec.readMaidProfile(buf);
-            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.saveMaidProfile(player, entityId, profile);
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.saveMaidProfile(player, entityId, profile);
         });
 
         // 备份管理：服务端按权限过滤后返回可浏览的自动备份列表（OP 可见全部玩家，非 OP 仅自己）
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_BACKUP_LIST, (server, player, buf) -> {
-            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestBackupList(player);
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.requestBackupList(player);
         });
         // 客户端上报的「模型 ID → 显示名」映射：合并进服务端汇总表，
         // 备份列表解析模型名时优先查它（拿到别人私有模型中文名的唯一来源）
