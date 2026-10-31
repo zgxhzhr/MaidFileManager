@@ -131,10 +131,11 @@ public final class MaidFilePackets {
     /** 单个 .maid 文件经网络传输的最大字节数（512 KiB，指 GZIP 压缩后的线上体积） */
     public static final int MAX_SINGLE_FILE_BYTES = 512 * 1024;
     /**
-     * NBT 解压后节点内存配额（16 MiB）。
-     * 注意与 {@link #MAX_SINGLE_FILE_BYTES} 解耦：后者管线上压缩字节，NbtAccounter 管解压后树体积，
-     * 高压缩比合法女仆文件（压缩后不足 512 KiB、解压后超过 512 KiB）不应被误判为坏数据；
-     * 16 MiB 仍足以封死 GZIP 炸弹（放大倍率被压到约 32 倍以内）。
+     * 与 {@link #MAX_SINGLE_FILE_BYTES} 解耦：后者管线上压缩字节，NbtAccounter 管解压后树体积，
+     * 高压缩比合法女仆文件（压缩后不足 512 KiB、解压后超过 512 KiB）不应被误判为坏数据。
+     *
+     * <p>具体值与理由见下面那段注释（当前 4 MiB）。原先这里写的是 16 MiB，是下调前的旧值，
+     * 与下面的说明自相矛盾，已删除。
      */
     // 单个 .maid 解压后的 NBT 树体积上限。
     // 原为 16 MiB —— 与 MAX_IMPORT_BATCH_FILES(64) 相乘最坏可达 1 GiB 常驻内存。
