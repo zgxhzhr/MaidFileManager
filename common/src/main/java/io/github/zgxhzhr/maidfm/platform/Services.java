@@ -2,6 +2,7 @@ package io.github.zgxhzhr.maidfm.platform;
 
 import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.platform.services.IPlatformHelper;
+import io.github.zgxhzhr.maidfm.platform.services.ServerMessaging;
 
 import java.util.ServiceLoader;
 import java.util.function.Supplier;
@@ -10,9 +11,13 @@ public class Services {
 
     public static final ServiceProvider<IPlatformHelper> PLATFORM = new ServiceProvider<>();
 
+    /** 服务端 -> 客户端消息发送（阶段 4 平台层收敛，见 {@link PacketSender}） */
+    public static final ServiceProvider<ServerMessaging> MESSAGING = new ServiceProvider<>();
+
     static {
         try {
             PLATFORM.loadService(IPlatformHelper.class, () -> load(IPlatformHelper.class));
+            MESSAGING.loadService(ServerMessaging.class, () -> load(ServerMessaging.class));
         } catch (Exception e) {
             // 正常打包下 META-INF/services 声明必在；失败只可能是打包损坏/类加载被阻断，
             // 不能静默吞掉，否则后续 PLATFORM.get() 只会以裸 NPE 暴露、无从排查
