@@ -42,7 +42,7 @@ import java.util.Set;
  * <p>交互流程：玩家在列表里勾选条目 → 底部【批量导出/批量导入】按钮执行动作。
  */
 public class MaidFileManagerScreen extends Screen
-        implements IMaidFileNetwork.ClientHandler, MaidListView {
+        implements IMaidFileNetwork.ClientHandler, MaidListView, FileListView {
     private enum Tab {EXPORT, IMPORT}
 
     /** 全屏深色背景（替代 Minecraft 默认泥土背景） */
@@ -403,7 +403,7 @@ public class MaidFileManagerScreen extends Screen
             listBottom = maxBottom;   // 空间真不够时允许低于 minH，但绝不越过按钮
         }
         maidListWidget = new MaidListWidget(this.minecraft, this, listAreaX, listAreaW, listTop, listBottom);
-        fileListWidget = new FileListWidget(listAreaX, listAreaW, listTop, listBottom);
+        fileListWidget = new FileListWidget(this.minecraft, this, listAreaX, listAreaW, listTop, listBottom);
         updateListVisibility();
 
         // ===== 工具列 6 个按钮注册（导出/导入两 Tab 靠 visible 切换共用槽位） =====
@@ -751,7 +751,8 @@ public class MaidFileManagerScreen extends Screen
     }
 
     /** 切换导入文件某一行的复选框状态（被 FileListWidget.Entry 调用） */
-    private void toggleFileRowSelection(String fileName, boolean selected) {
+    @Override
+    public void toggleFileRowSelection(String fileName, boolean selected) {
         if (selected) {
             selectedImportFileNames.add(fileName);
         } else {
@@ -899,7 +900,8 @@ public class MaidFileManagerScreen extends Screen
         return this.minecraft;
     }
 
-    void setFeedback(Component msg) {
+    @Override
+    public void setFeedback(Component msg) {
         if (msg == null) {
             msg = Component.empty();
         }
@@ -1100,6 +1102,24 @@ public class MaidFileManagerScreen extends Screen
         this.selectAllState = this.computeAllSelected();
         this.refreshSelectAllLabel();
     }
+
+    // ==================== FileListView 实现（供 FileListWidget 使用） ====================
+
+    @Override
+    public List<String> fileList() {
+        return this.fileList;
+    }
+
+    @Override
+    public Set<String> selectedImportFileNames() {
+        return this.selectedImportFileNames;
+    }
+
+    @Override
+    public Screen hostScreen() {
+        return this;
+    }
+
 
     @Override
     public boolean isPauseScreen() {
@@ -1721,341 +1741,6 @@ public class MaidFileManagerScreen extends Screen
     // ---------- MaidListWidget ----------
 
     // ---------- FileListWidget ----------
-
-    private final class FileListWidget extends ObjectSelectionList<FileListWidget.Entry> {
-        private final int listX, listW, listTop, listBottom;
-
-        FileListWidget(int listX, int listW, int listTop, int listBottom) {
-            super(MaidFileManagerScreen.this.minecraft, listW,
-                    listBottom - listTop, listTop, ROW_HEIGHT);
-            this.listX = listX;
-            this.listW = listW;
-            this.listTop = listTop;
-            this.listBottom = listBottom;
-            // 几何走公开 setter（与 MaidListWidget 同一套唯一基准）
-            this.setX(listX);
-            this.setY(listTop);
-            this.setWidth(listW);
-            this.setHeight(listBottom - listTop);
-            refresh();
-        }
-
-        @Override
-        public int getRowWidth() {
-            return this.listW - 8;
-        }
-
-        void refresh() {
-clearEntries();
-// 父类 clearEntries() 不重置滚动量：残留 scrollAmount 会让列表白屏、hitRow 算错行
-setScrollAmount(0);
-            for (String fileName : fileList) {
-                addEntry(new Entry(fileName));
-            }
-        }
-
-        @Override
-        protected void renderListBackground(GuiGraphics graphics) {
-            graphics.fill(this.listX, this.listTop,
-                    this.listX + this.listW, this.listBottom, LIST_BG);
-        }
-
-        // ====== v13 交互兜底：同 MaidListWidget（绕开父类 getEntryAtPosition） ======
-        @Override
-        public boolean isMouseOver(double mouseX, double mouseY) {
-            // 容错从 ±12 收窄到 ±2：原先可以把鼠标放到面板外一整条区域仍命中，容易点穿到相邻控件
-            return mouseX >= this.listX - 2 && mouseX <= this.listX + this.listW + 2
-                    && mouseY >= this.listTop - 2 && mouseY <= this.listBottom + 2;
-        }
-
-        @Override
-        public boolean mouseClicked(double mouseX, double mouseY, int button) {
-            if (!this.isMouseOver(mouseX, mouseY)) return false;
-            for (Entry entry : this.children()) {
-                if (entry.isMouseOver(mouseX, mouseY)) {
-                    if (entry.mouseClicked(mouseX, mouseY, button)) {
-                        this.setSelected(entry);
-                        return true;
-                    }
-                }
-            }
-            return super.mouseClicked(mouseX, mouseY, button);
-        }
-
-        @Override
-        public boolean mouseReleased(double mouseX, double mouseY, int button) {
-            for (Entry entry : this.children()) {
-                if (entry.isMouseOver(mouseX, mouseY)) {
-                    entry.mouseReleased(mouseX, mouseY, button);
-                }
-            }
-            return super.mouseReleased(mouseX, mouseY, button);
-        }
-
-        @Override
-        public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
-            if (!this.isMouseOver(mouseX, mouseY)) return false;
-            return super.mouseScrolled(mouseX, mouseY, horizontal, vertical);
-        }
-
-        public Entry getHovered(double mouseX, double mouseY) {
-            return this.hitRow(mouseX, mouseY);
-        }
-
-        /** v14b FabricFix：父类 getEntryAtPosition 是 final 不能覆写 → 命中逻辑独立成 hitRow（自有 listX/listTop 直判，滚动量仍复用 getScrollAmount()） */
-        private Entry hitRow(double mouseX, double mouseY) {
-            if (mouseX < (double) this.listX || mouseX > (double) (this.listX + this.listW)) {
-                return null;
-            }
-            if (mouseY < (double) this.listTop || mouseY > (double) this.listBottom) {
-                return null;
-            }
-            int index = (int) ((mouseY - this.listTop - 4 + this.getScrollAmount()) / ROW_HEIGHT);
-            java.util.List<Entry> rows = this.children();
-            if (index < 0 || index >= rows.size()) {
-                return null;
-            }
-            return rows.get(index);
-        }
-
-        /** v14 FabricFix：与 MaidListWidget 相同的自绘渲染（Fabric intermediary 环境下父类几何反射失效） */
-        @Override
-        public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            if (!this.visible) {
-                return;
-            }
-            this.renderListBackground(graphics);
-            java.util.List<Entry> rows = this.children();
-            // 导入列表同样每帧清命中区（第五轮 P1-5 只修了导出列表 → 第六轮 P1-2）：
-            // 不清的话滚出视口的行保留旧 lastTop，点某文件会勾中看不见的另一个文件，
-            // 配合「导入后删除源文件」会删错文件。
-            for (Entry row : rows) {
-                row.resetHitArea();
-            }
-            int viewH = this.listBottom - this.listTop;
-            int scroll = (int) this.getScrollAmount();
-            graphics.enableScissor(this.listX, this.listTop, this.listX + this.listW, this.listBottom);
-            for (int i = 0; i < rows.size(); i++) {
-                int top = this.listTop + 4 - scroll + i * ROW_HEIGHT;
-                if (top >= this.listBottom || top + ROW_HEIGHT <= this.listTop) {
-                    continue;
-                }
-                boolean hovering = mouseX >= this.listX && mouseX < this.listX + this.listW
-                        && mouseY >= top && mouseY < top + ROW_HEIGHT;
-                rows.get(i).render(graphics, i, top, this.listX + 2,
-                        this.getRowWidth(), ROW_HEIGHT, mouseX, mouseY, hovering, partialTick);
-            }
-            graphics.disableScissor();
-            int contentH = rows.size() * ROW_HEIGHT + 8;
-            if (contentH > viewH) {
-                int trackH = viewH - 4;
-                int thumbH = Math.max(20, trackH * viewH / contentH);
-                int maxScroll = contentH - viewH;
-                int progress = Math.min(trackH - thumbH,
-                        (int) ((long) scroll * (trackH - thumbH) / Math.max(1, maxScroll)));
-                int barX = this.listX + this.listW - 3;
-                graphics.fill(barX, this.listTop + 2 + progress, barX + 2,
-                        this.listTop + 2 + progress + thumbH, 0x66FFFFFF);
-            }
-        }
-
-        final class Entry extends ObjectSelectionList.Entry<Entry> {
-            final String fileName;
-            // 修复 v1.1.2 UI bug：与 MaidListWidget.Entry 同款问题，isMouseOver 必须用 lastTop/lastHeight 限定 mouseY 范围
-            int lastTop = -1;
-            int lastHeight = -1;
-
-            /** 清掉上一帧记录的命中区（本类不继承 ListRow，故无 @Override） */
-            void resetHitArea() {
-                this.lastTop = -1;
-                this.lastHeight = -1;
-            }
-
-            Entry(String fileName) {
-                this.fileName = fileName;
-            }
-
-            @Override
-            public void render(GuiGraphics graphics, int index, int top, int left,
-                               int width, int height, int mouseX, int mouseY, boolean hovering,
-                               float partialTick) {
-                this.lastTop = top;
-                this.lastHeight = height;
-                boolean selected = selectedImportFileNames.contains(fileName);
-                int rowX = FileListWidget.this.listX;
-                int rowW = FileListWidget.this.listW;
-                if (hovering) {
-                    graphics.fill(rowX, top - 1, rowX + rowW, top + height + 1, ROW_HOVER);
-                }
-                // 勾选框：rowX 对齐 LIST_BG 左边缘（框体手绘，避免 ☐/☑ 豆腐块）
-                MaidScreenDraw.drawCheckBox(graphics, rowX + (rowW < 190 ? 4 : 28), top + 4, selected);
-                int textLeft = rowX + (rowW < 190 ? 18 : 49);
-                // 右侧为「档案」按钮预留空间，文字区主动避让，避免被按钮压住
-                int contentRight = rowW < 190 ? rowX + rowW - 4 : rowX + rowW - 10 - PROFILE_BTN_W - 6;
-                int contentW = contentRight - textLeft;
-                net.minecraft.client.gui.Font font = MaidFileManagerScreen.this.font;
-                // 第一行：fileName 超长 → 左右跑马灯（文件名很长必须全显示）
-                int nameW = font.width(fileName);
-                if (nameW <= contentW) {
-                    graphics.drawString(font, Component.literal(fileName), textLeft, top + 2, TEXT_COLOR, false);
-                } else {
-                    final int pauseMs = 1200;
-                    final int scrollMs = (int)((nameW - contentW) * 1000L / 60L);
-                    final int rewindMs = 400;
-                    final int cycleMs = pauseMs + scrollMs + pauseMs + rewindMs;
-                    long t = System.currentTimeMillis() % cycleMs;
-                    int offset;
-                    if (t < pauseMs) {
-                        offset = 0;
-                    } else if (t < pauseMs + scrollMs) {
-                        long tt = t - pauseMs;
-                        offset = (int)(tt * 60L / 1000L);
-                    } else if (t < pauseMs + scrollMs + pauseMs) {
-                        offset = nameW - contentW;
-                    } else {
-                        long tt = t - (pauseMs + scrollMs + pauseMs);
-                        float p = (float)tt / (float)rewindMs;
-                        if (p > 1.0f) p = 1.0f;
-                        offset = (int)((nameW - contentW) * (1.0f - p));
-                        if (offset < 0) offset = 0;
-                    }
-                    graphics.enableScissor(textLeft, top, contentRight, top + 12);
-                    graphics.drawString(font, Component.literal(fileName), textLeft - offset, top + 2, TEXT_COLOR, false);
-                    graphics.disableScissor();
-                }
-                // 第二行：时间超长 → 截断+省略号…（时间格式固定，不滚）
-                String time = MaidFileIo.formatDisplayTime(fileName);
-                String timeLine = Component.translatable("maid_file_manager.gui.label.time", time).getString();
-                String drawTime;
-                if (font.width(timeLine) > contentW) {
-                    drawTime = font.plainSubstrByWidth(timeLine, contentW - font.width("…")) + "…";
-                } else {
-                    drawTime = timeLine;
-                }
-                graphics.drawString(font, Component.literal(drawTime), textLeft, top + 12, SUBTEXT_COLOR, false);
-                drawProfileButton(graphics, rowX + rowW, top, height, mouseX, mouseY);
-            }
-
-            /** 绘制行内「档案」按钮（导入列表用文件内档案快照预览） */
-            private void drawProfileButton(GuiGraphics graphics, int rowRight, int top, int height,
-                                           int mouseX, int mouseY) {
-                // 窄屏（列表区放不下按钮+文字）时不画/不命中「档案」按钮
-                if (listW < 190) {
-                    return;
-                }
-                int bx = rowRight - PROFILE_BTN_W - 4;
-                int by = top + (height - PROFILE_BTN_H) / 2;
-                boolean hover = mouseX >= bx && mouseX <= bx + PROFILE_BTN_W
-                        && mouseY >= by && mouseY <= by + PROFILE_BTN_H;
-                graphics.fill(bx, by, bx + PROFILE_BTN_W, by + PROFILE_BTN_H, hover ? 0xFF4A3826 : 0xFF3A2C1C);
-                graphics.renderOutline(bx, by, PROFILE_BTN_W, PROFILE_BTN_H, PANEL_BORDER);
-                Component label = Component.translatable("maid_file_manager.gui.button.profile");
-                int tx = bx + (PROFILE_BTN_W - MaidFileManagerScreen.this.font.width(label)) / 2;
-                graphics.drawString(MaidFileManagerScreen.this.font, label, tx,
-                        by + (PROFILE_BTN_H - 8) / 2, TEXT_COLOR, false);
-            }
-
-            /** 是否命中行内「档案」按钮 */
-            private boolean isProfileButtonHit(double mouseX, double mouseY) {
-                if (lastTop < 0) {
-                    return false;
-                }
-                int rowRight = FileListWidget.this.listX + FileListWidget.this.listW;
-                // 窄屏（列表区放不下按钮+文字）时不画/不命中「档案」按钮
-                if (listW < 190) {
-                    return false;
-                }
-                int bx = rowRight - PROFILE_BTN_W - 4;
-                int by = lastTop + (lastHeight - PROFILE_BTN_H) / 2;
-                return mouseX >= bx && mouseX <= bx + PROFILE_BTN_W
-                        && mouseY >= by && mouseY <= by + PROFILE_BTN_H;
-            }
-
-            /** 打开该导入文件内的档案快照（只读预览；文件无档案数据时提示） */
-            /** 打开该导入文件内的档案快照（只读预览；文件无档案数据时提示） */
-            private void openOfflineProfile() {
-                // readMaidFile 要解 GZIP + 解析 NBT，必须离开渲染线程（第六轮 M8）。
-                final Path snapGameDir = MaidFileManagerScreen.this.minecraft != null
-                        ? MaidFileManagerScreen.this.minecraft.gameDirectory.toPath().toAbsolutePath() : null;
-                final String snapFileName = fileName;
-                if (snapGameDir == null) {
-                    return;
-                }
-                Thread snapWorker = new Thread(() -> {
-                    MaidProfileView view = null;
-                    boolean noProfile = false;
-                    try {
-                        Path dir = MaidFileIo.ensureImportsDir(snapGameDir);
-                        Path file = dir.resolve(snapFileName).normalize();
-                        if (!file.startsWith(dir)) {
-                            return;
-                        }
-                        MaidFileData data = MaidFileIo.readMaidFile(file);
-                        if (data == null) {
-                            return;
-                        }
-                        if (data.getProfile() == null) {
-                            noProfile = true;
-                        } else {
-                            view = MaidProfileScreen.buildOfflineView(data);
-                        }
-                    } catch (Throwable t) {
-                        Constants.LOG.warn("[maid_file_manager] 打开导入文件档案失败: {}", t.toString());
-                        return;
-                    }
-                    if (MaidFileManagerScreen.this.minecraft == null) {
-                        return;
-                    }
-                    final MaidProfileView outView = view;
-                    final boolean outNoProfile = noProfile;
-                    MaidFileManagerScreen.this.minecraft.execute(() -> {
-                        if (outNoProfile) {
-                            MaidFileManagerScreen.this.setFeedback(
-                                    Component.translatable("maid_file_manager.profile.not_in_file"));
-                            return;
-                        }
-                        if (outView == null || MaidFileManagerScreen.this.minecraft == null) {
-                            return;
-                        }
-                        MaidFileManagerScreen.this.minecraft.setScreen(
-                                new MaidProfileScreen(MaidFileManagerScreen.this, outView));
-                    });
-                }, "maidfm-snapshot-read");
-                snapWorker.setDaemon(true);
-                snapWorker.start();
-            }
-
-            @Override
-            public boolean isMouseOver(double mouseX, double mouseY) {
-                int rowX = FileListWidget.this.listX;
-                int rowW = FileListWidget.this.listW;
-                return mouseX >= rowX && mouseX <= rowX + rowW - 5
-                        && this.lastTop >= 0
-                        && mouseY >= this.lastTop - 2
-                        && mouseY <= this.lastTop + this.lastHeight + 2;
-            }
-
-            @Override
-            public boolean mouseClicked(double mouseX, double mouseY, int button) {
-                // 命中「档案」按钮 → 打开该文件内的档案快照（只读），不再触发勾选
-                if (button == 0 && isProfileButtonHit(mouseX, mouseY)) {
-                    openOfflineProfile();
-                    return true;
-                }
-                boolean newVal = !selectedImportFileNames.contains(fileName);
-                toggleFileRowSelection(fileName, newVal);
-                return true;
-            }
-
-            @Override
-            public Component getNarration() {
-                boolean sel = selectedImportFileNames.contains(fileName);
-                return Component.translatable(sel
-                        ? "maid_file_manager.gui.label.selected"
-                        : "maid_file_manager.gui.label.not_selected").append(fileName);
-            }
-        }
-    }
 
     // ============= 左上角「🌐 统一导出」入口 → 独立确认界面 / 返回单独导出（模式动态切换，按需求新增） =============
 
