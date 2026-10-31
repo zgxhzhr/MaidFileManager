@@ -674,19 +674,8 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
-                    // 频次限制：这类请求在主线程同步跑，循环发包能把服务器卡死（不需 OP）
-                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "maid_profile", 1000L)) {
-                        return;
-                    }
                     try {
-                        EntityMaid maid = resolveOwnedMaid(sp, entityId);
-                        MaidProfileView view = maid == null ? null : MaidProfileService.buildView(sp, maid);
-                        if (view == null) {
-                            // 女仆不存在或非请求者所有：直接拒绝，不泄露任何档案内容
-                            feedback(sp, Component.translatable("gui.maid_file_manager.profile.no_permission"));
-                            return;
-                        }
-                        PacketDistributor.sendToPlayer(sp, new MaidProfilePayload(view));
+                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestMaidProfile(sp, entityId);
                     } catch (Throwable t) {
                         handleError(sp, "REQUEST_MAID_PROFILE", t);
                     }
@@ -721,18 +710,7 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
-                        if (profile == null) {
-                            feedback(sp, Component.translatable("gui.maid_file_manager.profile.save_failed"));
-                            return;
-                        }
-                        EntityMaid maid = resolveOwnedMaid(sp, entityId);
-                        if (maid == null) {
-                            feedback(sp, Component.translatable("gui.maid_file_manager.profile.no_permission"));
-                            return;
-                        }
-                        // 档案界面保存：背景故事同步写回 TLM AI 人设，保证双向一致
-                        MaidProfileService.writeToMaid(maid, profile, true);
-                        feedback(sp, Component.translatable("gui.maid_file_manager.profile.save_ok"));
+                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.saveMaidProfile(sp, entityId, profile);
                     } catch (Throwable t) {
                         handleError(sp, "SAVE_MAID_PROFILE", t);
                     }

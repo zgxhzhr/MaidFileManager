@@ -33,4 +33,10 @@ public final class NeoForgeServerMessaging implements ServerMessaging {
         net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
                 player, new io.github.zgxhzhr.maidfm.network.MaidFilePayloads.MaidListPayload(list));
     }
+
+    @Override
+    public void sendMaidProfile(ServerPlayer player, io.github.zgxhzhr.maidfm.data.MaidProfileView view) {
+        net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
+                player, new io.github.zgxhzhr.maidfm.network.MaidFilePayloads.MaidProfilePayload(view));
+    }
 }
