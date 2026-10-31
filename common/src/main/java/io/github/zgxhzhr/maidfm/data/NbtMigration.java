@@ -54,7 +54,14 @@ public final class NbtMigration {
             "equipment",
     };
 
-    /** 日程/家园位置：跨版本一律删除，由导入主流程按出生点重建 */
+    /**
+     * 日程/家园位置：**一律删除**（不是只在跨版本时）。
+     *
+     * <p>这些键指向源存档的坐标；导入后女仆位置由主流程按玩家前方重新计算
+     * （findSafeSpawnPos + setPos），旧坐标在新世界里没有意义——保留反而会让
+     * 工作点/睡觉点/家位置指向错误地点。原注释写的「跨版本」与下面无条件执行的
+     * 实现不符，已更正。
+     */
     private static final String[] SCHEDULE_TAGS_TO_REMOVE = {
             "MaidSchedulePos", "MaidWorkPos", "MaidIdlePos", "MaidSleepPos",
             "MaidRestrictPos", "MaidRestrictCenter", "MaidRestrictRadius",

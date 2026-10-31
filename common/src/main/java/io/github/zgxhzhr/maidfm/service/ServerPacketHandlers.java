@@ -276,7 +276,10 @@ public final class ServerPacketHandlers {
         try {
             MaidFileData data = MaidTransferService.exportMaidToData(player, entityId);
             if (data != null) {
-                sendExportResults(player, List.of(data));
+                if (!sendExportResults(player, List.of(data))) {
+                    // 同上：整批（这里只有一只）失败时不再补发「未导出」说明
+                    MigrationNoteCollector.take();
+                }
             } else {
                 PacketSender.sendFeedback(player,
                         Component.translatable("maid_file_manager.export.fail.unknown"));
@@ -293,24 +296,30 @@ public final class ServerPacketHandlers {
      * 那些路径上累积器里同样有内容，漏发就会残留到下一次导出。
      */
     private static void flushExportMigrationNotes(ServerPlayer player) {
-        List<Component> notes = MigrationNoteCollector.take();
-        if (notes.isEmpty()) {
-            return;
-        }
-        net.minecraft.network.chat.MutableComponent msg =
-                Component.translatable("maid_file_manager.export.migration_details");
-        int shown = Math.min(notes.size(), 5);
-        for (int i = 0; i < shown; i++) {
-            if (i > 0) {
-                msg.append(Component.translatable("maid_file_manager.list_separator.newline"));
+        // 包一层 try/catch：这个方法在 finally 里调用，若它自己抛异常会顶替 try 里的原异常，
+        // 让真正的失败原因消失在日志里。
+        try {
+            List<Component> notes = MigrationNoteCollector.take();
+            if (notes.isEmpty()) {
+                return;
             }
-            msg.append(notes.get(i));
+            net.minecraft.network.chat.MutableComponent msg =
+                    Component.translatable("maid_file_manager.export.migration_details");
+            int shown = Math.min(notes.size(), 5);
+            for (int i = 0; i < shown; i++) {
+                if (i > 0) {
+                    msg.append(Component.translatable("maid_file_manager.list_separator.newline"));
+                }
+                msg.append(notes.get(i));
+            }
+            if (notes.size() > shown) {
+                msg.append(Component.translatable(
+                        "maid_file_manager.export.migration.more", notes.size() - shown));
+            }
+            PacketSender.sendFeedback(player, msg);
+        } catch (Throwable t) {
+            Constants.LOG.warn("[maid_file_manager] 导出迁移说明发送失败（已忽略，不影响导出本身）: {}", t.toString());
         }
-        if (notes.size() > shown) {
-            msg.append(Component.translatable(
-                    "maid_file_manager.export.migration.more", notes.size() - shown));
-        }
-        PacketSender.sendFeedback(player, msg);
     }
 
     /**
@@ -348,6 +357,9 @@ public final class ServerPacketHandlers {
                 }
             }
             if (!sendExportResults(player, results)) {
+                // 整批导出失败时不要再补一条「X 的数据未能导出」——
+                // 那条会让人以为「只有 X 没导出、其余成功」，实际整批都没导出。
+                MigrationNoteCollector.take();
                 return;
             }
             // 空批次绝不能登记待删：客户端对空结果不发 ack，登记项会一直占到 TTL 过期，
