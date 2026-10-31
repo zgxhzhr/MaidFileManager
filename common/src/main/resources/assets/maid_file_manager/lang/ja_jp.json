@@ -262,5 +262,14 @@
   "gui.maid_file_manager.backup.help.line8": "成功するとそのプレイヤーの全バックアップが名前で表示され、キャッシュされます。",
   "gui.maid_file_manager.backup.help.line9": "「一致するプレイヤーなし」は名前の誤りか、そのプレイヤーのセーブが無いことを意味します。",
   "gui.maid_file_manager.backup.help.line10": "上の検索欄は一覧の絞り込み専用で、照会は発生しません。",
-  "gui.maid_file_manager.backup.help.btn": "説明"
+  "gui.maid_file_manager.backup.help.btn": "説明",
+  "maid_file_manager.import.migration_details": "。他のMODデータの説明：",
+  "maid_file_manager.import.migration.no_provider": "%s：このデータを扱うMODが導入されていないため、スキップしました。",
+  "maid_file_manager.import.migration.provider_unavailable": "%s：このデータを提供するMODが導入されていないため、スキップしました。",
+  "maid_file_manager.import.migration.failed": "%s：移行に失敗しました（%s）。",
+  "maid_file_manager.import.migration.failed_unclassified": "%s：移行に失敗しました。詳細はサーバーログを参照してください。",
+  "maid_file_manager.import.migration.more": "（他 %s 件）",
+  "maid_file_manager.export.migration.failed": "%s のデータをエクスポートできませんでした（MODがエラーを報告）。",
+  "maid_file_manager.export.migration_details": "。他のMODデータの説明：",
+  "maid_file_manager.export.migration.more": "（他 %s 件）"
 }

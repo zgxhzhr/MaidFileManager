@@ -548,6 +548,48 @@ def _check_spi(port_root):
     return (count, problems)
 
 
+def _check_lang_sets(port_root):
+    """检查各语言文件的键集是否一致。
+
+    这是血泪教训：加新文案键时只改了 zh_cn 和 en_us，忘了 zh_tw / zh_hk / lzh / ja_jp。
+    Minecraft 的回退规则是「缺键 → 回退 en_us」（不是 zh_cn），所以繁体/文言文/日文玩家
+    会突然看到英文，而编译器、selfTest、包依赖检查全都看不见——lang 是纯资源文件。
+
+    返回 (基准文件名, 基准键数, 问题列表)。没有 lang 目录时返回 None。
+    """
+    import json
+    lang_dir = os.path.join(port_root, "common", "src", "main", "resources",
+                            "assets", "maid_file_manager", "lang")
+    if not os.path.isdir(lang_dir):
+        return None
+    files = sorted(f for f in os.listdir(lang_dir) if f.endswith(".json"))
+    if len(files) < 2:
+        return None
+    # 以 zh_cn 为基准（主语言），缺失则退回 en_us
+    base = "zh_cn.json" if "zh_cn.json" in files else ("en_us.json" if "en_us.json" in files else files[0])
+    try:
+        with io.open(os.path.join(lang_dir, base), encoding="utf-8") as f:
+            base_keys = set(json.load(f).keys())
+    except Exception as e:
+        return (base, 0, ["%s 解析失败: %s" % (base, e)])
+    problems = []
+    for fn in files:
+        if fn == base:
+            continue
+        try:
+            with io.open(os.path.join(lang_dir, fn), encoding="utf-8") as f:
+                keys = set(json.load(f).keys())
+        except Exception as e:
+            problems.append("%s 解析失败: %s" % (fn, e))
+            continue
+        missing = sorted(base_keys - keys)
+        if missing:
+            # 缺键会让玩家看到 en_us 文案（回退），不是崩溃，但属于漏翻译
+            problems.append("%s 缺 %d 个键（会回退到英文）：%s"
+                            % (fn, len(missing), ", ".join(missing[:4]) + ("…" if len(missing) > 4 else "")))
+    return (base, len(base_keys), problems)
+
+
 def cmd_arch(args):
     check_all = "--all" in args
     ports = list(PORTS.keys()) if check_all else [MASTER]
@@ -642,7 +684,26 @@ def cmd_arch(args):
         else:
             print("    [ OK ] %-18s %d 个 services 文件，接口与实现均存在" % (port, n))
 
-    # 5) 六端包结构一致
+    # 5) lang 键集一致性（纯资源文件，编译与断言都看不见）
+    print()
+    print("--- 语言文件键集一致性")
+    lang_fail = False
+    for port in ports:
+        r = _check_lang_sets(port_root(port))
+        if r is None:
+            continue
+        base, n, probs = r
+        if probs:
+            lang_fail = True
+            print("    [FAIL] %s（基准 %s，%d 键）" % (port, base, n))
+            for pr in probs:
+                print("           " + pr)
+        else:
+            print("    [ OK ] %-18s 全部语言文件键集一致（基准 %s，%d 键）" % (port, base, n))
+    if lang_fail:
+        failed = True
+
+    # 6) 六端包结构一致
     if len(pkg_sets) > 1:
         print()
         print("--- 六端包结构一致性")
