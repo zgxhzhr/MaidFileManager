@@ -270,7 +270,7 @@
   "maid_file_manager.import.migration.failed_unclassified": "%s：其錄未盡遷，其故見司權者之記。",
   "maid_file_manager.import.migration.more": "（另有 %s 條之說）",
   "maid_file_manager.export.migration.failed": "%s 之錄未能出（該模組有失）。",
-  "maid_file_manager.export.migration_details": "。他模組之文說：",
+  "maid_file_manager.export.migration_details": "他模組之文說：",
   "maid_file_manager.export.migration.more": "（另有 %s 條之說）",
   "maid_file_manager.import.migration.provider_note": "%s：%s",
   "maid_file_manager.export.quota_exceeded": "出之錄有 %s 逾納入之限（%s KB），此檔後或不可復納。"
