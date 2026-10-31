@@ -272,5 +272,6 @@
   "maid_file_manager.export.migration.failed": "%s 的数据未能导出（该模组报错）。",
   "maid_file_manager.export.migration_details": "。其他模组数据说明：",
   "maid_file_manager.export.migration.more": "（另有 %s 条说明）",
-  "maid_file_manager.import.migration.provider_note": "%s：%s"
+  "maid_file_manager.import.migration.provider_note": "%s：%s",
+  "maid_file_manager.export.quota_exceeded": "导出数据解压后约 %s KB，超过导入读取上限 %s KB —— 这个文件以后可能无法再导入。"
 }
