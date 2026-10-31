@@ -1,10 +1,12 @@
 package io.github.zgxhzhr.maidfm.network;
 
 import io.github.zgxhzhr.maidfm.Constants;
+import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
 import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import io.github.zgxhzhr.maidfm.platform.PacketSender;
+import io.github.zgxhzhr.maidfm.service.BaubleHandler;
 import io.github.zgxhzhr.maidfm.service.MaidProfileService;
 import io.github.zgxhzhr.maidfm.service.MaidTransferService;
 
@@ -102,5 +104,62 @@ public final class ServerPacketHandlers {
             return;
         }
         PacketSender.sendMaidProfile(player, view);
+    }
+
+    /**
+     * 处理「修改单个布尔配置项」（OP 操作，改完广播全服）。
+     *
+     * <p>未知键直接回执失败、**不广播**：若把旧配置重新广播一遍，客户端会以为修改生效了。
+     */
+    public static void setServerConfig(ServerPlayer player, String key, boolean value) {
+        if (player == null) {
+            return;
+        }
+        if (!PacketSender.hasOpPermission(player)) {
+            Constants.LOG.warn("[maid_file_manager] SET_SERVER_CONFIG rejected (no OP): player={} key={}",
+                    player.getName().getString(), key);
+            PacketSender.sendFeedback(player,
+                    Component.translatable("maid_file_manager.config.fail.no_permission"));
+            return;
+        }
+        if (!MaidConfigManager.setServerConfig(key, value)) {
+            PacketSender.sendFeedback(player,
+                    Component.translatable("maid_file_manager.server.unknown_config"));
+            return;
+        }
+        PacketSender.broadcastServerConfigTo(player);
+    }
+
+    /**
+     * 处理「修改字符串列表配置项」（OP 操作，改完广播全服）。
+     *
+     * <p>客户端提交的列表可被篡改，必须按标识符字符集收窄后再保存。
+     * 整合包管理的黑名单不在此写入（由 bauble_import.json 托管、游戏内只读）。
+     */
+    public static void setServerListConfig(ServerPlayer player, String key, List<String> ids) {
+        if (player == null) {
+            return;
+        }
+        if (!PacketSender.hasOpPermission(player)) {
+            Constants.LOG.warn("[maid_file_manager] SET_SERVER_LIST_CONFIG rejected (no OP): player={}, key={}",
+                    player.getName().getString(), key);
+            PacketSender.sendFeedback(player,
+                    Component.translatable("maid_file_manager.config.fail.no_permission"));
+            return;
+        }
+        List<String> values;
+        if (MaidConfigManager.KEY_BAUBLE_BLOCKED_LIST.equals(key)) {
+            // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读
+            values = BaubleHandler.sanitizeBaubleBlockedList(ids);
+        } else if (MaidConfigManager.KEY_BAUBLE_BLOCKED_NAMESPACES.equals(key)
+                || MaidConfigManager.KEY_BAUBLE_BLOCKED_CURIOS_SLOTS.equals(key)) {
+            // 模组 / 槽位清单：客户端提交可被篡改，服务端按标识符字符集收窄
+            values = MaidTransferService.sanitizeIdentifierList(ids);
+        } else {
+            Constants.LOG.warn("[maid_file_manager] SET_SERVER_LIST_CONFIG rejected (unknown key): {}", key);
+            return;
+        }
+        MaidConfigManager.setServerListConfig(key, values);
+        PacketSender.broadcastServerConfigTo(player);
     }
 }

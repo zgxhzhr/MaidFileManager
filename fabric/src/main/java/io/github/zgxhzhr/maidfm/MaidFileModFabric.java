@@ -228,40 +228,14 @@ public class MaidFileModFabric implements ModInitializer {
         registerC2SReceiver(MaidFilePackets.ID_SET_SERVER_CONFIG, (server, player, buf) -> {
             String key = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
             boolean value = buf.readBoolean();
-            if (!player.hasPermissions(2)) {
-                sendFeedback(player, Component.translatable("maid_file_manager.config.fail.no_permission"));
-                return;
-            }
-            // 未知键直接回执失败，不得把旧配置向全服重新广播
-            if (!MaidConfigManager.setServerConfig(key, value)) {
-                sendFeedback(player, Component.translatable("maid_file_manager.server.unknown_config"));
-                return;
-            }
-            broadcastServerConfig(server);
+            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.setServerConfig(player, key, value);
         });
 
         // OP 修改自己维护的禁用清单（物品 / 模组 / Curios 槽位）：权限校验 → 收窄写入 → 广播同步
         registerC2SReceiver(MaidFilePackets.ID_SET_SERVER_BAUBLE_BLOCKED_LIST, (server, player, buf) -> {
             String listKey = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
-            List<String> ids = MaidFilePackets.readStringList(buf);
-            if (!player.hasPermissions(2)) {
-                sendFeedback(player, Component.translatable("maid_file_manager.config.fail.no_permission"));
-                return;
-            }
-            List<String> values;
-            if (MaidConfigManager.KEY_BAUBLE_BLOCKED_LIST.equals(listKey)) {
-                // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读
-                values = BaubleHandler.sanitizeBaubleBlockedList(ids);
-            } else if (MaidConfigManager.KEY_BAUBLE_BLOCKED_NAMESPACES.equals(listKey)
-                    || MaidConfigManager.KEY_BAUBLE_BLOCKED_CURIOS_SLOTS.equals(listKey)) {
-                // 模组 / 槽位清单：客户端提交可被篡改，服务端按标识符字符集收窄
-                values = MaidTransferService.sanitizeIdentifierList(ids);
-            } else {
-                Constants.LOG.warn("[maid_file_manager] SET_SERVER_LIST_CONFIG rejected (unknown key): {}", listKey);
-                return;
-            }
-            MaidConfigManager.setServerListConfig(listKey, values);
-            broadcastServerConfig(server);
+            java.util.List<String> ids = MaidFilePackets.readStringList(buf);
+            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.setServerListConfig(player, listKey, ids);
         });
 
         // OP 统一导出：返回所有在线玩家（以各玩家为中心）的女仆分组列表
@@ -465,7 +439,7 @@ public class MaidFileModFabric implements ModInitializer {
     }
 
     /** 把服务端配置单播给指定玩家（登录同步用） */
-    private static void sendServerConfig(ServerPlayer player) {
+    public static void sendServerConfig(ServerPlayer player) {
         if (player == null) {
             return;
         }
@@ -492,13 +466,9 @@ public class MaidFileModFabric implements ModInitializer {
     }
 
     /** 把服务端配置同步给所有在线玩家（OP 改配置后用） */
-    private static void broadcastServerConfig(MinecraftServer server) {
-        if (server == null) {
-            return;
-        }
-        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
-            sendServerConfig(p);
-        }
+    public static void broadcastServerConfig(MinecraftServer server) {
+        // 遍历逻辑已下沉到 PacketSender.broadcastServerConfig（六端共用一份）
+        io.github.zgxhzhr.maidfm.platform.PacketSender.broadcastServerConfig(server);
     }
 
     private static void sendFeedback(ServerPlayer player, Component message) {

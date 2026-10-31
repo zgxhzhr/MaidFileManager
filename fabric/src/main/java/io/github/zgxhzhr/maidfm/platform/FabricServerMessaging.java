@@ -53,4 +53,19 @@ public final class FabricServerMessaging implements ServerMessaging {
                 player, io.github.zgxhzhr.maidfm.network.MaidPayload.of(
                         io.github.zgxhzhr.maidfm.network.MaidFilePackets.ID_MAID_PROFILE, out));
     }
+
+    @Override
+    public void sendServerConfig(ServerPlayer player) {
+        io.github.zgxhzhr.maidfm.MaidFileModFabric.sendServerConfig(player);
+    }
+
+    @Override
+    public boolean hasOpPermission(ServerPlayer player) {
+        return player != null && player.hasPermissions(2);
+    }
+
+    @Override
+    public net.minecraft.server.MinecraftServer serverOf(ServerPlayer player) {
+        return player == null ? null : player.server;
+    }
 }
