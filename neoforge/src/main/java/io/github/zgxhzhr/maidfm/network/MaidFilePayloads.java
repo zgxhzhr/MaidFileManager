@@ -46,13 +46,13 @@ public final class MaidFilePayloads {
     /** 向玩家回执一条反馈 */
     /** 发送反馈（实现已收敛到 PacketSender） */
     private static void feedback(ServerPlayer sp, Component message) {
-        io.github.zgxhzhr.maidfm.platform.PacketSender.sendFeedback(sp, message);
+        io.github.zgxhzhr.maidfm.service.PacketSender.sendFeedback(sp, message);
     }
 
     /** 批量导入 + 删除源文件：汇总文案 + 逐项 spawned 标志（顺序与请求对齐） */
     /** 发送批量导入结果（实现已收敛到 PacketSender） */
     private static void sendImportBatchResult(ServerPlayer sp, Component summary, List<Boolean> spawned) {
-        io.github.zgxhzhr.maidfm.platform.PacketSender.sendImportBatchResult(sp, summary, spawned);
+        io.github.zgxhzhr.maidfm.service.PacketSender.sendImportBatchResult(sp, summary, spawned);
     }
 
     /**
@@ -844,7 +844,7 @@ public final class MaidFilePayloads {
     /** 把服务端配置同步给所有在线玩家（OP 改配置后用） */
     public static void broadcastServerConfig(MinecraftServer server) {
         // 遍历逻辑已下沉到 PacketSender.broadcastServerConfig（六端共用一份）
-        io.github.zgxhzhr.maidfm.platform.PacketSender.broadcastServerConfig(server);
+        io.github.zgxhzhr.maidfm.service.PacketSender.broadcastServerConfig(server);
     }
 
     public record MaidListPayload(java.util.List<io.github.zgxhzhr.maidfm.data.MaidInfo> list)

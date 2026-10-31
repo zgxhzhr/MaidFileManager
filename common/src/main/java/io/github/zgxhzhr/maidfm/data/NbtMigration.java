@@ -64,7 +64,8 @@ public final class NbtMigration {
     private NbtMigration() {}
     public static CompoundTag migrate(CompoundTag data, int sourceVersion, int targetVersion,
                                       CuriosBaubleFilter.Stats curiosStatsOut,
-                                      CuriosItemPolicy curiosPolicy, boolean stripAttributes) {
+                                      CuriosItemPolicy curiosPolicy, boolean stripAttributes,
+                                      boolean carryCurios) {
         if (data == null) {
             return null;
         }
@@ -85,7 +86,7 @@ public final class NbtMigration {
         // Curios 饰品：导入侧按同一规则再裁剪一次（防御纵深）。
         // 旧版本导出的 .maid 文件可能仍带着 Curios 载荷，未声明的命名空间不得借文件绕过本地注册表。
         CuriosBaubleFilter.Result curiosResult = CuriosBaubleFilter.strip(out,
-                io.github.zgxhzhr.maidfm.config.MaidConfigManager.isCarryCurios(),
+                carryCurios,
                 curiosPolicy, stripAttributes);
         if (curiosStatsOut != null) {
             curiosStatsOut.add(curiosResult);
