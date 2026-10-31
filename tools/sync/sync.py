@@ -636,12 +636,21 @@ def cmd_verify(args):
                 if "[FAIL]" in line:
                     print("      " + line.strip())
     print()
+    print("=" * 78)
+    print("架构检查（包依赖）")
+    print("=" * 78)
+    arch_rc = cmd_arch(["--all"])
+    arch_ok = (arch_rc == 0)
+
+    print()
     allc = all(compile_ok.values())
     allt = all(test_ok.get(p, True) for p in PORTS)
     print("=" * 78)
-    print("编译: %s    selfTest: %s" % ("全部通过" if allc else "有失败",
-                                        "全部通过" if allt else "有失败"))
-    return 0 if allc and allt else 1
+    print("编译: %s    selfTest: %s    架构: %s"
+          % ("全部通过" if allc else "有失败",
+             "全部通过" if allt else "有失败",
+             "通过" if arch_ok else "失败"))
+    return 0 if (allc and allt and arch_ok) else 1
 
 
 def cmd_report(args):
