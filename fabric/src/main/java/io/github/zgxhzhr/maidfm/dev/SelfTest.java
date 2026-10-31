@@ -1,6 +1,7 @@
 package io.github.zgxhzhr.maidfm.dev;
 
 import io.github.zgxhzhr.maidfm.spi.MaidMigrationException;
+import io.github.zgxhzhr.maidfm.spi.MigrationReporter;
 import io.github.zgxhzhr.maidfm.data.MaidFileIo;
 import io.github.zgxhzhr.maidfm.data.NbtMigration;
 import io.github.zgxhzhr.maidfm.data.NbtVersion;
@@ -95,6 +96,7 @@ public final class SelfTest {
         testExportFileName();
         testMigrationNotes();
         testMigrationNoteCollector();
+        testMigrationReporter();
 
         System.out.println();
         System.out.printf("结果：%d 通过，%d 失败%n", passed, failed);
@@ -1428,5 +1430,26 @@ public final class SelfTest {
         MigrationNoteCollector.add(Component.literal("x"));
         MigrationNoteCollector.discard();
         check("discard 清掉残留", () -> MigrationNoteCollector.take().isEmpty());
+    }
+
+    /**
+     * 非失败备注回调（provider 报「成功但有缺项」）。
+     *
+     * <p>这个接口本身是 {@code @FunctionalInterface}，能当 lambda 用是编译期就保证的；
+     * 这里额外验证它在运行期能正常收下并保留文本（框架之后的过滤逻辑依赖这一点）。
+     */
+    private static void testMigrationReporter() {
+        System.out.println("\n-- spi.MigrationReporter（非失败备注） --");
+
+        java.util.List<String> captured = new java.util.ArrayList<>();
+        MigrationReporter reporter = captured::add;
+        reporter.note("归档已导入，但有 3 张图片未能迁移");
+        check("Reporter 能收下说明", () -> captured.size() == 1);
+        check("说明文本原样保留",
+                () -> "归档已导入，但有 3 张图片未能迁移".equals(captured.get(0)));
+
+        // 多次上报按调用顺序累积（框架会把每个 key 的说明分别拼进提示）
+        reporter.note("第二条");
+        check("多次上报累积", () -> captured.size() == 2);
     }
 }
