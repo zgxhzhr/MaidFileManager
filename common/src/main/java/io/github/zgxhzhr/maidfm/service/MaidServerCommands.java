@@ -251,6 +251,9 @@ public final class MaidServerCommands {
         // 附加数据未带上：这条路径是服务端写盘，不能静默
         List<Component> migrationNotes = io.github.zgxhzhr.maidfm.data.MigrationNoteCollector.take();
         if (!migrationNotes.isEmpty()) {
+            // export.migration_details 是给「独立提示」用的，不带前导句号；
+            // 这条命令路径是把它追加到上一次输出末尾，所以这里自己补一个断句。
+            out.append(Component.literal("。"));
             out.append(Component.translatable("maid_file_manager.export.migration_details"));
             int shown = Math.min(migrationNotes.size(), 5);
             for (int i = 0; i < shown; i++) {
