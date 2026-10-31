@@ -62,7 +62,7 @@ public class MaidFileModFabric implements ModInitializer {
             java.util.UUID uuid = handler.player.getUUID();
             MaidConfigManager.removeClientConsent(uuid);
             io.github.zgxhzhr.maidfm.service.ChunkedUploadDispatcher.onPlayerDisconnect(uuid);
-            MaidFilePayloads.clearPendingRemoval(uuid);
+            io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.clear(uuid);
         });
 
         // 配置初始化（gameDir：专用服务器=服务器根目录；客户端=.minecraft）
