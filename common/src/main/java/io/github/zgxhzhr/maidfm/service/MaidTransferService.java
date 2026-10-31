@@ -781,30 +781,56 @@ public final class MaidTransferService {
                 }
             }
         }
-        // 附属模组扩展数据导入：遍历 extras，按 provider id 匹配并写回
+        // 附属模组扩展数据导入：遍历 extras，按 provider id 匹配并写回。
+        //
+        // 这里**不能静默**：以前 provider 未注册 / 模组没装 / 抛异常都只写服务端日志，
+        // 玩家看到的是「导入成功」，完全不知道有段数据没跟过来。
+        // 现在把每种情况都记进 migrationNotes，最后由 buildBatchSummary / withImportDetails
+        // 汇总给玩家看。表达方式一律用 extras 的 key（形如 modId:path），
+        // 不写死任何模组名——换任何附属模组都是同一套代码。
+        List<Component> migrationNotes = new ArrayList<>();
         CompoundTag extras = data.getExtras();
         if (extras != null) {
             for (String key : extras.getAllKeys()) {
                 net.minecraft.resources.ResourceLocation rl =
                         net.minecraft.resources.ResourceLocation.tryParse(key);
-                MaidMigrationProvider p = MaidMigrationRegistry.get(rl);
+                MaidMigrationProvider p = rl == null ? null : MaidMigrationRegistry.get(rl);
+                if (p == null) {
+                    // 目标环境没有这个 provider：没装对应模组，或者模组没注册
+                    migrationNotes.add(Component.translatable(
+                            "maid_file_manager.import.migration.no_provider", key));
+                    Constants.LOG.info("[maid_file_manager] 附加数据 {} 无对应 provider，未迁移", key);
+                    continue;
+                }
                 // isAvailable() 必须包在 try 里：它是第三方模组实现，抛异常会从这里直接逃逸，
                 // 而此刻女仆**已经 addFreshEntity 入世界**了 → 调用方重试会产生重复女仆（第六轮 D2）。
                 boolean providerAvailable;
                 try {
-                    providerAvailable = p != null && p.isAvailable();
+                    providerAvailable = p.isAvailable();
                 } catch (Throwable t) {
-                    Constants.LOG.warn("[maid_file_manager] provider {} 的 isAvailable() 抛异常，按不可用跳过: {}", key, t.toString());
+                    Constants.LOG.warn("[maid_file_manager] provider {} 的 isAvailable() 抛异常，按不可用处理: {}", key, t.toString());
                     providerAvailable = false;
                 }
                 if (!providerAvailable) {
-                    // 软依赖：对应 provider 未注册或模组未加载，跳过该段数据
+                    // 软依赖：provider 注册了但依赖的模组没装
+                    migrationNotes.add(Component.translatable(
+                            "maid_file_manager.import.migration.provider_unavailable", key));
                     continue;
                 }
                 try {
                     p.importData(maid, extras.getCompound(key));
+                } catch (io.github.zgxhzhr.maidfm.spi.MaidMigrationException e) {
+                    // 专用异常：可预期的业务失败，message 是写给玩家看的
+                    Constants.LOG.warn("[maid_file_manager] provider {} 迁移失败 code={}: {}",
+                            key, e.code(), e.getMessage());
+                    migrationNotes.add(Component.translatable(
+                            "maid_file_manager.import.migration.failed", key,
+                            e.getMessage() == null ? e.code() : e.getMessage()));
                 } catch (Throwable t) {
-                    Constants.LOG.warn("[maid_file_manager] provider {} 导入失败（已跳过）: {}", key, t.toString());
+                    // 未分类异常：多半是 provider 自己的 bug，不给玩家看栈信息
+                    Constants.LOG.warn("[maid_file_manager] provider {} 迁移抛未分类异常: {}", key, t.toString());
+                    migrationNotes.add(Component.translatable(
+                            "maid_file_manager.import.migration.failed_unclassified", key));
                 }
             }
         }
@@ -843,6 +869,8 @@ public final class MaidTransferService {
         if (!baubleNotes.isEmpty()) {
             result = result.withBaubleNotes(baubleNotes);
         }
+        // 附加数据未迁移说明：同上，为空时 withMigrationNotes 直接返回自身
+        result = result.withMigrationNotes(migrationNotes);
         return result;
     }
 
@@ -1441,6 +1469,29 @@ public final class MaidTransferService {
             }
             if (failDetails.size() > shown) {
                 detail.append(Component.translatable("maid_file_manager.import.batch.more_failures", failDetails.size()));
+            }
+            summary.append(detail);
+        }
+        // 附加数据未迁移说明：所有文件汇总，最多展示前 5 条
+        List<Component> migrationDetails = new ArrayList<>();
+        for (ImportResult r : results) {
+            if (r.migrationNotes() != null) {
+                migrationDetails.addAll(r.migrationNotes());
+            }
+        }
+        if (!migrationDetails.isEmpty()) {
+            net.minecraft.network.chat.MutableComponent detail =
+                    Component.translatable("maid_file_manager.import.migration_details");
+            int shown = Math.min(migrationDetails.size(), 5);
+            for (int i = 0; i < shown; i++) {
+                if (i > 0) {
+                    detail.append(Component.translatable("maid_file_manager.list_separator.newline"));
+                }
+                detail.append(migrationDetails.get(i));
+            }
+            if (migrationDetails.size() > shown) {
+                detail.append(Component.translatable(
+                        "maid_file_manager.import.migration.more", migrationDetails.size() - shown));
             }
             summary.append(detail);
         }

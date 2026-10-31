@@ -15,8 +15,12 @@ import java.util.List;
  * @param message         用于 FEEDBACK 展示的文案（已按服务端语言本地化）
  * @param baublesStripped 是否发生了「请求保留饰品但被服务端配置剥离」
  * @param baubleNotes     饰品逐件处理说明（禁止携带/还原全新/无法解析等），为空表示全部正常保留
+ * @param migrationNotes  附属模组附加数据未迁移的说明（未注册 / 依赖未装 / 迁移失败）。
+ *                        为空表示所有附加数据都正常迁移或压根没有附加数据。
+ *                        这是内存对象，不进 .maid 也不上线，只用于拼反馈文案。
  */
-public record ImportResult(State state, Component message, boolean baublesStripped, List<Component> baubleNotes) {
+public record ImportResult(State state, Component message, boolean baublesStripped,
+                           List<Component> baubleNotes, List<Component> migrationNotes) {
 
     public enum State {
         /** 导入成功且主人关系已匹配 */
@@ -30,27 +34,36 @@ public record ImportResult(State state, Component message, boolean baublesStripp
     }
 
     public static ImportResult ok(Component message) {
-        return new ImportResult(State.OK, message, false, List.of());
+        return new ImportResult(State.OK, message, false, List.of(), List.of());
     }
 
     public static ImportResult okUntamed(Component message) {
-        return new ImportResult(State.OK_UNTAMED, message, false, List.of());
+        return new ImportResult(State.OK_UNTAMED, message, false, List.of(), List.of());
     }
 
     public static ImportResult disallowed(Component message) {
-        return new ImportResult(State.SERVER_DISALLOWED, message, false, List.of());
+        return new ImportResult(State.SERVER_DISALLOWED, message, false, List.of(), List.of());
     }
 
     public static ImportResult failed(Component message) {
-        return new ImportResult(State.FAILED, message, false, List.of());
+        return new ImportResult(State.FAILED, message, false, List.of(), List.of());
     }
 
     public ImportResult withBaublesStripped() {
-        return new ImportResult(state, message, true, baubleNotes);
+        return new ImportResult(state, message, true, baubleNotes, migrationNotes);
     }
 
     public ImportResult withBaubleNotes(List<Component> notes) {
-        return new ImportResult(state, message, baublesStripped, notes == null ? List.of() : List.copyOf(notes));
+        return new ImportResult(state, message, baublesStripped,
+                notes == null ? List.of() : List.copyOf(notes), migrationNotes);
+    }
+
+    /** 附加附属模组的数据说明。为空列表时返回自身，不产生额外对象。 */
+    public ImportResult withMigrationNotes(List<Component> notes) {
+        if (notes == null || notes.isEmpty()) {
+            return this;
+        }
+        return new ImportResult(state, message, baublesStripped, baubleNotes, List.copyOf(notes));
     }
 
     /** 实体是否确实进入了世界（OK / OK_UNTAMED 都算导入成功） */

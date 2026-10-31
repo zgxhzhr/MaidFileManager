@@ -262,5 +262,11 @@
   "gui.maid_file_manager.backup.help.line8": "On success, every backup of that player shows the name and it is cached for next time.",
   "gui.maid_file_manager.backup.help.line9": "\"No matching player\" means a typo, or that player has no saves on this computer.",
   "gui.maid_file_manager.backup.help.line10": "The search box above only filters this list and triggers no lookups.",
-  "gui.maid_file_manager.backup.help.btn": "Guide"
+  "gui.maid_file_manager.backup.help.btn": "Guide",
+  "maid_file_manager.import.migration_details": ". Extra data notes: ",
+  "maid_file_manager.import.migration.no_provider": "%s: no provider registered for this data, not migrated",
+  "maid_file_manager.import.migration.provider_unavailable": "%s: required mod not installed, not migrated",
+  "maid_file_manager.import.migration.failed": "%s: migration failed (%s)",
+  "maid_file_manager.import.migration.failed_unclassified": "%s: migration failed, see server log",
+  "maid_file_manager.import.migration.more": " (%s more)"
 }
