@@ -9,6 +9,17 @@ public class Constants {
     public static final Logger LOG = LoggerFactory.getLogger(MOD_NAME);
 
     /**
+     * 单个 NBT 载荷解压后的读取配额（4 MiB）。
+     *
+     * <p>放在 Constants 而不是网络层：本地 .maid 文件读取（{@code MaidFileIo}）与网络
+     * 包解码共用同一口径，若定义在网络层会让 {@code data} 包反向依赖 {@code network} 包。
+     *
+     * <p>注意这是 {@code NbtAccounter} 的节点配额而不是原始字节数：StringTag 按
+     * 2 字节/字符 + 36 计费，所以全 ASCII 的字符串实际占用是字面量的 2 倍。
+     */
+    public static final int MAX_NBT_DECOMPRESSED_BYTES = 4 * 1024 * 1024;
+
+    /**
      * 本模组玩家可见文件的根目录（位于游戏/版本根目录下）。
      * 导出、导入、档案照片三个子目录统一收纳于此，方便玩家一次性打包带走。
      */
