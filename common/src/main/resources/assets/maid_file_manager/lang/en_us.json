@@ -271,5 +271,6 @@
   "maid_file_manager.import.migration.more": " (%s more)",
   "maid_file_manager.export.migration.failed": "Data from %s could not be exported (the mod reported an error).",
   "maid_file_manager.export.migration_details": ". Other mod data notes: ",
-  "maid_file_manager.export.migration.more": " (%s more)"
+  "maid_file_manager.export.migration.more": " (%s more)",
+  "maid_file_manager.import.migration.provider_note": "%s: %s"
 }

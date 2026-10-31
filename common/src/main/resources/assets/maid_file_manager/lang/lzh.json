@@ -271,5 +271,6 @@
   "maid_file_manager.import.migration.more": "（另有 %s 條之說）",
   "maid_file_manager.export.migration.failed": "%s 之錄未能出（該模組有失）。",
   "maid_file_manager.export.migration_details": "。他模組之文說：",
-  "maid_file_manager.export.migration.more": "（另有 %s 條之說）"
+  "maid_file_manager.export.migration.more": "（另有 %s 條之說）",
+  "maid_file_manager.import.migration.provider_note": "%s：%s"
 }
