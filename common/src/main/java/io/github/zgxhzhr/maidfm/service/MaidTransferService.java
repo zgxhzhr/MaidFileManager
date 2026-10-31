@@ -596,7 +596,7 @@ public final class MaidTransferService {
                 // 这里是玩家/服务端主动不要饰品，不计入"模组未声明"的提示统计。
                 CuriosBaubleFilter.strip(migrated, false, BaubleHandler::allowCuriosItem, false);
             }
-            CompoundTag tlmTag = extractTlmData(migrated, sameVersion);
+            CompoundTag tlmTag = TlmDataCodec.extract(migrated, sameVersion);
             loadMaidNbt(maid, migrated, tlmTag, keepBaubles, sourceStruckByLightning, sameVersion,
                     stripAttributes, blockedList, sourceMojangDataVersion, baubleNotes);
             // 统计口径修正：原先 hasDrops() 只含"硬禁槽位"时也会走这里，
@@ -918,46 +918,6 @@ public final class MaidTransferService {
         if (!loadOk) {
             Constants.LOG.warn("[maid_file_manager] 该女仆为兜底加载，非物品类 TLM 数据可能不完整（详见上方抽取日志）");
         }
-    }
-
-    /**
-     * 从 tag 中移除会导致 maid.load 跨版本崩溃的复杂容器并返回其副本。
-     * 简单值字段（MaidFavorability / MaidExperience / MaidHunger / ModelId 等）一律保留，
-     * 交给 TLM 自己的 readAdditionalSaveData 还原。
-     */
-    private static CompoundTag extractTlmData(CompoundTag tag, boolean sameVersion) {
-        CompoundTag extracted = new CompoundTag();
-        // 物品容器：无论同版本/跨版本都抽取，因为饰品要按「声明制」逐件裁剪，不能交给 TLM 全量还原。
-        String[] alwaysExtract = {
-                "MaidBaubleInventory", "MaidInventory", "MaidHideInventory", "MaidTaskInventory",
-        };
-        // 其余复杂容器：只在**跨版本**时抽取（结构与目标端可能不一致）。
-        // 同版本时保留在 NBT 里，让 TLM 自己的 readAdditionalSaveData 原样还原——
-        // 此前不分版本一律抽取，导致 MaidSubConfig（拾取/开门/爬墙等开关）、
-        // MaidGameSkillData、MaidTaskDataMaps、YsmRoamingVars 等同版本导入也被永久丢弃，只打一条 WARN。
-        String[] crossVersionOnly = {
-                "MaidGameSkillData", "MaidTaskDataMaps",
-                "MaidAIChat", "MaidHistoryChat", "MaidHistorySummary", "MaidLastChatTokenUsage",
-                "MaidConfig", "MaidSubConfig", "MaidWorldData",
-                "MaidBackpackData", "MaidTask",
-                "MaidGameRecord", "MaidKillRecord",
-                "MaidSchedulePos", "YsmRoamingVars", "Brain",
-        };
-        for (String key : alwaysExtract) {
-            if (tag.contains(key)) {
-                extracted.put(key, tag.get(key).copy());
-                tag.remove(key);
-            }
-        }
-        if (!sameVersion) {
-            for (String key : crossVersionOnly) {
-                if (tag.contains(key)) {
-                    extracted.put(key, tag.get(key).copy());
-                    tag.remove(key);
-                }
-            }
-        }
-        return extracted;
     }
 
     /**
