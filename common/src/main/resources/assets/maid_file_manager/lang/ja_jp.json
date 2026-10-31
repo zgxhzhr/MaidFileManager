@@ -270,7 +270,7 @@
   "maid_file_manager.import.migration.failed_unclassified": "%s：一部のデータを移行できませんでした。詳細はサーバーログを参照してください。",
   "maid_file_manager.import.migration.more": "（他 %s 件）",
   "maid_file_manager.export.migration.failed": "%s のデータをエクスポートできませんでした（MODがエラーを報告）。",
-  "maid_file_manager.export.migration_details": "。他のMODデータの説明：",
+  "maid_file_manager.export.migration_details": "他のMODデータの説明：",
   "maid_file_manager.export.migration.more": "（他 %s 件）",
   "maid_file_manager.import.migration.provider_note": "%s: %s",
   "maid_file_manager.export.quota_exceeded": "%s 個のエクスポートファイルがインポート上限（%s KB）を超えています。これらの .maid は後でインポートできない可能性があります。"
