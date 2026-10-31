@@ -153,4 +153,13 @@ public final class ForgeServerMessaging implements ServerMessaging {
         io.github.zgxhzhr.maidfm.network.MaidBackupCodec.writeBackupOwners(buf, owners);
         ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_BACKUP_LIST, buf);
     }
+
+    @Override
+    public void sendBackupExportResult(ServerPlayer player, byte[] encodedMaidFile) {
+        // 线格式：VarInt 长度 + 字节（客户端 readMaidFileData 按同样顺序解）
+        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        buf.writeVarInt(encodedMaidFile.length);
+        buf.writeBytes(encodedMaidFile);
+        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_BACKUP_EXPORT_RESULT, buf);
+    }
 }

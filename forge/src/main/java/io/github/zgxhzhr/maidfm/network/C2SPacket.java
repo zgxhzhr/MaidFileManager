@@ -148,30 +148,14 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         ServerPacketHandlers.exportMaid(player, entityId);
     }
 
+    /** 读取留在本端（各版本 buf API 不同），业务已下沉到 {@link ServerPacketHandlers}。 */
     private static void handleImportFile(ServerPlayer player, FriendlyByteBuf data) {
-        // 旧单发通道与批量通道做的是同一件重活（含生成实体/写盘），
-        // 批量通道已加频控，这条不能成为绕过口（第六轮 N3）。
-        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "import_file", 1000L)) {
-            return;
-        }
         MaidFileData maidData = MaidFilePackets.readMaidFileData(data);
         boolean keepBaubles = data.readBoolean();
         // 单文件通道与批量通道线格式保持一致（尾部为 deleteAfterImport）；
         // 单文件通道无对应 UI 删除流程，读掉但不触发回传
         data.readBoolean();
-        if (maidData == null) {
-            sendFeedback(player, Component.translatable("maid_file_manager.import.fail.invalid"));
-            return;
-        }
-        // 饰品导入策略由服务端配置决定，客户端不上传（杜绝非 OP 绕过）
-        // 禁用清单直接取服务端配置（含整合包 bauble_import.json 的中文名条目），不再做命名空间收窄
-        ImportResult result = MaidTransferService.importMaidFromData(
-                player, maidData, keepBaubles,
-                io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleStripAttributes(),
-                io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlockedList());
-        // 单条导入同样要消费 Curios 批次统计，否则残留到后续导出提示（第六轮 N5）。
-        BaubleHandler.curiosDropTip();
-        sendFeedback(player, BaubleHandler.withBaubleDetails(result));
+        ServerPacketHandlers.importFile(player, maidData, keepBaubles);
     }
 
     /** 业务逻辑已下沉到 {@link ServerPacketHandlers}（六端共用一份）。 */
@@ -179,44 +163,12 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         ServerPacketHandlers.exportBatch(player, ids, removeAfter);
     }
 
+    /** 读取留在本端，业务已下沉到 {@link ServerPacketHandlers}。 */
     private static void handleImportBatch(ServerPlayer player, FriendlyByteBuf data) {
-        // 频次限制：这三个是写盘/生成实体类 handler，比只读请求更重；
-        // 原先只有 3 个只读 handler 有节流，批量导出/导入与备份导出可被循环刷。
-        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "import_batch", 1000L)) {
-            return;
-        }
         List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(data);
         boolean keepBaubles = data.readBoolean();
         boolean deleteAfterImport = data.readBoolean();
-        // 饰品导入策略以服务端配置为准（客户端不上传，杜绝非 OP 绕过）；
-        // 禁用清单直接取服务端配置（含整合包 bauble_import.json 的中文名条目），不再做命名空间收窄
-        boolean stripAttributes = io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleStripAttributes();
-        List<String> blockedList = io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlockedList();
-        // 成败统计只认 ImportResult.State 枚举，严禁反解中文展示文案
-        List<ImportResult> results = new ArrayList<>(list.size());
-        for (MaidFileData d : list) {
-            if (d == null) {
-                results.add(ImportResult.failed(Component.translatable(
-                        "maid_file_manager.import.fail.invalid")));
-                continue;
-            }
-            results.add(MaidTransferService.importMaidFromData(
-                    player, d, keepBaubles, stripAttributes, blockedList));
-        }
-        // 导入路径同样会产生 Curios 批次统计（strip 时累加），必须在每次导入结束时消费掉；
-        // 否则统计会残留到**下一位玩家**走 sendExportResults 时被当成「导出丢弃」提示（第六轮 N5）。
-        BaubleHandler.curiosDropTip();
-        Component summary = MaidTransferService.buildBatchSummary(results);
-        if (deleteAfterImport) {
-            // 请求删除源文件：回传逐项 spawned 标志（与请求顺序对齐），客户端只删成功的文件
-            List<Boolean> spawned = new ArrayList<>(results.size());
-            for (ImportResult r : results) {
-                spawned.add(r.spawned());
-            }
-            sendImportBatchResult(player, summary, spawned);
-        } else {
-            sendFeedback(player, summary);
-        }
+        ServerPacketHandlers.importBatch(player, list, keepBaubles, deleteAfterImport);
     }
 
     /** 发送反馈消息（实现已收敛到 {@link io.github.zgxhzhr.maidfm.service.PacketSender}） */
@@ -247,16 +199,11 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         ServerPacketHandlers.requestServerExportList(player);
     }
 
-    /** OP 统一导出提交：代各玩家导出女仆到服务端磁盘 maid_exports/<玩家名>/ */
+    /** 读取留在本端，业务已下沉到 {@link ServerPacketHandlers}。 */
     private static void handleServerExportBatch(ServerPlayer player, FriendlyByteBuf data) {
-        if (!player.hasPermissions(2)) {
-            sendFeedback(player, Component.translatable("maid_file_manager.server.bulk_export_op_only"));
-            return;
-        }
-        List<IMaidFileNetwork.PlayerExportRequest> requests = MaidInfoCodec.readPlayerExportRequests(data);
-        Component result = io.github.zgxhzhr.maidfm.service.MaidServerCommands
-                .exportForPlayers(player.server, requests);
-        sendFeedback(player, result);
+        List<IMaidFileNetwork.PlayerExportRequest> requests =
+                MaidInfoCodec.readPlayerExportRequests(data);
+        ServerPacketHandlers.serverExportBatch(player, requests);
     }
 
     /**
@@ -283,34 +230,12 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         ServerPacketHandlers.requestBackupList(player);
     }
 
-    /** 备份管理：请求服务端导出某条备份（校验权限后读取并回传为 .maid 数据） */
+    /** 读取留在本端，业务已下沉到 {@link ServerPacketHandlers}。 */
     private static void handleRequestBackupExport(ServerPlayer player, FriendlyByteBuf data) {
-        // 频次限制：这三个是写盘/生成实体类 handler，比只读请求更重；
-        // 原先只有 3 个只读 handler 有节流，批量导出/导入与备份导出可被循环刷。
-        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "backup_export", 2000L)) {
-            return;
-        }
         String ownerUuid = data.readUtf(MaidFilePackets.MAX_TEXT_LEN);
         String maidUuid = data.readUtf(MaidFilePackets.MAX_TEXT_LEN);
         String fileName = data.readUtf(MaidFilePackets.MAX_TEXT_LEN);
-        MaidFileData out = io.github.zgxhzhr.maidfm.service.MaidBackupService.readForExport(
-                player.server, player.getUUID(), player.hasPermissions(2), ownerUuid, maidUuid, fileName);
-        if (out == null) {
-            sendFeedback(player, Component.translatable("gui.maid_file_manager.backup.export_failed"));
-            return;
-        }
-        byte[] blob = MaidFilePackets.serializeMaidFileData(out);
-        if (blob == null || blob.length > MaidFilePackets.MAX_SINGLE_FILE_BYTES) {
-            Constants.LOG.warn("[maid_file_manager] 备份导出体积异常，拒绝发送: owner={}, maid={}, size={}",
-                    ownerUuid, maidUuid, blob == null ? -1 : blob.length);
-            sendFeedback(player, Component.translatable("maid_file_manager.server.backup_too_large"));
-            return;
-        }
-        // 单个备份体积已按接收端上限预检，直接按线格式回传（客户端 readMaidFileData 解码）
-        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        buf.writeVarInt(blob.length);
-        buf.writeBytes(blob);
-        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_BACKUP_EXPORT_RESULT, buf);
+        ServerPacketHandlers.requestBackupExport(player, ownerUuid, maidUuid, fileName);
     }
 
     /** 把服务端配置单播给指定玩家（登录同步用） */
@@ -354,8 +279,10 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     }
 
     /**
-     * 分片上传：读一片 → 交给组装器 → 收齐后交给四端共用的分发器。
-     * 1.20.x 单包上限 32767 字节，大负载（带照片的档案 / 带头像的 .maid）走这条路。
+     * 读取留在本端，业务已下沉到 {@link ServerPacketHandlers}。
+     *
+     * <p>读取本身也包在 try 里：畸形分片数据可能让 readUtf/readByteArray 抛异常，
+     * 那条日志要能指明是「分片上传」出的问题，而不是落到外层通用 catch 里丢掉上下文。
      */
     private static void handleChunkedUpload(ServerPlayer player, FriendlyByteBuf data) {
         try {
@@ -363,14 +290,11 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
             int sessionId = data.readVarInt();
             int total = data.readVarInt();
             int index = data.readVarInt();
-            byte[] chunk = data.readByteArray(io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES);
-            byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
-                    player.getUUID(), kind, sessionId, total, index, chunk);
-            if (full != null) {
-                io.github.zgxhzhr.maidfm.service.ChunkedUploadDispatcher.dispatch(player, kind, full);
-            }
+            byte[] chunk = data.readByteArray(
+                    io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES);
+            ServerPacketHandlers.chunkedUpload(player, kind, sessionId, total, index, chunk);
         } catch (Throwable e) {
-            Constants.LOG.warn("[maid_file_manager] 分片上传处理失败: {}", e.toString());
+            Constants.LOG.warn("[maid_file_manager] 分片上传处理失败（读取阶段）: {}", e.toString());
         }
     }
 
