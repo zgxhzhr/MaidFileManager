@@ -363,4 +363,25 @@ public class MaidFileData {
     public void setProfile(MaidProfile profile) {
         this.profile = profile;
     }
+
+    /**
+     * 这个 .maid 里的女仆是否使用 YSM（Yes Steve Model）换模。
+     *
+     * <p>YSM 信息随实体 NBT 一起保存（{@code IsYsmModel} / {@code YsmModelName} /
+     * {@code YsmModelId}），不单独占 {@code .maid} 顶层字段——顶层加字段等于改线格式，
+     * 需要 bump 协议。所以这里直接读实体 NBT。
+     *
+     * <p>调用方用它决定「展示名该信谁」：YSM 下 TLM 的 modelId 只是底层 geckolib ID，
+     * 客户端反查会得到换模前的旧名，只能信服务端算好的 displayName。
+     */
+    public boolean isYsmModel() {
+        if (data == null) {
+            return false;
+        }
+        try {
+            return data.getBoolean("IsYsmModel") || !data.getString("YsmModelName").isEmpty();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
 }
