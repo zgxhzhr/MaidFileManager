@@ -456,7 +456,7 @@ public final class ServerPacketHandlers {
                 MaidConfigManager.getBaubleBlockedList());
         // 单条导入同样要消费 Curios 批次统计，否则残留到后续导出提示
         BaubleHandler.curiosDropTip();
-        PacketSender.sendFeedback(player, BaubleHandler.withBaubleDetails(result));
+        PacketSender.sendFeedback(player, BaubleHandler.withImportDetails(result));
     }
 
     /**
