@@ -79,4 +79,11 @@ public final class NeoForgeServerMessaging implements ServerMessaging {
         net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
                 new io.github.zgxhzhr.maidfm.network.MaidFilePayloads.BackupListPayload(owners));
     }
+
+    @Override
+    public void sendBackupExportResult(ServerPlayer player, byte[] encodedMaidFile) {
+        net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                new io.github.zgxhzhr.maidfm.network.MaidFilePayloads
+                        .BackupExportResultPayload(encodedMaidFile));
+    }
 }
