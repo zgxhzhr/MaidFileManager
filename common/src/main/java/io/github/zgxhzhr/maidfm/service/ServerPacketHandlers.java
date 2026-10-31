@@ -221,17 +221,19 @@ public final class ServerPacketHandlers {
                     declaredTotal / 1024, ChunkedUploadAssembler.MAX_TOTAL_BYTES / 1024));
             return false;
         }
-        // 导出侧没有独立上限，但导入侧 MAX_NBT_DECOMPRESSED_BYTES(4 MiB) 是硬闸门：
-        // 超过它的档案「导得出、导不回」。
+        // 导入侧的 4 MiB 是「解压后 NbtAccounter 配额」，不是压缩后字节数。
+        // 拿 declaredTotal（压缩后）去比它属于两个口径硬拼，会漏掉「压缩后几百 KB、
+        // 解压后超 4 MiB」这种档案。所以这里解压后用同样的 NbtAccounter 读一遍，同口径判断。
         //
-        // 原来只写一条 WARN——玩家不会去看日志，等于没做。
-        // 现在明确告知，但**不阻断**：单个文件超限不该连累同批其他女仆导出。
-        if (declaredTotal > MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES) {
-            Constants.LOG.warn("[maid_file_manager] 导出数据 {} 字节超过导入侧 4 MiB 上限，"
-                    + "该 .maid 可能无法再导入: player={}", declaredTotal, player.getName().getString());
+        // 不阻断导出：单个文件超限不该连累同批其他女仆。
+        java.util.List<Integer> overQuota = MaidFilePackets.findOverQuotaBlobs(blobs);
+        if (!overQuota.isEmpty()) {
+            Constants.LOG.warn("[maid_file_manager] 导出结果有 {} 个文件解压后超导入侧 4 MiB 配额，"
+                    + "这些 .maid 可能无法再导入: player={}, indices={}",
+                    overQuota.size(), player.getName().getString(), overQuota);
             PacketSender.sendFeedback(player, Component.translatable(
                     "maid_file_manager.export.quota_exceeded",
-                    declaredTotal / 1024,
+                    overQuota.size(),
                     MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES / 1024));
         }
         byte[] encoded = encodeMaidDataBlobs(blobs);
