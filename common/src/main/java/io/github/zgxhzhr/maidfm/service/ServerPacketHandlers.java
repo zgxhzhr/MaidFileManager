@@ -10,6 +10,7 @@ import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.ImportResult;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
+import io.github.zgxhzhr.maidfm.data.MigrationNoteCollector;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
 import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import io.github.zgxhzhr.maidfm.data.MaidProfileView;
@@ -262,13 +263,45 @@ public final class ServerPacketHandlers {
         if (!RequestThrottle.allow(player.getUUID(), "export_maid", 1000L)) {
             return;
         }
-        MaidFileData data = MaidTransferService.exportMaidToData(player, entityId);
-        if (data != null) {
-            sendExportResults(player, List.of(data));
-        } else {
-            PacketSender.sendFeedback(player,
-                    Component.translatable("maid_file_manager.export.fail.unknown"));
+        MigrationNoteCollector.discard();
+        try {
+            MaidFileData data = MaidTransferService.exportMaidToData(player, entityId);
+            if (data != null) {
+                sendExportResults(player, List.of(data));
+            } else {
+                PacketSender.sendFeedback(player,
+                        Component.translatable("maid_file_manager.export.fail.unknown"));
+            }
+        } finally {
+            flushExportMigrationNotes(player);
         }
+    }
+
+    /**
+     * 把「本次导出时没能带上的附加数据」汇总成一条反馈。
+     *
+     * <p>必须放在 finally 里：{@code sendExportResults} 有多条提前 return（体积超限拒绝等），
+     * 那些路径上累积器里同样有内容，漏发就会残留到下一次导出。
+     */
+    private static void flushExportMigrationNotes(ServerPlayer player) {
+        List<Component> notes = MigrationNoteCollector.take();
+        if (notes.isEmpty()) {
+            return;
+        }
+        net.minecraft.network.chat.MutableComponent msg =
+                Component.translatable("maid_file_manager.export.migration_details");
+        int shown = Math.min(notes.size(), 5);
+        for (int i = 0; i < shown; i++) {
+            if (i > 0) {
+                msg.append(Component.translatable("maid_file_manager.list_separator.newline"));
+            }
+            msg.append(notes.get(i));
+        }
+        if (notes.size() > shown) {
+            msg.append(Component.translatable(
+                    "maid_file_manager.export.migration.more", notes.size() - shown));
+        }
+        PacketSender.sendFeedback(player, msg);
     }
 
     /**
@@ -288,6 +321,7 @@ public final class ServerPacketHandlers {
         if (!RequestThrottle.allow(player.getUUID(), "export_batch", 1000L)) {
             return;
         }
+        MigrationNoteCollector.discard();
         List<MaidFileData> results = new java.util.ArrayList<>(ids.size());
         List<Integer> exportedIds = new java.util.ArrayList<>(ids.size());
         for (Integer entityId : ids) {
@@ -327,6 +361,7 @@ public final class ServerPacketHandlers {
                 exportedIds.size(), player.getName().getString());
         Constants.LOG.debug("[maid_file_manager] EXPORT_BATCH: player={} sent={} removed=0",
                 player.getName().getString(), results.size());
+        flushExportMigrationNotes(player);
     }
 
     // ==================== 列表类请求 ====================
