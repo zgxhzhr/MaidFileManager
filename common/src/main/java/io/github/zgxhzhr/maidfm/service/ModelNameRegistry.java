@@ -34,7 +34,6 @@ public final class ModelNameRegistry {
      */
     public static volatile java.util.function.Function<String, String> externalProvider;
 
-
     /** 上限：防止恶意客户端用超大映射把服务端内存打爆 */
     private static final int MAX_ENTRIES = 8192;
     /** 单个键/值的长度上限（模型 ID 与名字都不该比这更长） */

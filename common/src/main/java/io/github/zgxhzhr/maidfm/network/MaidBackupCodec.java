@@ -31,7 +31,6 @@ public final class MaidBackupCodec {
                 IMaidFileNetwork.BackupMaid maid = maids.get(j);
                 buf.writeUtf(maid.maidUuid() == null ? "" : maid.maidUuid(), MaidFilePackets.MAX_TEXT_LEN);
                 buf.writeUtf(maid.maidName() == null ? "" : maid.maidName(), MaidFilePackets.MAX_TEXT_LEN);
-                // 原始模型 ID：让客户端自己解析显示名（服务端可能没装模型资源包）
                 buf.writeUtf(maid.modelId() == null ? "" : maid.modelId(), MaidFilePackets.MAX_TEXT_LEN);
                 buf.writeBoolean(maid.ysmModel());
                 List<String> files = maid.files() == null ? List.of() : maid.files();
