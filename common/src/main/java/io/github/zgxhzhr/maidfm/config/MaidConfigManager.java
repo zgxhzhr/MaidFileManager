@@ -115,21 +115,6 @@ public final class MaidConfigManager {
     private static volatile List<String> serverBaubleBlockedCuriosSlots = List.of();
     /** 服务端配置内存值：OP 在游戏内维护的「禁用携带饰品」清单（不可变，默认空；与整合包黑名单相互独立） */
     private static volatile List<String> serverBaubleBlockedList = List.of();
-    /** 整合包黑名单（来自 bauble_import.json；不可变，默认空；游戏内只读，OP 亦不可改） */
-    private static volatile List<String> baubleImportBlacklist = List.of();
-    /** 整合包按模组禁用清单（bauble_import.json 的 {@code blocked_namespaces}；不可变，默认空） */
-    private static volatile List<String> baubleImportBlockedNamespaces = List.of();
-    /** 整合包按 Curios 槽位禁用清单（bauble_import.json 的 {@code blocked_curios_slots}；不可变，默认空） */
-    private static volatile List<String> baubleImportBlockedCuriosSlots = List.of();
-    /** 整合包白名单（来自 bauble_import.json；不可变，默认空） */
-    private static volatile List<String> serverBaubleWhitelist = List.of();
-    /** 是否存在整合包配置（bauble_import.json 存在即 true；用于界面提示与判定来源，不代表整张列表只读） */
-    private static volatile boolean baubleConfigManaged = false;
-    /**
-     * 是否强制白名单：白名单非空时为 true；配置文件解析失败时亦置 true 并按"拒绝全部饰品"处理
-     * （失败关闭：宁可拒绝也不能让整合包作者的管控被静默绕过）。
-     */
-    private static volatile boolean baubleWhitelistEnforced = false;
     /** 客户端配置内存值 */
     private static volatile boolean clientAllowServerExport = false;
     /** 客户端：界面背景音乐开关（试验性功能）与音量 */
@@ -142,7 +127,6 @@ public final class MaidConfigManager {
 
     private static Path serverConfigFile;
     private static Path clientConfigFile;
-    private static Path baubleImportConfigFile;
 
     private MaidConfigManager() {
     }
@@ -151,7 +135,8 @@ public final class MaidConfigManager {
     public static void init(Path gameDir) {
         serverConfigFile = gameDir.resolve("config").resolve("maid_file_manager-server.properties");
         clientConfigFile = gameDir.resolve("config").resolve("maid_file_manager-client.properties");
-        baubleImportConfigFile = gameDir.resolve("config").resolve("maid_file_manager").resolve("bauble_import.json");
+        Path baubleImportConfigFile =
+                gameDir.resolve("config").resolve("maid_file_manager").resolve("bauble_import.json");
         // 目录结构升级：把旧版本散落的导出/导入/照片目录搬入 maid_file/ 之下（幂等，无旧目录则跳过）
         MaidFileIo.migrateLegacyDirs(gameDir);
         // 配置解析必须逐段兜底：properties 里的非法转义（如单独的反斜杠）会抛 IllegalArgumentException，
@@ -170,7 +155,7 @@ public final class MaidConfigManager {
         }
         // 整合包配置最后加载：存在时覆盖 properties 的黑名单并启用白名单（整合包作者优先级最高）
         try {
-            loadBaubleImportConfig();
+            BaubleImportConfig.load(baubleImportConfigFile);
         } catch (Throwable t) {
             io.github.zgxhzhr.maidfm.Constants.LOG.error(
                     "[maid_file_manager] 整合包饰品配置加载失败，已忽略该文件: {}", t.toString());
@@ -350,7 +335,7 @@ public final class MaidConfigManager {
 
     /** OP 维护的「按模组禁用携带」清单（不可变；同时作用于女仆自带饰品栏与 Curios 槽位） */
     public static List<String> getBaubleBlockedNamespaces() {
-        return ConfigFileIo.mergeLists(serverBaubleBlockedNamespaces, baubleImportBlockedNamespaces);
+        return ConfigFileIo.mergeLists(serverBaubleBlockedNamespaces, BaubleImportConfig.blockedNamespaces());
     }
 
     /** 整合包按模组禁用清单（只读；用于界面把整合包强制的条目显示为不可取消） */
@@ -366,17 +351,17 @@ public final class MaidConfigManager {
 
     /** 整合包按模组禁用清单（只读） */
     public static List<String> getBaubleImportBlockedNamespaces() {
-        return baubleImportBlockedNamespaces;
+        return BaubleImportConfig.blockedNamespaces();
     }
 
     /** OP 维护的「按 Curios 槽位禁用携带」清单（不可变） */
     public static List<String> getBaubleBlockedCuriosSlots() {
-        return ConfigFileIo.mergeLists(serverBaubleBlockedCuriosSlots, baubleImportBlockedCuriosSlots);
+        return ConfigFileIo.mergeLists(serverBaubleBlockedCuriosSlots, BaubleImportConfig.blockedCuriosSlots());
     }
 
     /** 整合包按 Curios 槽位禁用清单（只读；用于界面把整合包强制的条目显示为不可取消） */
     public static List<String> getBaubleImportBlockedCuriosSlots() {
-        return baubleImportBlockedCuriosSlots;
+        return BaubleImportConfig.blockedCuriosSlots();
     }
 
     /**
@@ -404,11 +389,11 @@ public final class MaidConfigManager {
 
     /** 导入判定用的禁用清单（OP 清单 ∪ 整合包黑名单，不可变）；服务端读配置、客户端读登录同步缓存 */
     public static List<String> getBaubleBlockedList() {
-        if (baubleImportBlacklist.isEmpty()) {
+        if (BaubleImportConfig.blacklist().isEmpty()) {
             return serverBaubleBlockedList;
         }
         List<String> merged = new ArrayList<>(serverBaubleBlockedList);
-        merged.addAll(baubleImportBlacklist);
+        merged.addAll(BaubleImportConfig.blacklist());
         return List.copyOf(merged);
     }
 
@@ -419,64 +404,42 @@ public final class MaidConfigManager {
 
     /** 整合包黑名单（不可变，只读；物品 ID 或中文显示名） */
     public static List<String> getBaubleBlacklist() {
-        return baubleImportBlacklist;
+        return BaubleImportConfig.blacklist();
     }
 
     /** 整合包白名单（不可变；物品 ID 或中文显示名） */
     public static List<String> getBaubleWhitelist() {
-        return serverBaubleWhitelist;
+        return BaubleImportConfig.whitelist();
     }
 
     /** 是否存在整合包配置（bauble_import.json）：用于界面提示，不代表整张列表只读 */
     /** 白名单是否处于强制状态（由服务端判定并同步，客户端不得自行推断） */
     public static boolean isBaubleWhitelistEnforced() {
-        return baubleWhitelistEnforced;
+        return BaubleImportConfig.isWhitelistEnforced();
     }
 
     public static boolean isBaubleConfigManaged() {
-        return baubleConfigManaged;
+        return BaubleImportConfig.isManaged();
     }
 
     /**
-     * 判定单件饰品是否通过整合包白名单。
-     *
-     * <p>未启用白名单时一律放行；启用时需物品注册 ID 或物品中文显示名精确命中，否则拒绝。
-     * 传入的显示名由调用方通过物品注册表解析得到（导入时条目 ID 可能是跨版本旧键，
-     * 中文名匹配为整合包作者提供更友好的书写方式）。
+     * 判定单件饰品是否通过整合包白名单（门面方法，实现见 {@link BaubleImportConfig#isWhitelistPass}）。
      */
     public static boolean isBaubleWhitelistPass(String id, String displayName) {
-        // 清单装载时已 toLowerCase（parseSanitizedList），比较前必须同样归一化，
-        // 否则 handwrite 配置里带大写的条目、以及带大写的显示名永不命中（fail-open 反向）。
-        id = id == null ? null : id.trim().toLowerCase(java.util.Locale.ROOT);
-        displayName = displayName == null ? null : displayName.trim().toLowerCase(java.util.Locale.ROOT);
-        if (!baubleWhitelistEnforced) {
-            return true;
-        }
-        if (id != null && !id.isEmpty() && serverBaubleWhitelist.contains(id)) {
-            return true;
-        }
-        return displayName != null && !displayName.isEmpty() && serverBaubleWhitelist.contains(displayName);
+        return BaubleImportConfig.isWhitelistPass(id, displayName);
     }
 
     /**
-     * 判定某饰品是否被整合包「强制禁用且只读」：命中整合包黑名单，或白名单非空且未命中白名单
-     * （白名单外一律不放行）。
+     * 判定某饰品是否被整合包「强制禁用且只读」：命中整合包黑名单，或白名单非空且未命中白名单。
      *
      * <p>仅供界面把这类条目显示为「已勾选且不可取消」；OP 在游戏内维护的禁用清单不在此列
      * （那是 OP 可自行增删的，界面正常可勾选/取消）。
      */
     public static boolean isBaubleForcedBlocked(String id, String displayName) {
-        String normId = id == null ? null : id.trim().toLowerCase(java.util.Locale.ROOT);
-        String normName = displayName == null ? null : displayName.trim().toLowerCase(java.util.Locale.ROOT);
-        // 清单装载时已 toLowerCase（parseSanitizedList），比较前必须同样归一化 ——
-        // 与 isBaubleWhitelistPass 口径一致，否则带大写的条目永不命中「强制禁用」标记。
-        if (normId != null && !normId.isEmpty() && baubleImportBlacklist.contains(normId)) {
+        if (BaubleImportConfig.isBlacklisted(id, displayName)) {
             return true;
         }
-        if (normName != null && !normName.isEmpty() && baubleImportBlacklist.contains(normName)) {
-            return true;
-        }
-        return baubleWhitelistEnforced && !isBaubleWhitelistPass(id, displayName);
+        return BaubleImportConfig.isWhitelistEnforced() && !BaubleImportConfig.isWhitelistPass(id, displayName);
     }
 
     /** 客户端收到服务端配置同步（S2C 包处理）：更新本地缓存并回发同意状态 */
@@ -498,18 +461,17 @@ public final class MaidConfigManager {
                 baubleBlockedNamespaces == null ? List.of() : ConfigFileIo.sanitizeList(baubleBlockedNamespaces));
         serverBaubleBlockedCuriosSlots = List.copyOf(
                 baubleBlockedCuriosSlots == null ? List.of() : ConfigFileIo.sanitizeList(baubleBlockedCuriosSlots));
-        baubleImportBlockedNamespaces = List.copyOf(
-                baubleImportBlockedNamespaces == null ? List.of() : ConfigFileIo.sanitizeList(baubleImportBlockedNamespaces));
-        baubleImportBlockedCuriosSlots = List.copyOf(
-                baubleImportBlockedCuriosSlots == null ? List.of() : ConfigFileIo.sanitizeList(baubleImportBlockedCuriosSlots));
         serverBaubleStripAttributes = baubleStripAttributes;
         serverBaubleBlockedList = List.copyOf(baubleBlockedList == null ? List.of() : baubleBlockedList);
-        baubleImportBlacklist = List.copyOf(baubleBlacklist == null ? List.of() : baubleBlacklist);
-        serverBaubleWhitelist = List.copyOf(baubleWhitelist == null ? List.of() : baubleWhitelist);
-        baubleConfigManaged = baubleManaged;
+        // 整合包配置域整体交给 BaubleImportConfig。
+        // 注意：原实现在这里写的是 `baubleImportBlockedNamespaces = List.copyOf(baubleImportBlockedNamespaces ...)`，
+        // 参数名遮蔽了同名字段，赋值给了参数自己——字段从未被更新，客户端因此从未同步到
+        // 整合包的「按模组禁用 / 按 Curios 槽位禁用」清单。改用 applyServerSync 后该缺陷一并消失。
         // 直接采用服务端判定：服务端在 bauble_import.json 解析失败时会「失败关闭」并置 true，
-        // 客户端此前按「managed && 白名单非空」自行重算，导致与服务端相反（UI 显示可放行、实际全拒绝）。
-        baubleWhitelistEnforced = whitelistEnforced;
+        // 客户端若按「managed && 白名单非空」自行重算会得出相反结论（UI 显示可放行、实际全拒绝）。
+        BaubleImportConfig.applyServerSync(baubleWhitelist, baubleBlacklist,
+                baubleImportBlockedNamespaces, baubleImportBlockedCuriosSlots,
+                baubleManaged, whitelistEnforced);
         IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
         if (net != null) {
             net.sendClientConsent(clientAllowServerExport);
@@ -558,12 +520,12 @@ public final class MaidConfigManager {
     /** 客户端读取服务端同步缓存：按 Curios 槽位禁用清单（设置界面显示用） */
     /** 客户端读取服务端同步缓存：整合包按模组禁用清单（界面显示为只读勾选） */
     public static List<String> cachedBaubleImportBlockedNamespaces() {
-        return baubleImportBlockedNamespaces;
+        return BaubleImportConfig.blockedNamespaces();
     }
 
     /** 客户端读取服务端同步缓存：整合包按 Curios 槽位禁用清单（界面显示为只读勾选） */
     public static List<String> cachedBaubleImportBlockedCuriosSlots() {
-        return baubleImportBlockedCuriosSlots;
+        return BaubleImportConfig.blockedCuriosSlots();
     }
 
     public static List<String> cachedBaubleBlockedCuriosSlots() {
@@ -577,17 +539,17 @@ public final class MaidConfigManager {
 
     /** 客户端读取服务端同步缓存：整合包黑名单（只读展示用） */
     public static List<String> cachedBaubleBlacklist() {
-        return baubleImportBlacklist;
+        return BaubleImportConfig.blacklist();
     }
 
     /** 客户端读取服务端同步缓存：整合包白名单（饰品导入设置界面显示用） */
     public static List<String> cachedBaubleWhitelist() {
-        return serverBaubleWhitelist;
+        return BaubleImportConfig.whitelist();
     }
 
     /** 客户端读取服务端同步缓存：是否存在整合包配置（界面提示用，不代表整张列表只读） */
     public static boolean cachedBaubleConfigManaged() {
-        return baubleConfigManaged;
+        return BaubleImportConfig.isManaged();
     }
 
     // ==================== 文件 IO ====================
@@ -648,51 +610,6 @@ public final class MaidConfigManager {
         return ConfigFileIo.store(props, serverConfigFile);
     }
 
-    /**
-     * 加载整合包饰品导入配置 {@code config/maid_file_manager/bauble_import.json}。
-     *
-     * <p>文件存在即生效：读取白名单与黑名单，其中黑名单为只读（游戏内不可改），
-     * OP 在游戏内维护的禁用清单与之相互独立，导入判定时取并集。
-     * 文件不存在则维持 properties 行为（无整合包管控）。
-     *
-     * <p>解析失败时<b>失败关闭</b>：置为托管且强制白名单（此时白名单为空 → 拒绝导入全部饰品），
-     * 并打 ERROR 日志，绝不放任整合包作者的管控被静默绕过。
-     */
-    private static void loadBaubleImportConfig() {
-        if (baubleImportConfigFile == null || !Files.isRegularFile(baubleImportConfigFile)) {
-            baubleConfigManaged = false;
-            baubleWhitelistEnforced = false;
-            serverBaubleWhitelist = List.of();
-            baubleImportBlacklist = List.of();
-            baubleImportBlockedNamespaces = List.of();
-            baubleImportBlockedCuriosSlots = List.of();
-            return;
-        }
-        try (Reader reader = Files.newBufferedReader(baubleImportConfigFile, StandardCharsets.UTF_8)) {
-            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-            List<String> whitelist = ConfigFileIo.readStringArray(root, "whitelist");
-            List<String> blacklist = ConfigFileIo.readStringArray(root, "blacklist");
-            serverBaubleWhitelist = whitelist;
-            baubleImportBlacklist = blacklist;
-            baubleImportBlockedNamespaces = ConfigFileIo.sanitizeList(ConfigFileIo.readStringArray(root, "blocked_namespaces"));
-            baubleImportBlockedCuriosSlots = ConfigFileIo.sanitizeList(ConfigFileIo.readStringArray(root, "blocked_curios_slots"));
-            baubleConfigManaged = true;
-            baubleWhitelistEnforced = !whitelist.isEmpty();
-            Constants.LOG.info("[maid_file_manager] 已加载整合包饰品导入配置：白名单 {} 项，黑名单 {} 项，"
-                            + "按模组禁用 {} 项，按 Curios 槽位禁用 {} 项",
-                    whitelist.size(), blacklist.size(),
-                    baubleImportBlockedNamespaces.size(), baubleImportBlockedCuriosSlots.size());
-        } catch (Throwable t) {
-            serverBaubleWhitelist = List.of();
-            baubleImportBlacklist = List.of();
-            baubleImportBlockedNamespaces = List.of();
-            baubleImportBlockedCuriosSlots = List.of();
-            baubleConfigManaged = true;
-            baubleWhitelistEnforced = true;
-            Constants.LOG.error("[maid_file_manager] 整合包饰品导入配置解析失败，已按「拒绝导入全部饰品」的失败关闭策略处理，"
-                    + "请检查 {}: {}", baubleImportConfigFile, t.toString());
-        }
-    }
 
     private static void saveClient() {
         Properties props = new Properties();

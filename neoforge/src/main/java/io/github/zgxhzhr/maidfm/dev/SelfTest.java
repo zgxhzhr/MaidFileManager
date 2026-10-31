@@ -10,6 +10,7 @@ import io.github.zgxhzhr.maidfm.network.MaidBackupCodec;
 import io.github.zgxhzhr.maidfm.network.MaidInfoCodec;
 import io.github.zgxhzhr.maidfm.service.MaidEffectCodec;
 import io.github.zgxhzhr.maidfm.service.UuidAllocator;
+import io.github.zgxhzhr.maidfm.config.BaubleImportConfig;
 import io.github.zgxhzhr.maidfm.config.ConfigFileIo;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
@@ -75,6 +76,7 @@ public final class SelfTest {
         testNbtMigration();
         testConfigKeys();
         testConfigFileIo();
+        testBaubleImportConfig();
         testFilenameSanitize();
         testPlayerNameSanitize();
         testResolvePlayerDir();
@@ -800,6 +802,109 @@ public final class SelfTest {
         unknown.putString("id", "somemod:definitely_not_registered_effect");
         eq("rebuild: 未注册效果 -> null（不抛异常）", null,
                 MaidEffectCodec.rebuildEffectFromNormalized(unknown));
+    }
+
+    private static void testBaubleImportConfig() {
+        System.out.println("\n-- config.BaubleImportConfig（整合包饰品配置 + 失败关闭） --");
+
+        Path tmpDir = null;
+        try {
+            tmpDir = Files.createTempDirectory("maidfm_bic");
+
+            // ============ 1. 文件不存在 ============
+            BaubleImportConfig.load(tmpDir.resolve("nope.json"));
+            eq("文件不存在: managed=false", false, BaubleImportConfig.isManaged());
+            eq("文件不存在: enforced=false", false, BaubleImportConfig.isWhitelistEnforced());
+            eq("文件不存在: whitelist 空", List.of(), BaubleImportConfig.whitelist());
+
+            // ============ 2. 正常配置（非空白名单） ============
+            Path ok = tmpDir.resolve("ok.json");
+            Files.writeString(ok, "{\"whitelist\":[\"minecraft:stone\",\"钻石\"],"
+                    + "\"blacklist\":[\"bad:item\"],"
+                    + "\"blocked_namespaces\":[\"EvilMod\"],"
+                    + "\"blocked_curios_slots\":[\"Ring\"]}");
+            BaubleImportConfig.load(ok);
+            eq("正常配置: managed=true", true, BaubleImportConfig.isManaged());
+            eq("正常配置: enforced=true（白名单非空）", true, BaubleImportConfig.isWhitelistEnforced());
+            eq("正常配置: whitelist 小写归一", List.of("minecraft:stone", "钻石"), BaubleImportConfig.whitelist());
+            eq("正常配置: blacklist", List.of("bad:item"), BaubleImportConfig.blacklist());
+            eq("正常配置: blockedNamespaces 小写归一", List.of("evilmod"), BaubleImportConfig.blockedNamespaces());
+            eq("正常配置: blockedCuriosSlots 小写归一", List.of("ring"), BaubleImportConfig.blockedCuriosSlots());
+
+            // ============ 3. isWhitelistPass（强制状态） ============
+            eq("白名单: 命中 ID", true, BaubleImportConfig.isWhitelistPass("minecraft:stone", null));
+            eq("白名单: 命中 ID（大小写不敏感）", true,
+                    BaubleImportConfig.isWhitelistPass("MINECRAFT:STONE", null));
+            eq("白名单: 命中中文显示名", true, BaubleImportConfig.isWhitelistPass("whatever:id", "钻石"));
+            eq("白名单: 未命中 -> false", false,
+                    BaubleImportConfig.isWhitelistPass("mod:other", "别的东西"));
+            eq("白名单: null 输入 -> false", false, BaubleImportConfig.isWhitelistPass(null, null));
+            eq("白名单: 空串输入 -> false", false, BaubleImportConfig.isWhitelistPass("", ""));
+
+            // ============ 4. isBlacklisted ============
+            eq("黑名单: 命中 ID", true, BaubleImportConfig.isBlacklisted("bad:item", null));
+            eq("黑名单: 大小写不敏感", true, BaubleImportConfig.isBlacklisted("BAD:ITEM", null));
+            eq("黑名单: 未命中", false, BaubleImportConfig.isBlacklisted("good:item", null));
+
+            // ============ 5. 空白名单 -> enforced=false -> 全放行 ============
+            Path emptyWl = tmpDir.resolve("empty_wl.json");
+            Files.writeString(emptyWl, "{\"whitelist\":[],\"blacklist\":[]}");
+            BaubleImportConfig.load(emptyWl);
+            eq("空白名单: managed=true", true, BaubleImportConfig.isManaged());
+            eq("空白名单: enforced=false", false, BaubleImportConfig.isWhitelistEnforced());
+            eq("空白名单: 任何输入都放行", true, BaubleImportConfig.isWhitelistPass("any:thing", null));
+
+            // ============ 6. 非法 JSON -> 失败关闭 ============
+            Path broken = tmpDir.resolve("broken.json");
+            Files.writeString(broken, "{ this is not json ");
+            BaubleImportConfig.load(broken);
+            eq("非法 JSON: managed=true", true, BaubleImportConfig.isManaged());
+            eq("非法 JSON: enforced=true（失败关闭）", true, BaubleImportConfig.isWhitelistEnforced());
+            eq("非法 JSON: whitelist 清空", List.of(), BaubleImportConfig.whitelist());
+            eq("非法 JSON: 拒绝全部饰品", false,
+                    BaubleImportConfig.isWhitelistPass("minecraft:stone", null));
+
+            // ============ 7. 字段类型不符 -> 失败关闭 ============
+            Path badType = tmpDir.resolve("badtype.json");
+            Files.writeString(badType, "{\"whitelist\":\"not-an-array\"}");
+            BaubleImportConfig.load(badType);
+            eq("字段类型不符: managed=true", true, BaubleImportConfig.isManaged());
+            eq("字段类型不符: enforced=true（失败关闭）", true, BaubleImportConfig.isWhitelistEnforced());
+            eq("字段类型不符: 拒绝全部饰品", false,
+                    BaubleImportConfig.isWhitelistPass("minecraft:stone", null));
+
+            // ============ 8. applyServerSync ============
+            BaubleImportConfig.applyServerSync(List.of("a:b"), List.of("c:d"),
+                    List.of("EvilMod"), List.of("Ring"), true, true);
+            eq("同步后: whitelist", List.of("a:b"), BaubleImportConfig.whitelist());
+            eq("同步后: blacklist", List.of("c:d"), BaubleImportConfig.blacklist());
+            eq("同步后: blockedNamespaces 归一", List.of("evilmod"), BaubleImportConfig.blockedNamespaces());
+            eq("同步后: blockedCuriosSlots 归一", List.of("ring"), BaubleImportConfig.blockedCuriosSlots());
+            eq("同步后: 命中白名单放行", true, BaubleImportConfig.isWhitelistPass("a:b", null));
+            eq("同步后: 未命中拒绝", false, BaubleImportConfig.isWhitelistPass("x:y", null));
+
+            // 同步 null 清单不应抛异常
+            BaubleImportConfig.applyServerSync(null, null, null, null, false, false);
+            eq("同步 null 清单: whitelist 空", List.of(), BaubleImportConfig.whitelist());
+            eq("同步 null 清单: enforced=false", false, BaubleImportConfig.isWhitelistEnforced());
+        } catch (Exception e) {
+            check("BaubleImportConfig 用例整体执行", () -> false);
+            System.out.println("        异常: " + e);
+        } finally {
+            // 重置静态状态，避免污染后续用例
+            BaubleImportConfig.load(null);
+            if (tmpDir != null) {
+                try (var s = Files.walk(tmpDir)) {
+                    s.sorted(java.util.Comparator.reverseOrder()).forEach(x -> {
+                        try {
+                            Files.deleteIfExists(x);
+                        } catch (Exception ignored) {
+                        }
+                    });
+                } catch (Exception ignored) {
+                }
+            }
+        }
     }
 
     private static void testModelDisplayNames() {
