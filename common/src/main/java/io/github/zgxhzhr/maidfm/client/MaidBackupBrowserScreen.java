@@ -810,8 +810,9 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
                 Path playerDir = MaidFileIo.resolvePlayerDir(exportRoot, ownerName);
                 // 文件名必须与普通导出一致：普通导出会拼自定义名（命名牌所取），
                 // 见 MaidFileManagerScreen / MaidServerCommands 都调 composeDisplayName。
-                String baseName = ModelNames.displayModelId(data.getModelId());
-                String displayName = MaidFileIo.composeDisplayName(data.getCustomName(), baseName);
+                // 同普通导出：优先用 .maid 里记的 displayName（含 YSM 模型名）
+                String displayName = MaidFileIo.composeDisplayName(data.getCustomName(),
+                        ModelNames.exportDisplayName(data));
                 written = MaidFileIo.writeMaidFile(playerDir, displayName, data.getModelId(),
                         data.getOwnerUuid(), data, LocalDateTime.now());
             } catch (Throwable t) {
