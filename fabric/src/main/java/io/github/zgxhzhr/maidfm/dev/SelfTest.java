@@ -11,6 +11,7 @@ import io.github.zgxhzhr.maidfm.network.MaidInfoCodec;
 import io.github.zgxhzhr.maidfm.service.MaidEffectCodec;
 import io.github.zgxhzhr.maidfm.service.UuidAllocator;
 import io.github.zgxhzhr.maidfm.config.BaubleImportConfig;
+import io.github.zgxhzhr.maidfm.config.ClientConfig;
 import io.github.zgxhzhr.maidfm.config.ConfigFileIo;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
@@ -77,6 +78,7 @@ public final class SelfTest {
         testConfigKeys();
         testConfigFileIo();
         testBaubleImportConfig();
+        testClientConfig();
         testFilenameSanitize();
         testPlayerNameSanitize();
         testResolvePlayerDir();
@@ -893,6 +895,86 @@ public final class SelfTest {
         } finally {
             // 重置静态状态，避免污染后续用例
             BaubleImportConfig.load(null);
+            if (tmpDir != null) {
+                try (var s = Files.walk(tmpDir)) {
+                    s.sorted(java.util.Comparator.reverseOrder()).forEach(x -> {
+                        try {
+                            Files.deleteIfExists(x);
+                        } catch (Exception ignored) {
+                        }
+                    });
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+
+    private static void testClientConfig() {
+        System.out.println("\n-- config.ClientConfig（客户端配置持久化） --");
+
+        Path tmpDir = null;
+        try {
+            tmpDir = Files.createTempDirectory("maidfm_cc");
+            Path file = tmpDir.resolve("client.properties");
+
+            // ============ 1. 首次（文件不存在）-> 默认值 ============
+            ClientConfig.init(file);
+            eq("默认: allowServerExport=false", false, ClientConfig.isAllowServerExport());
+            eq("默认: uiMusic=true", true, ClientConfig.isUiMusic());
+            eq("默认: volume=0.15", 0.15F, ClientConfig.getUiMusicVolume());
+            eq("默认: skipRemoveConfirm=false", false, ClientConfig.isSkipRemoveConfirm("world1"));
+
+            // ============ 2. 改值并落盘 ============
+            ClientConfig.setUiMusic(false);
+            ClientConfig.setAllowServerExport(true);
+            ClientConfig.setSkipRemoveConfirm("worldA", true);
+            ClientConfig.setSkipRemoveConfirm("worldB", true);
+            check("落盘后文件存在", () -> Files.isRegularFile(file));
+
+            // ============ 3. 重新加载（模拟重启） ============
+            ClientConfig.init(file);
+            eq("重启后: uiMusic=false", false, ClientConfig.isUiMusic());
+            eq("重启后: allowServerExport=true", true, ClientConfig.isAllowServerExport());
+            eq("重启后: worldA 跳过确认", true, ClientConfig.isSkipRemoveConfirm("worldA"));
+            eq("重启后: worldB 跳过确认", true, ClientConfig.isSkipRemoveConfirm("worldB"));
+            eq("重启后: worldC 从未设置", false, ClientConfig.isSkipRemoveConfirm("worldC"));
+
+            // ============ 4. 取消跳过确认（应从文件移除该键） ============
+            ClientConfig.setSkipRemoveConfirm("worldA", false);
+            ClientConfig.init(file);
+            eq("取消后: worldA=false", false, ClientConfig.isSkipRemoveConfirm("worldA"));
+            eq("取消后: worldB 仍为 true", true, ClientConfig.isSkipRemoveConfirm("worldB"));
+            check("取消后: 文件里不再有 worldA 的键", () -> {
+                try {
+                    return !Files.readString(file).contains("skip_remove_confirm.worldA");
+                } catch (Exception e) {
+                    return false;
+                }
+            });
+
+            // ============ 5. 音量越界钳制（端到端读回） ============
+            Files.writeString(file, "ui_music_volume=5.0\n");
+            ClientConfig.init(file);
+            eq("音量 5.0 钳到 1.0", 1F, ClientConfig.getUiMusicVolume());
+
+            Files.writeString(file, "ui_music_volume=-1\n");
+            ClientConfig.init(file);
+            eq("音量 -1 钳到 0", 0F, ClientConfig.getUiMusicVolume());
+
+            Files.writeString(file, "ui_music_volume=abc\n");
+            ClientConfig.init(file);
+            eq("非法音量回退默认 0.15", 0.15F, ClientConfig.getUiMusicVolume());
+
+            // ============ 6. 非法转义不应抛异常（保留已解析部分） ============
+            Files.writeString(file, "ui_music=false\nui_music_volume=\\uZZZZ\n");
+            ClientConfig.init(file);
+            eq("非法转义: 已解析的 ui_music 保留", false, ClientConfig.isUiMusic());
+        } catch (Exception e) {
+            check("ClientConfig 用例整体执行", () -> false);
+            System.out.println("        异常: " + e);
+        } finally {
+            // 重置静态状态：指向不存在的路径（load 得到默认值），且 save 不会再写盘
+            ClientConfig.init(tmpDir != null ? tmpDir.resolve("reset.properties") : null);
             if (tmpDir != null) {
                 try (var s = Files.walk(tmpDir)) {
                     s.sorted(java.util.Comparator.reverseOrder()).forEach(x -> {

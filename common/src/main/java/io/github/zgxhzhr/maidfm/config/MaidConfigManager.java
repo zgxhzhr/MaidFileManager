@@ -91,13 +91,13 @@ public final class MaidConfigManager {
     /** 服务端配置键：禁用携带的饰品 ID 列表（逗号分隔，仅限车万本体/万法皆通两命名空间，导入时直接丢弃） */
     public static final String KEY_BAUBLE_BLOCKED_LIST = "bauble_blocked_list";
     /** 客户端配置键：允许服务端统一导出你的女仆 */
-    public static final String KEY_ALLOW_SERVER_EXPORT = "allow_server_export";
+    public static final String KEY_ALLOW_SERVER_EXPORT = ClientConfig.KEY_ALLOW_SERVER_EXPORT;
     /** 客户端配置键：界面背景音乐开关（试验性功能，默认开启） */
-    public static final String KEY_UI_MUSIC = "ui_music";
+    public static final String KEY_UI_MUSIC = ClientConfig.KEY_UI_MUSIC;
     /** 客户端配置键：界面背景音乐音量（0.0 - 1.0，默认 0.15） */
-    public static final String KEY_UI_MUSIC_VOLUME = "ui_music_volume";
+    public static final String KEY_UI_MUSIC_VOLUME = ClientConfig.KEY_UI_MUSIC_VOLUME;
     /** 客户端配置键：导出并移除女仆时跳过"背包物品将丢失"二次确认的键前缀，完整键为 前缀+存档标识 */
-    public static final String SKIP_REMOVE_CONFIRM_PREFIX = "skip_remove_confirm.";
+    public static final String SKIP_REMOVE_CONFIRM_PREFIX = ClientConfig.SKIP_REMOVE_CONFIRM_PREFIX;
 
     /** 服务端配置内存值（volatile 保证跨线程可见：网络线程写、服务端逻辑线程读）；默认开启（方便单人玩家） */
     private static volatile boolean serverAllowClientImport = true;
@@ -115,18 +115,10 @@ public final class MaidConfigManager {
     private static volatile List<String> serverBaubleBlockedCuriosSlots = List.of();
     /** 服务端配置内存值：OP 在游戏内维护的「禁用携带饰品」清单（不可变，默认空；与整合包黑名单相互独立） */
     private static volatile List<String> serverBaubleBlockedList = List.of();
-    /** 客户端配置内存值 */
-    private static volatile boolean clientAllowServerExport = false;
-    /** 客户端：界面背景音乐开关（试验性功能）与音量 */
-    private static volatile boolean clientUiMusic = true;
-    private static volatile float clientUiMusicVolume = 0.15F;
-    /** 客户端配置内存值：各存档/服务器是否跳过移除二次确认（key=存档标识，见 client 包存档标识工具） */
-    private static final Map<String, Boolean> clientSkipRemoveConfirmByWorld = new ConcurrentHashMap<>();
     /** 服务端侧记录的各客户端同意状态（UUID → allowServerExport），登录默认 false */
     private static final Map<UUID, Boolean> CLIENT_CONSENT = new ConcurrentHashMap<>();
 
     private static Path serverConfigFile;
-    private static Path clientConfigFile;
 
     private MaidConfigManager() {
     }
@@ -134,7 +126,8 @@ public final class MaidConfigManager {
     /** 由 loader 侧初始化（gameDir：专用服务器=服务器根目录，客户端=.minecraft，局域网=宿主 gameDir） */
     public static void init(Path gameDir) {
         serverConfigFile = gameDir.resolve("config").resolve("maid_file_manager-server.properties");
-        clientConfigFile = gameDir.resolve("config").resolve("maid_file_manager-client.properties");
+        java.nio.file.Path clientConfigFile =
+                gameDir.resolve("config").resolve("maid_file_manager-client.properties");
         Path baubleImportConfigFile =
                 gameDir.resolve("config").resolve("maid_file_manager").resolve("bauble_import.json");
         // 目录结构升级：把旧版本散落的导出/导入/照片目录搬入 maid_file/ 之下（幂等，无旧目录则跳过）
@@ -147,12 +140,7 @@ public final class MaidConfigManager {
             io.github.zgxhzhr.maidfm.Constants.LOG.error(
                     "[maid_file_manager] 服务端配置加载失败，已回退默认值: {}", t.toString());
         }
-        try {
-            loadClient();
-        } catch (Throwable t) {
-            io.github.zgxhzhr.maidfm.Constants.LOG.error(
-                    "[maid_file_manager] 客户端配置加载失败，已回退默认值: {}", t.toString());
-        }
+        ClientConfig.init(clientConfigFile);
         // 整合包配置最后加载：存在时覆盖 properties 的黑名单并启用白名单（整合包作者优先级最高）
         try {
             BaubleImportConfig.load(baubleImportConfigFile);
@@ -252,29 +240,28 @@ public final class MaidConfigManager {
 
     /** 本客户端是否允许服务端统一导出 */
     /** 界面背景音乐是否开启（客户端配置） */
+    /** 界面背景音乐开关（门面，实现见 {@link ClientConfig}） */
     public static boolean isClientUiMusic() {
-        return clientUiMusic;
+        return ClientConfig.isUiMusic();
     }
 
     /** 界面背景音乐音量（0.0 - 1.0，已钳制） */
     public static float getClientUiMusicVolume() {
-        return clientUiMusicVolume;
+        return ClientConfig.getUiMusicVolume();
     }
 
     /** 设置界面背景音乐开关并落盘（供设置界面/调试使用） */
     public static synchronized void setClientUiMusic(boolean value) {
-        clientUiMusic = value;
-        saveClient();
+        ClientConfig.setUiMusic(value);
     }
 
     public static boolean isClientAllowServerExport() {
-        return clientAllowServerExport;
+        return ClientConfig.isAllowServerExport();
     }
 
-    /** 修改客户端配置（设置界面调用，写本地文件） */
+    /** 修改客户端配置（设置界面调用，写本地文件）并立即把新状态上报服务端 */
     public static synchronized void setClientAllowServerExport(boolean value) {
-        clientAllowServerExport = value;
-        saveClient();
+        ClientConfig.setAllowServerExport(value);
         // 立即把新状态上报服务端
         IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
         if (net != null) {
@@ -284,17 +271,12 @@ public final class MaidConfigManager {
 
     /** 在指定存档/服务器中导出并移除女仆时是否跳过二次确认（纯本地偏好，按存档分别记录，不上报服务端） */
     public static boolean isSkipRemoveConfirm(String worldKey) {
-        return Boolean.TRUE.equals(clientSkipRemoveConfirmByWorld.get(worldKey));
+        return ClientConfig.isSkipRemoveConfirm(worldKey);
     }
 
     /** 修改指定存档/服务器的"跳过移除二次确认"客户端配置（仅写本地文件；false 时清除该存档记录） */
     public static synchronized void setSkipRemoveConfirm(String worldKey, boolean value) {
-        if (value) {
-            clientSkipRemoveConfirmByWorld.put(worldKey, Boolean.TRUE);
-        } else {
-            clientSkipRemoveConfirmByWorld.remove(worldKey);
-        }
-        saveClient();
+        ClientConfig.setSkipRemoveConfirm(worldKey, value);
     }
 
     /** 导入时是否丢弃饰品属性（恢复为全新物品）；服务端读配置、客户端读登录同步缓存 */
@@ -474,7 +456,7 @@ public final class MaidConfigManager {
                 baubleManaged, whitelistEnforced);
         IMaidFileNetwork net = IMaidFileNetwork.Holder.get();
         if (net != null) {
-            net.sendClientConsent(clientAllowServerExport);
+            net.sendClientConsent(ClientConfig.isAllowServerExport());
         }
     }
 
@@ -570,23 +552,6 @@ public final class MaidConfigManager {
         serverBaubleBlockedList = ConfigFileIo.parseSanitizedList(props, KEY_BAUBLE_BLOCKED_LIST);
     }
 
-    private static void loadClient() {
-        // 首次运行配置文件不存在属正常情况：返回空实例，下方 parse 全部走默认值（默认拒绝）
-        Properties props = ConfigFileIo.load(clientConfigFile, "客户端配置");
-        clientAllowServerExport = ConfigFileIo.parse(props, KEY_ALLOW_SERVER_EXPORT, false);
-        clientUiMusic = ConfigFileIo.parse(props, KEY_UI_MUSIC, true);
-        clientUiMusicVolume = ConfigFileIo.parseVolume(props, KEY_UI_MUSIC_VOLUME, 0.15F);
-        // 按存档记录的跳过确认：遍历 skip_remove_confirm.<存档标识> 全部装入内存
-        clientSkipRemoveConfirmByWorld.clear();
-        for (String name : props.stringPropertyNames()) {
-            if (name.startsWith(SKIP_REMOVE_CONFIRM_PREFIX) && name.length() > SKIP_REMOVE_CONFIRM_PREFIX.length()
-                    && ConfigFileIo.parse(props, name, false)) {
-                clientSkipRemoveConfirmByWorld.put(name.substring(SKIP_REMOVE_CONFIRM_PREFIX.length()), Boolean.TRUE);
-            }
-        }
-        // 旧版本曾写过无存档后缀的全局键 skip_remove_confirm：语义已改为按存档，此处直接忽略，
-        // 下次 saveClient 时该键自然从文件消失，无需专门迁移。
-    }
 
     private static boolean saveServer() {
         Properties props = new Properties();
@@ -610,17 +575,5 @@ public final class MaidConfigManager {
         return ConfigFileIo.store(props, serverConfigFile);
     }
 
-
-    private static void saveClient() {
-        Properties props = new Properties();
-        props.setProperty(KEY_ALLOW_SERVER_EXPORT, String.valueOf(clientAllowServerExport));
-        props.setProperty(KEY_UI_MUSIC, String.valueOf(clientUiMusic));
-        props.setProperty(KEY_UI_MUSIC_VOLUME, String.valueOf(clientUiMusicVolume));
-        // 每个勾选过"不再提示"的存档各写一行（只存 true；false=默认值不落盘）
-        for (String worldKey : clientSkipRemoveConfirmByWorld.keySet()) {
-            props.setProperty(SKIP_REMOVE_CONFIRM_PREFIX + worldKey, String.valueOf(true));
-        }
-        ConfigFileIo.store(props, clientConfigFile);
-    }
 
 }
