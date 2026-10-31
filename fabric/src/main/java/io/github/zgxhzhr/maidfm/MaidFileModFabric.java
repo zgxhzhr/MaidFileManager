@@ -84,80 +84,41 @@ public class MaidFileModFabric implements ModInitializer {
         });
 
         registerC2SReceiver(MaidFilePackets.ID_IMPORT_FILE, (server, player, buf) -> {
-            // 旧单发通道不能成为频控绕过口（第六轮 N3）
-            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "import_file", 1000L)) { return; }
+            // 读在本端（各版本 buf API 不同），业务在 ServerPacketHandlers（六端共用）
             MaidFileData maidData = MaidFilePackets.readMaidFileData(buf);
             boolean keepBaubles = buf.readBoolean();
             // 单文件通道与批量通道线格式保持一致（尾部为 deleteAfterImport）；
             // 单文件通道无对应 UI 删除流程，读掉但不触发回传
             buf.readBoolean();
-            if (maidData == null) {
-                sendFeedback(player, Component.translatable("maid_file_manager.import.fail.invalid"));
-                return;
-            }
-            // 饰品导入策略由服务端配置决定，客户端不上传（杜绝非 OP 绕过）
-            ImportResult result = MaidTransferService.importMaidFromData(
-                    player, maidData, keepBaubles,
-                    MaidConfigManager.isBaubleStripAttributes(),
-                    MaidConfigManager.getBaubleBlockedList());
-            // 单条导入同样要消费 Curios 批次统计（第六轮 N5）。
-            BaubleHandler.curiosDropTip();
-            sendFeedback(player, BaubleHandler.withBaubleDetails(result));
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.importFile(player, maidData, keepBaubles);
         });
 
         // 批量导入：成败统计只认 ImportResult.State 枚举，严禁反解中文展示文案
         registerC2SReceiver(MaidFilePackets.ID_IMPORT_BATCH, (server, player, buf) -> {
-            // 频次限制：写盘/生成实体类 handler，原先只有只读请求有节流
-            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "import_batch", 1000L)) {
-                return;
-            }
+            // 读在本端（各版本 buf API 不同），业务在 ServerPacketHandlers（六端共用）
             List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(buf);
             boolean keepBaubles = buf.readBoolean();
             boolean deleteAfterImport = buf.readBoolean();
-            // 饰品导入策略以服务端配置为准（客户端不上传，杜绝非 OP 绕过）；
-            // 禁用清单直接取服务端配置（含整合包 bauble_import.json 的中文名条目），不再做命名空间收窄
-            boolean stripAttributes = MaidConfigManager.isBaubleStripAttributes();
-            List<String> blockedList = MaidConfigManager.getBaubleBlockedList();
-            List<ImportResult> results = new ArrayList<>(list.size());
-            for (MaidFileData d : list) {
-                if (d == null) {
-                    results.add(ImportResult.failed(Component.translatable(
-                            "maid_file_manager.import.fail.invalid")));
-                    continue;
-                }
-                results.add(MaidTransferService.importMaidFromData(
-                        player, d, keepBaubles, stripAttributes, blockedList));
-            }
-            // 导入路径同样会产生 Curios 批次统计，必须在每次导入结束时消费掉（第六轮 N5）。
-            BaubleHandler.curiosDropTip();
-            Component summary = MaidTransferService.buildBatchSummary(results);
-            if (deleteAfterImport) {
-                // 请求删除源文件：回传逐项 spawned 标志（与请求顺序对齐），客户端只删成功的文件
-                List<Boolean> spawned = new ArrayList<>(results.size());
-                for (ImportResult r : results) {
-                    spawned.add(r.spawned());
-                }
-                sendImportBatchResult(player, summary, spawned);
-            } else {
-                sendFeedback(player, summary);
-            }
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.importBatch(
+                    player, list, keepBaubles, deleteAfterImport);
         });
 
         // 分片上传：读一片 → 组装器 → 收齐后交给四端共用分发器
         registerC2SReceiver(MaidFilePackets.ID_CHUNKED_UPLOAD, (server, player, buf) -> {
+            // 读在本端，业务在 ServerPacketHandlers（六端共用）。
+            // 读取本身也包 try：畸形分片可能让 readUtf/readByteArray 抛异常，
+            // 那条日志要能指明是「分片上传」，而不是落到外层通用 catch 丢掉上下文。
             try {
                 String kind = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
                 int sessionId = buf.readVarInt();
                 int total = buf.readVarInt();
                 int index = buf.readVarInt();
-                byte[] chunk = buf.readByteArray(io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES);
-                byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
-                        player.getUUID(), kind, sessionId, total, index, chunk);
-                if (full != null) {
-                    io.github.zgxhzhr.maidfm.service.ChunkedUploadDispatcher.dispatch(player, kind, full);
-                }
+                byte[] chunk = buf.readByteArray(
+                        io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.CHUNK_BYTES);
+                io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.chunkedUpload(
+                        player, kind, sessionId, total, index, chunk);
             } catch (Throwable e) {
-                Constants.LOG.warn("[maid_file_manager] 分片上传处理失败: {}", e.toString());
+                Constants.LOG.warn("[maid_file_manager] 分片上传处理失败（读取阶段）: {}", e.toString());
             }
         });
         // 导出写盘回执：客户端确认文件已落盘后才删除女仆（P2-10 数据安全）
@@ -189,12 +150,10 @@ public class MaidFileModFabric implements ModInitializer {
 
         // OP 统一导出提交：代各玩家导出女仆到服务端磁盘 maid_exports/<玩家名>/
         registerC2SReceiver(MaidFilePackets.ID_SERVER_EXPORT_BATCH, (server, player, buf) -> {
-            if (!player.hasPermissions(2)) {
-                sendFeedback(player, Component.translatable("maid_file_manager.server.bulk_export_op_only"));
-                return;
-            }
-            List<IMaidFileNetwork.PlayerExportRequest> requests = MaidInfoCodec.readPlayerExportRequests(buf);
-            sendFeedback(player, MaidServerCommands.exportForPlayers(server, requests));
+            // 读在本端，业务在 ServerPacketHandlers（六端共用）
+            List<IMaidFileNetwork.PlayerExportRequest> requests =
+                    MaidInfoCodec.readPlayerExportRequests(buf);
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.serverExportBatch(player, requests);
         });
 
         // 请求女仆档案：非本人直接拒绝（不返回任何只读数据），本人则回发档案视图
@@ -223,30 +182,12 @@ public class MaidFileModFabric implements ModInitializer {
 
         // 备份管理：读取指定备份并回传为 .maid 数据（服务端只读不写；权限不足或体积超限时回执）
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_BACKUP_EXPORT, (server, player, buf) -> {
-            // 频次限制：写盘/生成实体类 handler，原先只有只读请求有节流
-            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "backup_export", 2000L)) {
-                return;
-            }
+            // 读在本端，业务在 ServerPacketHandlers（六端共用）
             String ownerUuid = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
             String maidUuid = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
             String fileName = buf.readUtf(MaidFilePackets.MAX_TEXT_LEN);
-            MaidFileData data = MaidBackupService.readForExport(
-                    server, player.getUUID(), player.hasPermissions(2), ownerUuid, maidUuid, fileName);
-            if (data == null) {
-                sendFeedback(player, Component.translatable("gui.maid_file_manager.backup.export_failed"));
-                return;
-            }
-            byte[] blob = MaidFilePackets.serializeMaidFileData(data);
-            if (blob == null || blob.length > MaidFilePackets.MAX_SINGLE_FILE_BYTES) {
-                Constants.LOG.warn("[maid_file_manager] 备份导出体积异常，拒绝发送: owner={}, maid={}, size={}",
-                        ownerUuid, maidUuid, blob == null ? -1 : blob.length);
-                sendFeedback(player, Component.translatable("maid_file_manager.server.backup_too_large"));
-                return;
-            }
-            FriendlyByteBuf out = MaidPayload.buffer();
-            out.writeVarInt(blob.length);
-            out.writeBytes(blob);
-            ServerPlayNetworking.send(player, MaidPayload.of(MaidFilePackets.ID_BACKUP_EXPORT_RESULT, out));
+            io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.requestBackupExport(
+                    player, ownerUuid, maidUuid, fileName);
         });
 
         // 玩家登录 → 仅向该玩家单播服务端配置（不再全服广播）；退出 → 清理同意状态
