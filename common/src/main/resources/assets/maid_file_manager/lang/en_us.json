@@ -273,5 +273,5 @@
   "maid_file_manager.export.migration_details": ". Other mod data notes: ",
   "maid_file_manager.export.migration.more": " (%s more)",
   "maid_file_manager.import.migration.provider_note": "%s: %s",
-  "maid_file_manager.export.quota_exceeded": "Exported data is about %s KB after decompression, over the %s KB import limit — this file may not be importable later."
+  "maid_file_manager.export.quota_exceeded": "Exported data is about %s KB (compressed). The import side allows %s KB for decompressed data; files over that may not be importable."
 }
