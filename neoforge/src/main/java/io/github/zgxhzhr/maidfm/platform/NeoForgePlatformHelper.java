@@ -302,4 +302,39 @@ public class NeoForgePlatformHelper implements IPlatformHelper {
             }
         }
         return null;
-    }}
+    }
+    /**
+     * 当前进程是否是「单人/局域网主机」。
+     *
+     * <p>判断分两步，顺序不能反：
+     * <ol>
+     *   <li>先判断运行环境是否客户端。该分支在专用服务器上是编译期常量，会被直接优化掉，
+     *       绝不会加载 {@code Minecraft}——否则平台加载器会拦下并报 ERROR
+     *       「Attempted to load class net/minecraft/client/Minecraft for invalid dist DEDICATED_SERVER」。</li>
+     *   <li>客户端再反射取 {@code Minecraft.getInstance().getSingleplayerServer()}：
+     *       非 null 就是集成服务器在跑。</li>
+     * </ol>
+     *
+     * <p>用途见 {@link IPlatformHelper#isSingleplayer()}：集成服务器与客户端之间是内存直连，
+     * 1.20.x 的 32767 字节 C2S 上限不生效。
+     *
+     * <p>判断失败一律按「非单人」处理——保守方向，最坏结果是多走一次分片上传，不丢数据。
+     */
+    @Override
+    public boolean isSingleplayer() {
+        if (net.neoforged.fml.loading.FMLLoader.getCurrent().getDist()
+                != net.neoforged.api.distmarker.Dist.CLIENT) {
+            return false;
+        }
+        try {
+            Class<?> mcClass = Class.forName("net.minecraft.client.Minecraft");
+            Object mc = mcClass.getMethod("getInstance").invoke(null);
+            if (mc == null) {
+                return false;
+            }
+            return mcClass.getMethod("getSingleplayerServer").invoke(mc) != null;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+}
