@@ -28,3 +28,7 @@ runs
 
 # Eclipse IDE 运行配置
 .eclipse/
+
+# 运行日志（JavaExec 自检会生成）
+logs/
+neoforge/logs/
