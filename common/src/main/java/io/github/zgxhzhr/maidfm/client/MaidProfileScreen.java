@@ -416,6 +416,11 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
             return;
         }
         net.sendSaveMaidProfile(view.entityId(), profile);
+        // 保存包已发出，直接回到上一界面（导出界面的列表 / 文件预览）。
+        // 档案界面本身没有任何「已保存」的视觉反馈，停在原地会让玩家以为没生效。
+        // 服务端回执（save_ok / save_failed）会打到上一界面的底部与聊天栏：
+        // onClose 里已把 ClientHandlerHolder 还原给 prevHandler。
+        onClose();
     }
 
     @Override
