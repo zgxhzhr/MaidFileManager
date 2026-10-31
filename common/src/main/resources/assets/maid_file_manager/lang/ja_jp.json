@@ -148,6 +148,8 @@
   "gui.maid_file_manager.backup.world.server": "現在のサーバー",
   "gui.maid_file_manager.backup.back": "戻る",
   "gui.maid_file_manager.backup.unavailable": "バックアップ機能は現在利用できません",
+  "gui.maid_file_manager.backup.truncated": "バックアップディレクトリが多すぎるため、リストを切り詰めました（スキャン済みの分のみ表示）",
+  "maid_file_manager.server.backup_list_truncated": "バックアップリストを切り詰めました：サーバー側のディレクトリが多すぎるため、スキャン済みの分のみ返します",
   "gui.maid_file_manager.backup.empty": "メイドのバックアップが見つかりません",
   "gui.maid_file_manager.backup.no_selection": "先にバックアップファイルを1つ選択してください",
   "gui.maid_file_manager.backup.exported": "エクスポートしました：%s",
