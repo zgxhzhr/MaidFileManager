@@ -143,7 +143,10 @@ public final class MaidFilePackets {
     // 全部收进 List（每份内含 CompoundTag 树），并非「逐文件串行、压完即弃」。
     // （第六轮 N6：原注释写「串行解压的瞬时峰值而非同时驻留」，与实现相反。）
     // 要真正降峰值只能把导入改成流式逐份处理，属更大改动；当前先用 4 MiB 把最坏值压在 256 MiB。
-    public static final int MAX_NBT_DECOMPRESSED_BYTES = 4 * 1024 * 1024;
+    /** 解压读取配额。定义在 {@link io.github.zgxhzhr.maidfm.Constants}——本地文件读取与网络解码共用，
+     * 放在这里会让 data 包反向依赖 network 包。此处保留别名，调用点无需改动。 */
+    public static final int MAX_NBT_DECOMPRESSED_BYTES =
+            io.github.zgxhzhr.maidfm.Constants.MAX_NBT_DECOMPRESSED_BYTES;
     /**
      * 整个自定义负载的自定字节上限（1 MiB）——仅适用于 1.21+（其 C2S 载荷上限为 1 MiB）。
      * 发送端必须预检，超限一律回执明确失败，绝不靠帧解码断连来兜底。
