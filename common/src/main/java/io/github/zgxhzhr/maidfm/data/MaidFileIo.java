@@ -1,7 +1,6 @@
 package io.github.zgxhzhr.maidfm.data;
 
 import io.github.zgxhzhr.maidfm.Constants;
-import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
@@ -376,7 +375,7 @@ public final class MaidFileIo {
         try {
             // 本地文件虽是玩家自选，但同样给显式解压配额（与网络侧共用 4 MiB 口径 = MAX_NBT_DECOMPRESSED_BYTES），
             // 1.21+ NbtIo.readCompressed 接收 Path 并支持 NbtAccounter 配额
-            CompoundTag root = NbtIo.readCompressed(file, NbtAccounter.create(MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES));
+            CompoundTag root = NbtIo.readCompressed(file, NbtAccounter.create(io.github.zgxhzhr.maidfm.Constants.MAX_NBT_DECOMPRESSED_BYTES));
             if (root == null) {
                 return null;
             }
@@ -396,7 +395,7 @@ public final class MaidFileIo {
      */
     public static CompoundTag readCompressedNbt(Path file) {
         try {
-            return NbtIo.readCompressed(file, NbtAccounter.create(MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES));
+            return NbtIo.readCompressed(file, NbtAccounter.create(io.github.zgxhzhr.maidfm.Constants.MAX_NBT_DECOMPRESSED_BYTES));
         } catch (IOException | RuntimeException e) {
             Constants.LOG.error("读取压缩 NBT 文件失败: {}", file, e);
             return null;
