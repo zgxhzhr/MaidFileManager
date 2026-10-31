@@ -396,4 +396,49 @@ public final class BaubleHandler {
         out.append(detail);
         return out;
     }
+
+    /**
+     * 单只导入的完整反馈：饰品说明 + 附加数据未迁移说明。
+     *
+     * <p>两个通道都要拼，否则玩家只看到「导入成功」，不知道有段数据没跟过来。
+     * 顺序是饰品在前（更常见）、附加数据在后。
+     */
+    public static Component withImportDetails(ImportResult result) {
+        net.minecraft.network.chat.MutableComponent out = result.message().copy();
+        List<Component> notes = result.baubleNotes();
+        if (notes != null && !notes.isEmpty()) {
+            net.minecraft.network.chat.MutableComponent detail =
+                    Component.translatable("maid_file_manager.import.bauble_details");
+            int shown = Math.min(notes.size(), 5);
+            for (int i = 0; i < shown; i++) {
+                if (i > 0) {
+                    detail.append(Component.translatable("maid_file_manager.list_separator.newline"));
+                }
+                detail.append(notes.get(i));
+            }
+            if (notes.size() > shown) {
+                detail.append(Component.translatable(
+                        "maid_file_manager.import.bauble.more", notes.size() - shown));
+            }
+            out.append(detail);
+        }
+        List<Component> migrations = result.migrationNotes();
+        if (migrations != null && !migrations.isEmpty()) {
+            net.minecraft.network.chat.MutableComponent detail =
+                    Component.translatable("maid_file_manager.import.migration_details");
+            int shown = Math.min(migrations.size(), 5);
+            for (int i = 0; i < shown; i++) {
+                if (i > 0) {
+                    detail.append(Component.translatable("maid_file_manager.list_separator.newline"));
+                }
+                detail.append(migrations.get(i));
+            }
+            if (migrations.size() > shown) {
+                detail.append(Component.translatable(
+                        "maid_file_manager.import.migration.more", migrations.size() - shown));
+            }
+            out.append(detail);
+        }
+        return out;
+    }
 }
