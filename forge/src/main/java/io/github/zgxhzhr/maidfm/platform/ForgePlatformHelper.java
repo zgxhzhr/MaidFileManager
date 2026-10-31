@@ -290,4 +290,40 @@ public class ForgePlatformHelper implements IPlatformHelper {
             return false;
         }
     }
+
+    /**
+     * 当前进程是否是「单人/局域网主机」。
+     *
+     * <p>判断分两步，顺序不能反：
+     * <ol>
+     *   <li>先用 {@code FMLLoader.getDist()} 短路专用服务器。{@code Dist} 是编译期常量，
+     *       专用服务器分支会被直接优化掉，绝不会加载 {@code Minecraft}——否则 Forge 的
+     *       {@code RuntimeDistCleaner} 会拦下并刷 ERROR：
+     *       「Attempted to load class net/minecraft/client/Minecraft for invalid dist DEDICATED_SERVER」。</li>
+     *   <li>客户端再反射取 {@code Minecraft.getInstance().getSingleplayerServer()}：
+     *       非 null 就是集成服务器在跑。</li>
+     * </ol>
+     *
+     * <p>用途见 {@link IPlatformHelper#isSingleplayer()}：集成服务器与客户端之间是内存直连，
+     * 1.20.x 的 32767 字节 C2S 上限不生效。
+     *
+     * <p>判断失败一律按「非单人」处理——保守方向，最坏结果是多走一次分片上传，不丢数据。
+     */
+    @Override
+    public boolean isSingleplayer() {
+        if (net.minecraftforge.fml.loading.FMLLoader.getDist()
+                != net.minecraftforge.api.distmarker.Dist.CLIENT) {
+            return false;
+        }
+        try {
+            Class<?> mcClass = Class.forName("net.minecraft.client.Minecraft");
+            Object mc = mcClass.getMethod("getInstance").invoke(null);
+            if (mc == null) {
+                return false;
+            }
+            return mcClass.getMethod("getSingleplayerServer").invoke(mc) != null;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
 }
