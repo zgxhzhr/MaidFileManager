@@ -4,7 +4,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.github.zgxhzhr.maidfm.Constants;
-import io.github.zgxhzhr.maidfm.data.MaidFileIo;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 
 import java.io.IOException;
@@ -113,7 +112,7 @@ public final class MaidConfigManager {
         Path baubleImportConfigFile =
                 gameDir.resolve("config").resolve("maid_file_manager").resolve("bauble_import.json");
         // 目录结构升级：把旧版本散落的导出/导入/照片目录搬入 maid_file/ 之下（幂等，无旧目录则跳过）
-        MaidFileIo.migrateLegacyDirs(gameDir);
+        ConfigFileIo.migrateLegacyDirs(gameDir);
         // 配置解析必须逐段兜底：properties 里的非法转义（如单独的反斜杠）会抛 IllegalArgumentException，
         // json 语法错误会抛运行时异常；这些若外泄会让模组初始化失败，表现为游戏启动崩溃。
         ServerConfig.init(serverConfigFile);

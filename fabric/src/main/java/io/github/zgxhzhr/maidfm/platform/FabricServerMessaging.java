@@ -3,7 +3,7 @@ package io.github.zgxhzhr.maidfm.platform;
 import io.github.zgxhzhr.maidfm.MaidFileModFabric;
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
 import io.github.zgxhzhr.maidfm.network.MaidPayload;
-import io.github.zgxhzhr.maidfm.platform.services.ServerMessaging;
+import io.github.zgxhzhr.maidfm.service.ServerMessaging;
 
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.core.RegistryAccess;
