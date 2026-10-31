@@ -5,13 +5,19 @@ import io.github.zgxhzhr.maidfm.data.NbtMigration;
 import io.github.zgxhzhr.maidfm.data.NbtVersion;
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
 import io.github.zgxhzhr.maidfm.service.UuidAllocator;
+import io.github.zgxhzhr.maidfm.config.ConfigFileIo;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import net.minecraft.nbt.CompoundTag;
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Properties;
 import java.util.UUID;
 import java.util.List;
 import io.github.zgxhzhr.maidfm.util.ModelDisplayNames;
@@ -57,6 +63,7 @@ public final class SelfTest {
         testUuidAllocator();
         testNbtMigration();
         testConfigKeys();
+        testConfigFileIo();
         testFilenameSanitize();
         testPlayerNameSanitize();
         testResolvePlayerDir();
@@ -420,6 +427,141 @@ public final class SelfTest {
         check("getBaubleBlockedList 返回非 null", () -> MaidConfigManager.getBaubleBlockedList() != null);
         check("getBaubleBlacklist 返回非 null", () -> MaidConfigManager.getBaubleBlacklist() != null);
         check("getBaubleWhitelist 返回非 null", () -> MaidConfigManager.getBaubleWhitelist() != null);
+    }
+
+    private static void testConfigFileIo() {
+        System.out.println("\n-- config.ConfigFileIo（配置读写纯工具） --");
+
+        // ==================== parse ====================
+        Properties p = new Properties();
+        p.setProperty("t", "true");
+        p.setProperty("tu", "TRUE");
+        p.setProperty("f", "false");
+        p.setProperty("one", "1");
+        p.setProperty("empty", "");
+        eq("parse: \"true\" -> true", true, ConfigFileIo.parse(p, "t", false));
+        eq("parse: \"TRUE\" 大小写不敏感", true, ConfigFileIo.parse(p, "tu", false));
+        eq("parse: \"false\" -> false", false, ConfigFileIo.parse(p, "f", true));
+        eq("parse: \"1\" 不算 true", false, ConfigFileIo.parse(p, "one", true));
+        eq("parse: 空串回退默认值", true, ConfigFileIo.parse(p, "empty", true));
+        eq("parse: 缺失回退默认值", true, ConfigFileIo.parse(p, "missing", true));
+
+        // ==================== parseIdList ====================
+        Properties p2 = new Properties();
+        p2.setProperty("list", " a , b ,, a , C ");
+        eq("parseIdList: 逗号分割 + 去空白 + 去重（大小写保留）",
+                List.of("a", "b", "C"), ConfigFileIo.parseIdList(p2, "list"));
+        eq("parseIdList: 缺失 -> 空列表", List.of(), ConfigFileIo.parseIdList(p2, "nope"));
+
+        // ==================== sanitizeList ====================
+        eq("sanitizeList: 小写化 + 去空白 + 去重保序",
+                List.of("abc", "def"), ConfigFileIo.sanitizeList(List.of("ABC", " Def ", "abc")));
+        eq("sanitizeList: null -> 空列表", List.of(), ConfigFileIo.sanitizeList(null));
+        eq("sanitizeList: 空列表 -> 空列表", List.of(), ConfigFileIo.sanitizeList(List.of()));
+        eq("parseSanitizedList: parseIdList + sanitizeList 组合",
+                List.of("a", "b", "c"), ConfigFileIo.parseSanitizedList(p2, "list"));
+
+        // ==================== parseVolume ====================
+        Properties p3 = new Properties();
+        p3.setProperty("v1", "0.5");
+        p3.setProperty("v2", "-1");
+        p3.setProperty("v3", "2.5");
+        p3.setProperty("v4", "NaN");
+        p3.setProperty("v5", "abc");
+        eq("parseVolume: 0.5 原样", 0.5F, ConfigFileIo.parseVolume(p3, "v1", 0.15F));
+        eq("parseVolume: 负数钳到 0", 0F, ConfigFileIo.parseVolume(p3, "v2", 0.15F));
+        eq("parseVolume: >1 钳到 1", 1F, ConfigFileIo.parseVolume(p3, "v3", 0.15F));
+        eq("parseVolume: NaN -> 0", 0F, ConfigFileIo.parseVolume(p3, "v4", 0.15F));
+        eq("parseVolume: 非数字回退默认值", 0.15F, ConfigFileIo.parseVolume(p3, "v5", 0.15F));
+
+        // ==================== mergeLists ====================
+        eq("mergeLists: 合并去重保序",
+                List.of("a", "b", "c"), ConfigFileIo.mergeLists(List.of("a", "b"), List.of("b", "c")));
+        eq("mergeLists: 第二张为空 -> 原样返回第一张",
+                List.of("a"), ConfigFileIo.mergeLists(List.of("a"), List.of()));
+        eq("mergeLists: 第一张为 null",
+                List.of("a"), ConfigFileIo.mergeLists(null, List.of("a")));
+        eq("mergeLists: 两张都空", List.of(), ConfigFileIo.mergeLists(List.of(), List.of()));
+
+        // ==================== readStringArray ====================
+        JsonObject root = new JsonObject();
+        JsonArray arr = new JsonArray();
+        arr.add("A");
+        arr.add("b");
+        arr.add(123);      // 数字元素应被忽略
+        arr.add(true);     // 布尔元素应被忽略
+        arr.add("a");      // 与 "A" 小写后重复，应去重
+        root.add("list", arr);
+        eq("readStringArray: 只收字符串、小写去重保序",
+                List.of("a", "b"), ConfigFileIo.readStringArray(root, "list"));
+        eq("readStringArray: 字段缺失 -> 空列表",
+                List.of(), ConfigFileIo.readStringArray(root, "nope"));
+        check("readStringArray: 字段类型不是数组时抛异常（失败关闭）", () -> {
+            JsonObject bad = new JsonObject();
+            bad.addProperty("list", "not-an-array");
+            try {
+                ConfigFileIo.readStringArray(bad, "list");
+                return false;   // 没抛 -> 失败
+            } catch (Throwable t) {
+                return true;
+            }
+        });
+
+        // ==================== store + load 往返（临时目录） ====================
+        Path tmpDir = null;
+        try {
+            tmpDir = Files.createTempDirectory("maidfm_selftest");
+            Path file = tmpDir.resolve("sub").resolve("test.properties");
+
+            Properties out = new Properties();
+            out.setProperty("alpha", "true");
+            out.setProperty("beta", "hello 世界");
+            out.setProperty("gamma", "0.42");
+            check("store: 首次写入成功（父目录自动创建）", () -> ConfigFileIo.store(out, file));
+            check("store: 目标文件已存在", () -> Files.isRegularFile(file));
+            check("store: 不留下 .tmp 残file", () -> {
+                try (var s = Files.list(file.getParent())) {
+                    return s.noneMatch(x -> x.getFileName().toString().endsWith(".tmp"));
+                } catch (Exception e) {
+                    return false;
+                }
+            });
+
+            Properties in = ConfigFileIo.load(file, "测试配置");
+            eq("load: alpha 读回", "true", in.getProperty("alpha"));
+            eq("load: 中文值读回", "hello 世界", in.getProperty("beta"));
+            eq("load: 浮点值读回", "0.42", in.getProperty("gamma"));
+
+            // 覆盖写 + 注释保留
+            Files.writeString(file, "# 手写注释：这一行必须保留\n" + Files.readString(file));
+            Properties again = new Properties();
+            again.setProperty("alpha", "false");
+            check("store: 覆盖写成功", () -> ConfigFileIo.store(again, file));
+            String text = Files.readString(file);
+            check("store: 手写注释被保留", () -> text.contains("手写注释"));
+            Properties in2 = ConfigFileIo.load(file, "测试配置");
+            eq("store: 覆盖后值生效", "false", in2.getProperty("alpha"));
+            eq("store: 覆盖后未声明的旧键自然消失", null, in2.getProperty("beta"));
+
+            // 读不存在的文件 -> 空实例
+            Properties missing = ConfigFileIo.load(tmpDir.resolve("nope.properties"), "不存在的配置");
+            eq("load: 文件不存在返回空 Properties", 0, missing.size());
+        } catch (Exception e) {
+            check("store/load 往返用例整体执行", () -> false);
+            System.out.println("        异常: " + e);
+        } finally {
+            if (tmpDir != null) {
+                try (var s = Files.walk(tmpDir)) {
+                    s.sorted(java.util.Comparator.reverseOrder()).forEach(x -> {
+                        try {
+                            Files.deleteIfExists(x);
+                        } catch (Exception ignored) {
+                        }
+                    });
+                } catch (Exception ignored) {
+                }
+            }
+        }
     }
 
     private static void testModelDisplayNames() {
