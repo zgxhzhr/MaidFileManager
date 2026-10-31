@@ -8,6 +8,9 @@ import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
+import io.github.zgxhzhr.maidfm.network.MaidProfileCodec;
+import io.github.zgxhzhr.maidfm.network.MaidBackupCodec;
+import io.github.zgxhzhr.maidfm.network.MaidInfoCodec;
 import io.github.zgxhzhr.maidfm.service.MaidBackupService;
 import io.github.zgxhzhr.maidfm.service.MaidProfileService;
 import io.github.zgxhzhr.maidfm.service.MaidServerCommands;
@@ -67,7 +70,7 @@ public class MaidFileModFabric implements ModInitializer {
             }
             List<MaidInfo> list = MaidTransferService.listOwnMaids(player);
             FriendlyByteBuf out = PacketByteBufs.create();
-            MaidFilePackets.writeMaidInfoList(out, list);
+            MaidInfoCodec.writeMaidInfoList(out, list);
             ServerPlayNetworking.send(player, MaidFilePackets.ID_MAID_LIST, out);
         });
 
@@ -280,7 +283,7 @@ public class MaidFileModFabric implements ModInitializer {
                 return;
             }
             FriendlyByteBuf out = PacketByteBufs.create();
-            MaidFilePackets.writePlayerMaidGroups(out, groups);
+            MaidInfoCodec.writePlayerMaidGroups(out, groups);
             // 发送前按真实线格式预检总字节：全服女仆聚合可能远超单包上限，
             // 超限必须回执明确提示而非发出坏包把 OP 客户端断连
             int size = out.readableBytes();
@@ -300,7 +303,7 @@ public class MaidFileModFabric implements ModInitializer {
                 sendFeedback(player, Component.translatable("maid_file_manager.server.bulk_export_op_only"));
                 return;
             }
-            List<IMaidFileNetwork.PlayerExportRequest> requests = MaidFilePackets.readPlayerExportRequests(buf);
+            List<IMaidFileNetwork.PlayerExportRequest> requests = MaidInfoCodec.readPlayerExportRequests(buf);
             sendFeedback(player, MaidServerCommands.exportForPlayers(server, requests));
         });
 
@@ -322,14 +325,14 @@ public class MaidFileModFabric implements ModInitializer {
                 return;
             }
             FriendlyByteBuf out = PacketByteBufs.create();
-            MaidFilePackets.writeMaidProfileView(out, view);
+            MaidProfileCodec.writeMaidProfileView(out, view);
             ServerPlayNetworking.send(player, MaidFilePackets.ID_MAID_PROFILE, out);
         });
 
         // 保存女仆档案：校验归属后写入实体并回执（复用 ID_FEEDBACK）
         registerC2SReceiver(MaidFilePackets.ID_SAVE_MAID_PROFILE, (server, player, buf) -> {
             int entityId = buf.readVarInt();
-            MaidProfile profile = MaidFilePackets.readMaidProfile(buf);
+            MaidProfile profile = MaidProfileCodec.readMaidProfile(buf);
             if (profile == null) {
                 sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.save_failed"));
                 return;
@@ -358,7 +361,7 @@ public class MaidFileModFabric implements ModInitializer {
                 return;
             }
             FriendlyByteBuf out = PacketByteBufs.create();
-            MaidFilePackets.writeBackupOwners(out, owners);
+            MaidBackupCodec.writeBackupOwners(out, owners);
             int size = out.readableBytes();
             if (size > MaidFilePackets.MAX_PACKET_BYTES) {
                 Constants.LOG.warn("[maid_file_manager] 备份列表 {} 字节超过单包上限 {}，拒绝发送",
