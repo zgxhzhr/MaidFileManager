@@ -1,19 +1,18 @@
-package io.github.zgxhzhr.maidfm.network;
+package io.github.zgxhzhr.maidfm.service;
 
+import io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler;
+import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
+import io.github.zgxhzhr.maidfm.network.MaidBackupCodec;
+import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
+import io.github.zgxhzhr.maidfm.network.MaidInfoCodec;
+import io.github.zgxhzhr.maidfm.network.RequestThrottle;
 import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
-import io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler;
-import io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
 import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import io.github.zgxhzhr.maidfm.platform.PacketSender;
-import io.github.zgxhzhr.maidfm.service.BaubleHandler;
-import io.github.zgxhzhr.maidfm.service.MaidBackupService;
-import io.github.zgxhzhr.maidfm.service.MaidServerCommands;
-import io.github.zgxhzhr.maidfm.service.MaidProfileService;
-import io.github.zgxhzhr.maidfm.service.MaidTransferService;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 
