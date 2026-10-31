@@ -43,13 +43,15 @@ public final class MaidFilePayloads {
     }
 
     /** 向玩家回执一条反馈 */
+    /** 发送反馈（实现已收敛到 PacketSender） */
     private static void feedback(ServerPlayer sp, Component message) {
-        ServerPlayNetworking.send(sp, new FeedbackPayload(message));
+        io.github.zgxhzhr.maidfm.platform.PacketSender.sendFeedback(sp, message);
     }
 
     /** 批量导入 + 删除源文件：汇总文案 + 逐项 spawned 标志（顺序与请求对齐） */
+    /** 发送批量导入结果（实现已收敛到 PacketSender） */
     private static void sendImportBatchResult(ServerPlayer sp, Component summary, List<Boolean> spawned) {
-        ServerPlayNetworking.send(sp, new ImportBatchResultPayload(summary, spawned));
+        io.github.zgxhzhr.maidfm.platform.PacketSender.sendImportBatchResult(sp, summary, spawned);
     }
 
     /**
