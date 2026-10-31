@@ -1,7 +1,7 @@
 package io.github.zgxhzhr.maidfm.platform;
 
 import io.github.zgxhzhr.maidfm.network.MaidFilePayloads;
-import io.github.zgxhzhr.maidfm.platform.services.ServerMessaging;
+import io.github.zgxhzhr.maidfm.service.ServerMessaging;
 
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.network.chat.Component;

@@ -1,5 +1,6 @@
 package io.github.zgxhzhr.maidfm.config;
 
+import java.util.stream.Stream;
 import io.github.zgxhzhr.maidfm.Constants;
 
 import com.google.gson.JsonElement;
@@ -225,5 +226,99 @@ public final class ConfigFileIo {
                     what, badEscape.toString());
         }
         return props;
+    }
+
+    /**
+     * 把旧版本散落的目录搬运并入新目录（{@code maid_file/} 之下）。
+     *
+     * <p>迁移对：{@code maid_exports/}→{@code maid_file/maid_exports/}、
+     * {@code maid_imports/}→{@code maid_file/maid_imports/}、
+     * {@code config/maid_file_manager/photos/}→{@code maid_file/photos/}。
+     * 目标目录不存在时整目录直接改名移动（最快）；已存在时逐项合并，
+     * 名称冲突一律保留新目录版本。迁移结束后清理已搬空的旧目录。
+     *
+     * <p>本方法幂等、且对缺失的旧目录静默跳过，可在每次启动时无副作用地调用。
+     */
+    public static void migrateLegacyDirs(Path gameDir) {
+        if (gameDir == null) {
+            return;
+        }
+        migrateInto(gameDir.resolve(Constants.LEGACY_EXPORTS_DIR), gameDir.resolve(Constants.MAID_EXPORTS_DIR));
+        migrateInto(gameDir.resolve(Constants.LEGACY_IMPORTS_DIR), gameDir.resolve(Constants.MAID_IMPORTS_DIR));
+        migrateInto(gameDir.resolve(Constants.LEGACY_PHOTOS_DIR), gameDir.resolve(Constants.MAID_PHOTO_CANDIDATES_DIR));
+    }
+
+    /** 迁移单个目录；旧目录不存在或新旧同路径时跳过 */
+    private static void migrateInto(Path legacy, Path target) {
+        if (legacy == null || !Files.isDirectory(legacy)) {
+            return;
+        }
+        try {
+            if (legacy.toAbsolutePath().normalize().equals(target.toAbsolutePath().normalize())) {
+                return;
+            }
+            Path parent = target.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            if (!Files.exists(target)) {
+                try {
+                    Files.move(legacy, target);
+                    Constants.LOG.info("[maid_file_manager] 目录迁移: {} -> {}", legacy, target);
+                    return;
+                } catch (IOException e) {
+                    // 跨卷等场景整目录移动失败，退回逐项合并
+                    Files.createDirectories(target);
+                }
+            }
+            mergeDir(legacy, target);
+            deleteEmptyDirs(legacy);
+        } catch (IOException e) {
+            Constants.LOG.warn("[maid_file_manager] 旧目录迁移失败: {} -> {}: {}", legacy, target, e.toString());
+        }
+    }
+
+    /** 递归把 src 内容并入 dst；同名文件保留 dst 中已有版本，目录则递归合并 */
+    private static void mergeDir(Path src, Path dst) throws IOException {
+        Files.createDirectories(dst);
+        List<Path> children;
+        try (Stream<Path> stream = Files.list(src)) {
+            children = stream.toList();
+        }
+        for (Path child : children) {
+            Path dest = dst.resolve(child.getFileName().toString());
+            if (Files.isDirectory(child)) {
+                if (Files.exists(dest) && !Files.isDirectory(dest)) {
+                    continue; // 类型冲突：保留目标
+                }
+                mergeDir(child, dest);
+            } else {
+                if (Files.exists(dest)) {
+                    continue; // 同名文件：保留新目录版本
+                }
+                Files.move(child, dest);
+            }
+        }
+    }
+
+    /** 自底向上删除已空的目录树（保留尚存文件的目录） */
+    private static void deleteEmptyDirs(Path dir) throws IOException {
+        if (!Files.isDirectory(dir)) {
+            return;
+        }
+        List<Path> children;
+        try (Stream<Path> stream = Files.list(dir)) {
+            children = stream.toList();
+        }
+        for (Path child : children) {
+            if (Files.isDirectory(child)) {
+                deleteEmptyDirs(child);
+            }
+        }
+        try (Stream<Path> stream = Files.list(dir)) {
+            if (stream.findAny().isEmpty()) {
+                Files.deleteIfExists(dir);
+            }
+        }
     }
 }
