@@ -54,4 +54,15 @@ public final class NeoForgeServerMessaging implements ServerMessaging {
     public net.minecraft.server.MinecraftServer serverOf(ServerPlayer player) {
         return player == null ? null : player.server;
     }
+
+    @Override
+    public void sendExportBatchResult(ServerPlayer player, byte[] encodedPayload) {
+        net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(player,
+                new io.github.zgxhzhr.maidfm.network.MaidFilePayloads.ExportBatchResultPayload(encodedPayload));
+    }
+
+    @Override
+    public boolean sendChunkedDownload(ServerPlayer player, String kind, byte[] payload) {
+        return MaidFilePayloads.ChunkedDownloadPayload.sendChunks(player, kind, payload);
+    }
 }

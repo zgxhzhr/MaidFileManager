@@ -163,17 +163,8 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
-                    // 旧单发通道与批量通道做的是同一件重活，批量已加频控，这条不能成为绕过口（第六轮 N3）。
-                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "export_maid", 1000L)) {
-                        return;
-                    }
                     try {
-                        MaidFileData data = MaidTransferService.exportMaidToData(sp, entityId);
-                        if (data == null) {
-                            feedback(sp, Component.translatable("maid_file_manager.export.fail.unknown"));
-                        } else {
-                            sendExportResults(sp, List.of(data));
-                        }
+                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.exportMaid(sp, entityId);
                     } catch (Throwable t) {
                         handleError(sp, "EXPORT_MAID", t);
                     }
@@ -287,55 +278,14 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
-                    // 频次限制：写盘/生成实体类 handler，原先只有只读请求有节流
-                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "export_batch", 1000L)) {
-                        return;
-                    }
                     try {
-                        FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
-                        List<Integer> ids = MaidFilePackets.readIntList(fbb);
+                        // 读参数留在平台层：本端 payload 只存已编码字节
+                        net.minecraft.network.FriendlyByteBuf fbb =
+                                new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
+                        java.util.List<Integer> ids =
+                                io.github.zgxhzhr.maidfm.network.MaidFilePackets.readIntList(fbb);
                         boolean removeAfter = fbb.readBoolean();
-                        // 两阶段处理：先完成全部序列化并通过体积预检、确认结果包已发送，之后才允许删除实体。
-                        // 若边导出边删除，预检失败时女仆已被 discard 而文件未送达，构成不可逆数据丢失
-                        List<MaidFileData> results = new ArrayList<>(ids.size());
-                        List<Integer> exportedIds = new ArrayList<>(ids.size());
-                        for (Integer entityId : ids) {
-                            if (entityId == null) continue;
-                            MaidFileData d = MaidTransferService.exportMaidToData(sp, entityId);
-                            if (d != null) {
-                                results.add(d);
-                                exportedIds.add(entityId);
-                            }
-                        }
-                        if (sendExportResults(sp, results)) {
-                            int removed = 0;
-                            // 空批次绝不能登记待删：客户端对空结果**不发 ack**（onExportResultReceived 拿到空表直接返回），
-                            // 登记项会一直占到 TTL 过期，期间下一次「导出并移除」被误报 remove_busy、静默降级成只导出（第六轮 N4）。
-                            if (removeAfter && !exportedIds.isEmpty()) {
-                                // 【P2-10】不再立刻 discard：服务端无法确认客户端写盘成功。
-                                // 登记待删，等客户端回执 ID_EXPORT_WRITE_ACK 再删；不回执则永不删除。
-                                // 同一玩家同一时刻只允许一笔待删登记。已有登记时不覆盖 —— 覆盖会让「旧回执」
-                                // 删除**新批次**的女仆，而新批次文件可能根本没写成功，构成不可逆数据丢失。
-                                // putIfAbsent 前先清掉已过 TTL 的陈旧登记：TTL 原先只在 ack 到达时判，
-                                // 回执永远不来时该玩家会一直命中 putIfAbsent != null → 「导出并移除」永久失效。
-                                io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.RegisterResult reg =
-                                        io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.register(sp.getUUID(), exportedIds);
-                                if (reg == io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.RegisterResult.BUSY) {
-                                    Constants.LOG.warn("[maid_file_manager] 上一笔待删回执未到，本次导出不执行移除: player={}, 本批 {} 个",
-                                            sp.getName().getString(), exportedIds.size());
-                                    feedback(sp, Component.translatable("maid_file_manager.server.remove_busy"));
-                                } else {
-                                    if (reg == io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.RegisterResult.REGISTERED_AFTER_EXPIRY) {
-                                        Constants.LOG.warn("[maid_file_manager] 陈旧待删登记已过 TTL，清掉后重建: player={}",
-                                                sp.getName().getString());
-                                    }
-                                    Constants.LOG.info("[maid_file_manager] 导出并移除：登记待删 {} 个实体，等待客户端写盘回执 player={}",
-                                            exportedIds.size(), sp.getName().getString());
-                                }
-                            }
-                            Constants.LOG.debug("[maid_file_manager] EXPORT_BATCH: player={} sent={} removed={}",
-                                    sp.getName().getString(), results.size(), removed);
-                        }
+                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.exportBatch(sp, ids, removeAfter);
                     } catch (Throwable t) {
                         handleError(sp, "EXPORT_BATCH", t);
                     }
@@ -1364,7 +1314,7 @@ public final class MaidFilePayloads {
         }
 
         /** 服务端调用：把负载切片逐片发给玩家 */
-        static boolean sendChunks(ServerPlayer player, String kind, byte[] payload) {
+        public static boolean sendChunks(ServerPlayer player, String kind, byte[] payload) {
             if (player == null || payload == null || payload.length == 0) {
                 return true;
             }
