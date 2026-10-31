@@ -379,8 +379,11 @@ public class MaidFileData {
             return false;
         }
         try {
-            return data.getBooleanOr("IsYsmModel", false)
-                    || !data.getStringOr("YsmModelName", "").isEmpty();
+            // 只认 IsYsmModel。不要用「YsmModelName 非空」判断：
+            // TLM 把 YsmModelName 存成 Component 的 JSON，空值时是 {"text":""} 而不是空串，
+            // 用它判断会把所有非 YSM 女仆误判成 YSM，进而让导出文件名去取服务端算的
+            // displayName（那在专用服务端上没有中文语言表，只有英文模型名）。
+            return data.getBooleanOr("IsYsmModel", false);
         } catch (Throwable t) {
             return false;
         }
