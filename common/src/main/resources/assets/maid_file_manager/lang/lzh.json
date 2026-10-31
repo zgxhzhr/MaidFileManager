@@ -262,5 +262,14 @@
   "gui.maid_file_manager.backup.help.line8": "配成則該玩家之備冊皆顯其名，並錄於本機之藏，下次即顯。",
   "gui.maid_file_manager.backup.help.line9": "若示「未覓得相配之戲者」，則名有誤，或其人不在此機之檔中。",
   "gui.maid_file_manager.backup.help.line10": "上方檢索框唯篩此列，不興任何查詢。",
-  "gui.maid_file_manager.backup.help.btn": "釋"
+  "gui.maid_file_manager.backup.help.btn": "釋",
+  "maid_file_manager.import.migration_details": "。他模組之文說：",
+  "maid_file_manager.import.migration.no_provider": "%s：今境無司此錄之模組，已捨。",
+  "maid_file_manager.import.migration.provider_unavailable": "%s：此錄所屬之模組未置，已捨。",
+  "maid_file_manager.import.migration.failed": "%s：遷之未成（%s）。",
+  "maid_file_manager.import.migration.failed_unclassified": "%s：遷之未成，其故見司權者之記。",
+  "maid_file_manager.import.migration.more": "（另有 %s 條之說）",
+  "maid_file_manager.export.migration.failed": "%s 之錄未能出（該模組有失）。",
+  "maid_file_manager.export.migration_details": "。他模組之文說：",
+  "maid_file_manager.export.migration.more": "（另有 %s 條之說）"
 }
