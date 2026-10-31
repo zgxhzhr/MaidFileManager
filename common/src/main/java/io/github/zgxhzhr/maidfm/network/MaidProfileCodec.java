@@ -61,8 +61,6 @@ public final class MaidProfileCodec {
         buf.writeFloat(v.attackDamage());
         buf.writeVarInt(v.favorability());
         buf.writeBoolean(v.struckByLightning());
-        // 读端一直在这里读 ysmModel，但写端此前漏写，导致 MaidProfileView 收发错位。
-        // 母工程已修（1.7.2 YSM 换模显示），本次同步补齐其余五端。
         buf.writeBoolean(v.ysmModel());
         writeMaidProfile(buf, v.profile());
         List<CompoundTag> baubles = v.baubleItems() == null ? List.of() : v.baubleItems();
