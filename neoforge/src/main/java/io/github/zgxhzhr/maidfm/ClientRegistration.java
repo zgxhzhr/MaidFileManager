@@ -134,11 +134,10 @@ public class ClientRegistration {
          */
         @SubscribeEvent
         public static void onClientSetup(net.neoforged.fml.event.lifecycle.FMLClientSetupEvent event) {
-            io.github.zgxhzhr.maidfm.platform.Services.NETWORK.loadService(
-                    io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.class,
-                    io.github.zgxhzhr.maidfm.network.NeoForgeNetwork::new);
+            // 直接注册到 Holder：Services.NETWORK 只是「注册后再取出」的无用中间层，
+            // 与 forge / fabric 三端的 Holder.set(new XxxNetwork()) 保持一致。
             io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.Holder.set(
-                    io.github.zgxhzhr.maidfm.platform.Services.NETWORK.get());
+                    new io.github.zgxhzhr.maidfm.network.NeoForgeNetwork());
             Constants.LOG.info("[maid_file_manager] client network impl registered");
         }
 

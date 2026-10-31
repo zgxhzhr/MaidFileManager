@@ -1358,7 +1358,7 @@ public final class MaidFilePayloads {
                 // 与 Forge、Fabric 两端走同一份实现（此前只有 SAVE_PROFILE 接了，
                 // IMPORT_BATCH 落到一条 WARN 上——而带一张头像的 .maid 就超过 24 KiB，
                 // 该端的批量导入实际上基本全废）。
-                io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.dispatch(sp, kind, full);
+                io.github.zgxhzhr.maidfm.service.ChunkedUploadDispatcher.dispatch(sp, kind, full);
             });
         }
     }
