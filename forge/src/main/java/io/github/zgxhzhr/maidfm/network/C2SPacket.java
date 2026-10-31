@@ -77,7 +77,8 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                 } else if (MaidFilePackets.ID_CHUNKED_UPLOAD.equals(id)) {
                     handleChunkedUpload(player, data);
                 } else if (MaidFilePackets.ID_EXPORT_WRITE_ACK.equals(id)) {
-                    handleExportWriteAck(player, data.readBoolean());
+                    io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.confirmAndRemove(
+                    player.getUUID(), data.readBoolean(), player);
                 } else if (MaidFilePackets.ID_CLIENT_CONSENT.equals(id)) {
                     boolean allow = data.readBoolean();
                     io.github.zgxhzhr.maidfm.config.MaidConfigManager.handleClientConsent(player.getUUID(), allow);
@@ -220,20 +221,18 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                 // 删除**新批次**的女仆，而新批次文件可能根本没写成功，构成不可逆数据丢失。
                 // putIfAbsent 前先清掉已过 TTL 的陈旧登记：TTL 原先只在 ack 到达时判，
                 // 回执永远不来时该玩家会一直命中 putIfAbsent != null → 「导出并移除」永久失效。
-                Long prevPendingAt = PENDING_REMOVAL_AT.get(player.getUUID());
-                if (prevPendingAt != null
-                        && System.currentTimeMillis() - prevPendingAt > PENDING_REMOVAL_TTL_MS) {
-                    PENDING_REMOVAL.remove(player.getUUID());
-                    PENDING_REMOVAL_AT.remove(player.getUUID());
-                    Constants.LOG.warn("[maid_file_manager] 陈旧待删登记已过 TTL，清掉后重建: player={}",
-                            player.getName().getString());
-                }
-                if (PENDING_REMOVAL.putIfAbsent(player.getUUID(), new ArrayList<>(exportedIds)) != null) {
+                io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.RegisterResult reg =
+                        io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.register(
+                                player.getUUID(), exportedIds);
+                if (reg == io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.RegisterResult.BUSY) {
                     Constants.LOG.warn("[maid_file_manager] 上一笔待删回执未到，本次导出不执行移除: player={}, 本批 {} 个",
                             player.getName().getString(), exportedIds.size());
                     sendFeedback(player, Component.translatable("maid_file_manager.server.remove_busy"));
                 } else {
-                    PENDING_REMOVAL_AT.put(player.getUUID(), System.currentTimeMillis());
+                    if (reg == io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.RegisterResult.REGISTERED_AFTER_EXPIRY) {
+                        Constants.LOG.warn("[maid_file_manager] 陈旧待删登记已过 TTL，清掉后重建: player={}",
+                                player.getName().getString());
+                    }
                     Constants.LOG.info("[maid_file_manager] 导出并移除：登记待删 {} 个实体，等待客户端写盘回执 player={}",
                             exportedIds.size(), player.getName().getString());
                 }
@@ -663,84 +662,5 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         Constants.LOG.info("[maid_file_manager] 导出结果分片下发: player={} bytes={} chunks={}",
                 player.getName().getString(), payload.length, total);
         return true;
-    }
-
-    /** 待删除实体：玩家 UUID → 实体 ID 列表（等客户端写盘回执后才删） */
-    private static final java.util.Map<java.util.UUID, List<Integer>> PENDING_REMOVAL =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** 待删登记的写入时刻（毫秒）：客户端回执永远不来时用它判定超时 */
-    private static final java.util.Map<java.util.UUID, Long> PENDING_REMOVAL_AT =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /**
-     * 待删登记存活时长。客户端崩溃/断线导致回执永远不来时不能让登记永久占位，
-     * 否则「导出并移除」会永久失效（女仆一直不删）且玩家无法察觉。
-     */
-    private static final long PENDING_REMOVAL_TTL_MS = 5 * 60 * 1000L;
-
-    /** 玩家断线时清掉其待删登记：回执不可能再来，留着只会阻塞后续导出 */
-    public static void clearPendingRemoval(java.util.UUID playerId) {
-        if (playerId != null) {
-            PENDING_REMOVAL.remove(playerId);
-            PENDING_REMOVAL_AT.remove(playerId);
-        }
-    }
-
-    /**
-     * 客户端写盘回执。
-     *
-     * <p>只有 {@code success=true} 才真正删除实体与照片；失败则放弃删除并把原因写进日志，
-     * 女仆留在世界里（玩家可以重新导出）。这是对「导出并移除」的数据安全兜底。
-     */
-    private static void handleExportWriteAck(ServerPlayer player, boolean success) {
-        List<Integer> ids = PENDING_REMOVAL.remove(player.getUUID());
-        Long pendingAt = PENDING_REMOVAL_AT.remove(player.getUUID());
-        if (ids == null || ids.isEmpty()) {
-            Constants.LOG.debug("[maid_file_manager] 收到导出回执但没有待删记录: player={}",
-                    player.getName().getString());
-            return;
-        }
-        if (pendingAt != null && System.currentTimeMillis() - pendingAt > PENDING_REMOVAL_TTL_MS) {
-            Constants.LOG.warn("[maid_file_manager] 待删登记已超时（{} ms），丢弃: player={}",
-                    PENDING_REMOVAL_TTL_MS, player.getName().getString());
-            return;
-        }
-        if (!success) {
-            Constants.LOG.warn("[maid_file_manager] 客户端写盘失败，已放弃删除女仆（{} 个），player={}",
-                    ids.size(), player.getName().getString());
-            return;
-        }
-        int removed = 0;
-        for (Integer entityId : ids) {
-            Entity e = player.level().getEntity(entityId);
-            if (e == null) {
-                continue;
-            }
-            // 防御性校验：PENDING_REMOVAL 是服务端自己登记的，理论上玩家改不了，
-            // 但删除是不可逆操作，删前再确认一次「确实是女仆」且「确实归这个玩家」。
-            // 不校验类型的话，任何被塞进队列的非女仆实体都会被直接 discard。
-            if (!(e instanceof com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid maid)
-                    || !maid.isOwnedBy(player)) {
-                Constants.LOG.warn("[maid_file_manager] 待删实体校验未通过，跳过: entityId={} player={}",
-                        entityId, player.getName().getString());
-                continue;
-            }
-            try {
-                MaidTransferService.unregisterMaidWorldData(e);
-                java.util.UUID photoUuid = e.getUUID();
-                e.discard();
-                try {
-                    io.github.zgxhzhr.maidfm.data.MaidPhotoStore.delete(
-                            io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getGameDir(), photoUuid);
-                } catch (Throwable ignored) {
-                }
-                removed++;
-            } catch (Throwable t) {
-                Constants.LOG.warn("[maid_file_manager] 删除实体失败: entityId={} err={}", entityId, t.toString());
-            }
-        }
-        Constants.LOG.info("[maid_file_manager] 导出写盘已确认，删除女仆 {} 个 player={}",
-                removed, player.getName().getString());
     }
 }
