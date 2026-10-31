@@ -148,6 +148,8 @@
   "gui.maid_file_manager.backup.world.server": "当前服务器",
   "gui.maid_file_manager.backup.back": "返回",
   "gui.maid_file_manager.backup.unavailable": "备份功能当前不可用",
+  "gui.maid_file_manager.backup.truncated": "备份目录过多，列表已截断（仅显示已扫描到的部分）",
+  "maid_file_manager.server.backup_list_truncated": "备份列表已截断：服务端备份目录过多，仅返回已扫描到的部分",
   "gui.maid_file_manager.backup.empty": "未找到任何女仆备份",
   "gui.maid_file_manager.backup.no_selection": "请先选择一个备份文件",
   "gui.maid_file_manager.backup.exported": "已导出：%s",

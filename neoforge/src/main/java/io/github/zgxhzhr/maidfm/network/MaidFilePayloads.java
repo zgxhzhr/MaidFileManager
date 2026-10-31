@@ -805,9 +805,15 @@ public final class MaidFilePayloads {
                     }
                     try {
                         // 权限：OP 可见全部玩家备份，非 OP 仅可见自己名下的备份
-                        List<IMaidFileNetwork.BackupOwner> owners =
+                        io.github.zgxhzhr.maidfm.service.MaidBackupService.ScanResult scanResult =
                                 io.github.zgxhzhr.maidfm.service.MaidBackupService.scan(
                                         sp.server, sp.getUUID(), sp.hasPermissions(2));
+                        List<IMaidFileNetwork.BackupOwner> owners = scanResult.owners();
+                        // 扫描被上限/时间预算截断时明确告知：否则玩家会以为「就这么多备份」，
+                        // 从而误判某只女仆没有备份。走已有 feedback 通道，不改协议。
+                        if (scanResult.truncated()) {
+                            feedback(sp, Component.translatable("maid_file_manager.server.backup_list_truncated"));
+                        }
                         // 发送前按接收端解码维度预检：主人组数、总字节均需在上限内，
                         // 超限只回执提示，绝不发坏包把客户端断连
                         if (owners.size() > MaidFilePackets.MAX_BACKUP_OWNERS) {
