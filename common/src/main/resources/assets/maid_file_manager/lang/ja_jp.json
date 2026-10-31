@@ -273,5 +273,5 @@
   "maid_file_manager.export.migration_details": "。他のMODデータの説明：",
   "maid_file_manager.export.migration.more": "（他 %s 件）",
   "maid_file_manager.import.migration.provider_note": "%s: %s",
-  "maid_file_manager.export.quota_exceeded": "エクスポートしたデータは展開後 約 %s KB で、インポート上限 %s KB を超えています。このファイルは後でインポートできない可能性があります。"
+  "maid_file_manager.export.quota_exceeded": "今回エクスポートしたデータは約 %s KB（圧縮後）です。インポート側では展開後のデータに %s KB の上限があるため、超えたファイルはインポートできない可能性があります。"
 }
