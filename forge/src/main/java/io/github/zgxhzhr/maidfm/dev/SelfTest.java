@@ -5,6 +5,9 @@ import io.github.zgxhzhr.maidfm.data.NbtMigration;
 import io.github.zgxhzhr.maidfm.data.NbtVersion;
 import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
+import io.github.zgxhzhr.maidfm.network.MaidProfileCodec;
+import io.github.zgxhzhr.maidfm.network.MaidBackupCodec;
+import io.github.zgxhzhr.maidfm.network.MaidInfoCodec;
 import io.github.zgxhzhr.maidfm.service.UuidAllocator;
 import io.github.zgxhzhr.maidfm.config.ConfigFileIo;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
@@ -578,8 +581,8 @@ public final class SelfTest {
         MaidInfo full = new MaidInfo(42, "touhou_little_maid:model_a", "显示名", 7,
                 19.5F, 20.0F, true, ownerUuid, "主人名", "自定义名", true);
         FriendlyByteBuf b1 = new FriendlyByteBuf(Unpooled.buffer());
-        MaidFilePackets.writeMaidInfo(b1, full);
-        MaidInfo r1 = MaidFilePackets.readMaidInfo(b1);
+        MaidInfoCodec.writeMaidInfo(b1, full);
+        MaidInfo r1 = MaidInfoCodec.readMaidInfo(b1);
         eq("MaidInfo: entityId", 42, r1.entityId());
         eq("MaidInfo: modelId", "touhou_little_maid:model_a", r1.modelId());
         eq("MaidInfo: displayName", "显示名", r1.displayName());
@@ -595,8 +598,8 @@ public final class SelfTest {
         // 三个可空字段为 null
         MaidInfo minimal = new MaidInfo(1, "m:p", "d", 0, 1F, 1F, false, null, null, null, false);
         FriendlyByteBuf b2 = new FriendlyByteBuf(Unpooled.buffer());
-        MaidFilePackets.writeMaidInfo(b2, minimal);
-        MaidInfo r2 = MaidFilePackets.readMaidInfo(b2);
+        MaidInfoCodec.writeMaidInfo(b2, minimal);
+        MaidInfo r2 = MaidInfoCodec.readMaidInfo(b2);
         eq("MaidInfo: ownerUuid null 往返", null, r2.ownerUuid());
         eq("MaidInfo: ownerName null 往返", null, r2.ownerName());
         eq("MaidInfo: customName null 往返", null, r2.customName());
@@ -604,8 +607,8 @@ public final class SelfTest {
 
         // ==================== MaidInfo 列表 ====================
         FriendlyByteBuf b3 = new FriendlyByteBuf(Unpooled.buffer());
-        MaidFilePackets.writeMaidInfoList(b3, List.of(full, minimal));
-        List<MaidInfo> infoList = MaidFilePackets.readMaidInfoList(b3);
+        MaidInfoCodec.writeMaidInfoList(b3, List.of(full, minimal));
+        List<MaidInfo> infoList = MaidInfoCodec.readMaidInfoList(b3);
         eq("MaidInfo 列表: 长度", 2, infoList.size());
         eq("MaidInfo 列表: 首元素 entityId", 42, infoList.get(0).entityId());
         eq("MaidInfo 列表: 次元素 modelId", "m:p", infoList.get(1).modelId());
@@ -616,8 +619,8 @@ public final class SelfTest {
             many.add(new MaidInfo(i, "m:p", "d" + i, 0, 1F, 1F, false, null, null, null, false));
         }
         FriendlyByteBuf b4 = new FriendlyByteBuf(Unpooled.buffer());
-        MaidFilePackets.writeMaidInfoList(b4, many);
-        List<MaidInfo> manyBack = MaidFilePackets.readMaidInfoList(b4);
+        MaidInfoCodec.writeMaidInfoList(b4, many);
+        List<MaidInfo> manyBack = MaidInfoCodec.readMaidInfoList(b4);
         eq("MaidInfo 列表: 超 256 截断为 256", 256, manyBack.size());
         eq("MaidInfo 列表: 截断后首元素正确", 0, manyBack.get(0).entityId());
 
@@ -631,8 +634,8 @@ public final class SelfTest {
         IMaidFileNetwork.BackupOwner o2 = new IMaidFileNetwork.BackupOwner(
                 "owner-uuid-2", null, List.of());
         FriendlyByteBuf b5 = new FriendlyByteBuf(Unpooled.buffer());
-        MaidFilePackets.writeBackupOwners(b5, List.of(o1, o2));
-        List<IMaidFileNetwork.BackupOwner> owners = MaidFilePackets.readBackupOwners(b5);
+        MaidBackupCodec.writeBackupOwners(b5, List.of(o1, o2));
+        List<IMaidFileNetwork.BackupOwner> owners = MaidBackupCodec.readBackupOwners(b5);
         eq("Backup: owner 数量", 2, owners.size());
         eq("Backup: owner0 uuid", "owner-uuid", owners.get(0).ownerUuid());
         eq("Backup: owner0 名", "主名", owners.get(0).ownerName());
@@ -653,7 +656,7 @@ public final class SelfTest {
         FriendlyByteBuf tooMany = new FriendlyByteBuf(Unpooled.buffer());
         tooMany.writeVarInt(MaidFilePackets.MAX_BACKUP_OWNERS + 1);
         throwsIAE("Backup: 读端 owner 数超限直接拒绝",
-                () -> MaidFilePackets.readBackupOwners(tooMany));
+                () -> MaidBackupCodec.readBackupOwners(tooMany));
 
         FriendlyByteBuf tooManyMaids = new FriendlyByteBuf(Unpooled.buffer());
         tooManyMaids.writeVarInt(1);
@@ -661,23 +664,23 @@ public final class SelfTest {
         tooManyMaids.writeUtf("n", MaidFilePackets.MAX_TEXT_LEN);
         tooManyMaids.writeVarInt(MaidFilePackets.MAX_BACKUP_MAIDS + 1);
         throwsIAE("Backup: 读端 maid 数超限直接拒绝",
-                () -> MaidFilePackets.readBackupOwners(tooManyMaids));
+                () -> MaidBackupCodec.readBackupOwners(tooManyMaids));
 
         // ==================== MaidProfile（可空 + 非空） ====================
         FriendlyByteBuf b6 = new FriendlyByteBuf(Unpooled.buffer());
-        MaidFilePackets.writeMaidProfile(b6, null);
-        eq("MaidProfile: null 往返保持 null", null, MaidFilePackets.readMaidProfile(b6));
+        MaidProfileCodec.writeMaidProfile(b6, null);
+        eq("MaidProfile: null 往返保持 null", null, MaidProfileCodec.readMaidProfile(b6));
 
         FriendlyByteBuf b7 = new FriendlyByteBuf(Unpooled.buffer());
-        MaidFilePackets.writeMaidProfile(b7, new MaidProfile());
-        check("MaidProfile: 空实例往返非 null", () -> MaidFilePackets.readMaidProfile(b7) != null);
+        MaidProfileCodec.writeMaidProfile(b7, new MaidProfile());
+        check("MaidProfile: 空实例往返非 null", () -> MaidProfileCodec.readMaidProfile(b7) != null);
 
         // ==================== MaidProfileView ====================
         MaidProfileView view = new MaidProfileView(99, "uuid-x", "主人", "m:p", "显示",
                 null, 10F, 20F, 3F, 5, false, null, List.of(), true);
         FriendlyByteBuf b8 = new FriendlyByteBuf(Unpooled.buffer());
-        MaidFilePackets.writeMaidProfileView(b8, view);
-        MaidProfileView rv = MaidFilePackets.readMaidProfileView(b8);
+        MaidProfileCodec.writeMaidProfileView(b8, view);
+        MaidProfileView rv = MaidProfileCodec.readMaidProfileView(b8);
         eq("ProfileView: entityId", 99, rv.entityId());
         eq("ProfileView: maidUuid", "uuid-x", rv.maidUuid());
         eq("ProfileView: ownerName", "主人", rv.ownerName());

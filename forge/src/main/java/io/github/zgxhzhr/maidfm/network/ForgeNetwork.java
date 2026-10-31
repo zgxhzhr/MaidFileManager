@@ -86,7 +86,7 @@ public final class ForgeNetwork implements IMaidFileNetwork {
     @Override
     public void sendServerExportBatch(List<IMaidFileNetwork.PlayerExportRequest> groups) {
         FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        MaidFilePackets.writePlayerExportRequests(buf, groups);
+        MaidInfoCodec.writePlayerExportRequests(buf, groups);
         sendC2S(MaidFilePackets.ID_SERVER_EXPORT_BATCH, buf);
     }
 
@@ -102,7 +102,7 @@ public final class ForgeNetwork implements IMaidFileNetwork {
         // 先把负载编码成「VarInt entityId + 档案 NBT」字节：分片路径与普通包共用这一格式。
         FriendlyByteBuf probe = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
         probe.writeVarInt(entityId);
-        MaidFilePackets.writeMaidProfile(probe, profile);
+        MaidProfileCodec.writeMaidProfile(probe, profile);
         byte[] encoded = new byte[probe.readableBytes()];
         probe.getBytes(0, encoded);
         if (MaidFilePackets.isLegacyPayloadLimit()

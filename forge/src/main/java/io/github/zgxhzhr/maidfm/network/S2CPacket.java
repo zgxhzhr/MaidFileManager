@@ -70,7 +70,7 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                 }
                 FriendlyByteBuf data = packet.data;
                 if (MaidFilePackets.ID_MAID_LIST.equals(id)) {
-                    List<MaidInfo> list = MaidFilePackets.readMaidInfoList(data);
+                    List<MaidInfo> list = MaidInfoCodec.readMaidInfoList(data);
                     handler.onMaidListReceived(list);
                 } else if (MaidFilePackets.ID_EXPORT_RESULT.equals(id)) {
                     // 兼容旧单条导出：包装成 singleton list
@@ -145,17 +145,17 @@ public record S2CPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     Component msg = data.readComponent();
                     handler.onFeedbackReceived(msg != null ? msg : Component.empty());
                 } else if (MaidFilePackets.ID_SERVER_EXPORT_LIST.equals(id)) {
-                    List<IMaidFileNetwork.PlayerMaidGroup> groups = MaidFilePackets.readPlayerMaidGroups(data);
+                    List<IMaidFileNetwork.PlayerMaidGroup> groups = MaidInfoCodec.readPlayerMaidGroups(data);
                     handler.onServerExportListReceived(groups);
                 } else if (MaidFilePackets.ID_MAID_PROFILE.equals(id)) {
                     // 服务端校验归属后返回的档案视图，交由当前活跃界面展示
-                    MaidProfileView view = MaidFilePackets.readMaidProfileView(data);
+                    MaidProfileView view = MaidProfileCodec.readMaidProfileView(data);
                     if (view != null) {
                         handler.onMaidProfileReceived(view);
                     }
                 } else if (MaidFilePackets.ID_BACKUP_LIST.equals(id)) {
                     // 备份管理：服务端按权限过滤后返回的可浏览备份列表
-                    List<IMaidFileNetwork.BackupOwner> owners = MaidFilePackets.readBackupOwners(data);
+                    List<IMaidFileNetwork.BackupOwner> owners = MaidBackupCodec.readBackupOwners(data);
                     handler.onBackupListReceived(owners);
                 } else if (MaidFilePackets.ID_BACKUP_EXPORT_RESULT.equals(id)) {
                     // 备份管理：服务端回传的单条备份数据（null=权限不足或读取失败）

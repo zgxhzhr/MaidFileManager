@@ -96,7 +96,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                     handleRequestMaidProfile(player, data.readVarInt());
                 } else if (MaidFilePackets.ID_SAVE_MAID_PROFILE.equals(id)) {
                     int entityId = data.readVarInt();
-                    handleSaveMaidProfile(player, entityId, MaidFilePackets.readMaidProfile(data));
+                    handleSaveMaidProfile(player, entityId, MaidProfileCodec.readMaidProfile(data));
                 } else if (MaidFilePackets.ID_MODEL_NAMES.equals(id)) {
                     // 客户端上报的「模型 ID → 显示名」映射：合并进服务端汇总表，
                     // 备份列表解析模型名时优先查它（这是拿到别人私有模型中文名的唯一来源）。
@@ -143,7 +143,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         }
         List<MaidInfo> list = MaidTransferService.listOwnMaids(player);
         FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        MaidFilePackets.writeMaidInfoList(buf, list);
+        MaidInfoCodec.writeMaidInfoList(buf, list);
         ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_MAID_LIST, buf);
     }
 
@@ -419,7 +419,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
             return;
         }
         FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        MaidFilePackets.writePlayerMaidGroups(buf, groups);
+        MaidInfoCodec.writePlayerMaidGroups(buf, groups);
         // 发送前按真实线格式预检总字节：全服女仆聚合可能远超单包上限，
         // 超限必须回执明确提示而非发出坏包把 OP 客户端断连
         int size = buf.readableBytes();
@@ -440,7 +440,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
             sendFeedback(player, Component.translatable("maid_file_manager.server.bulk_export_op_only"));
             return;
         }
-        List<IMaidFileNetwork.PlayerExportRequest> requests = MaidFilePackets.readPlayerExportRequests(data);
+        List<IMaidFileNetwork.PlayerExportRequest> requests = MaidInfoCodec.readPlayerExportRequests(data);
         Component result = io.github.zgxhzhr.maidfm.service.MaidServerCommands
                 .exportForPlayers(player.server, requests);
         sendFeedback(player, result);
@@ -467,7 +467,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
             return;
         }
         FriendlyByteBuf out = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        MaidFilePackets.writeMaidProfileView(out, view);
+        MaidProfileCodec.writeMaidProfileView(out, view);
         ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_MAID_PROFILE, out);
     }
 
@@ -508,7 +508,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         }
         FriendlyByteBuf probe = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
         try {
-            MaidFilePackets.writeBackupOwners(probe, owners);
+            MaidBackupCodec.writeBackupOwners(probe, owners);
             int size = probe.readableBytes();
             if (size > MaidFilePackets.MAX_PACKET_BYTES) {
                 Constants.LOG.warn("[maid_file_manager] 备份列表 {} 字节超过单包上限 {}，拒绝发送",
@@ -520,7 +520,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
             probe.release();
         }
         FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        MaidFilePackets.writeBackupOwners(buf, owners);
+        MaidBackupCodec.writeBackupOwners(buf, owners);
         ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_BACKUP_LIST, buf);
     }
 
