@@ -214,7 +214,8 @@ public final class MaidBackupService {
                                     if (ext != null) {
                                         try {
                                             fromRegistry = ext.apply(modelId);
-                                        } catch (Throwable ignored) {
+                                        } catch (Throwable t) {
+                                            Constants.LOG.debug("[maid_file_manager] 外部模型名提供者抛异常（已忽略，退回本地解析）: {}", t.toString());
                                         }
                                     }
                                 }
