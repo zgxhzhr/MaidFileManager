@@ -600,7 +600,10 @@ public final class MaidTransferService {
         UUID sourceMaidUuid = UuidAllocator.resolveSourceMaidUuid(data, originalNbt);
         // 四层解析：幂等记录 → 默认保留原 UUID → 冲突派生 → 派生时迁移备份。
         // 此前一律 mapImportUuid 派生，导致玩家认的「同一只女仆」UUID 被换掉。
-        UUID mappedEntityUuid = resolveImportUuid(player, sourceMaidUuid);
+        // 只读决策：此处不写幂等记录、不搬备份——两者都要等 addFreshEntity 成功之后再做
+        UuidAllocator.ImportUuidDecision uuidDecision =
+                UuidAllocator.decideImportUuid(player, sourceMaidUuid);
+        UUID mappedEntityUuid = uuidDecision.targetUuid();
 
         // 双胞胎拦截（针对"保留原女仆导出、再把同一文件导回同一世界"）：
         // 源 UUID 女仆在本世界仍存活（已加载实体；或虽不在已加载区块/已收入魂符但 MaidWorldData
@@ -843,6 +846,21 @@ public final class MaidTransferService {
             return ImportResult.failed(
                     Component.translatable("maid_file_manager.import.fail.add_entity"));
         }
+        // ===== 事务提交点之后 =====
+        // addFreshEntity 已成功，实体确实进入世界，此时才把「本次导入的结果」写盘。
+        // 顺序理由：幂等记录与 TLM 备份迁移都不可逆（后者会删除原 UUID 目录），
+        // 若在提交点之前执行，导入失败时会留下一个指向不存在实体的记录，
+        // 并且把原女仆的备份目录移走。
+        if (uuidDecision.commitNeeded()) {
+            MinecraftServer importServer = player.level().getServer();
+            ArchiveImportMap.record(importServer, sourceMaidUuid, player.getUUID(), mappedEntityUuid);
+            if (!mappedEntityUuid.equals(sourceMaidUuid)) {
+                TlmBackupMigrator.migrate(player, sourceMaidUuid, mappedEntityUuid);
+                Constants.LOG.info("[maid_file_manager] 原 UUID {} 在本存档被占用，已派生新 UUID {} 导入",
+                        sourceMaidUuid, mappedEntityUuid);
+            }
+        }
+
         // 注意：此处绝不能手动 MaidWorldData.addInfo(maid)。该表的 TLM 不变量是"只登记离开已加载世界
         // 但仍存活的女仆"：实体入世界时 onAddedToLevel 会 removeInfo，所在区块卸载时
         // onRemovedFromLevel 才 addInfo。对活着且在已加载世界的新女仆手动 addInfo 会留下幽灵登记，
@@ -1583,58 +1601,6 @@ public final class MaidTransferService {
         } catch (Throwable t) {
             Constants.LOG.warn("[maid_file_manager] 清理 MaidWorldData 登记失败: {}", t.toString());
         }
-    }
-
-    /**
-     * 解析源女仆实体 UUID：优先读 .maid 顶层 source_maid_uuid（v6 起写入）；
-     * 旧文件无此字段时从实体根 NBT 兜底（1.9+ int 数组 "UUID"，或 1.8 的 UUIDMost/UUIDLeast）。
-     * 注意必须在 {@link NbtMigration#migrate} 之前读取——迁移会恒删实体根 UUID 键。
-     *
-     * @return 源女仆 UUID；无法解析（极早期文件且 NBT 缺键）返回 null，调用方退回随机实体 UUID
-     */
-
-    /**
-     * 确定性导入 UUID 映射：同一玩家导入同一源女仆，永远得到同一目标 UUID；
-     * 不同玩家（多人服分享文件）因玩家 UUID 参与哈希而得到不同 UUID，互不冲突。
-     *
-     * <p>使用 JDK 内置的 v3(MD5) 名字 UUID：固定命名前缀隔离用途，输出带版本/变体位，
-     * 与原版随机 v4 实体 UUID 不会发生有意义的碰撞。该函数纯函数、无存储，故不存在映射累积问题。
-     */
-
-    /**
-     * 解析导入实体的 UUID（四层，默认保留原 UUID）。
-     *
-     * <ol>
-     *   <li><b>幂等记录</b>：同一份文件在同一存档导入过时复用当时的结果，不再生成第二只；</li>
-     *   <li><b>默认保留原 UUID</b>：目标世界没有占用就沿用源女仆 UUID——玩家认的是这个；</li>
-     *   <li><b>冲突才派生</b>：原 UUID 已被别的实体占用时，按「源 UUID + 玩家 UUID」派生新 UUID 作兜底；</li>
-     *   <li><b>备份迁移</b>：派生时把 TLM 自动备份从旧 UUID 目录迁到新 UUID 目录，否则备份管理里看不到这只。</li>
-     * </ol>
-     *
-     * <p>返回 null 表示源文件没有可用的源 UUID（极早期格式），调用方沿用构造器随机 UUID。
-     */
-    private static UUID resolveImportUuid(ServerPlayer player, UUID sourceMaidUuid) {
-        if (sourceMaidUuid == null) {
-            return null;
-        }
-        MinecraftServer server = player.level().getServer();
-        // ① 幂等：同一文件在同一存档重复导入 → 复用上次的结果
-        UUID recorded = ArchiveImportMap.lookup(server, sourceMaidUuid, player.getUUID());
-        if (recorded != null) {
-            return recorded;
-        }
-        // ② 默认保留原 UUID
-        if (!UuidAllocator.isUuidOccupied(server, sourceMaidUuid)) {
-            ArchiveImportMap.record(server, sourceMaidUuid, player.getUUID(), sourceMaidUuid);
-            return sourceMaidUuid;
-        }
-        // ③ 冲突 → 派生（兜底）
-        UUID derived = UuidAllocator.mapImportUuid(sourceMaidUuid, player.getUUID());
-        ArchiveImportMap.record(server, sourceMaidUuid, player.getUUID(), derived);
-        TlmBackupMigrator.migrateTlmBackups(player, sourceMaidUuid, derived);
-        Constants.LOG.info("[maid_file_manager] 原 UUID {} 在本存档被占用，派生新 UUID {} 导入",
-                sourceMaidUuid, derived);
-        return derived;
     }
 
     /**
