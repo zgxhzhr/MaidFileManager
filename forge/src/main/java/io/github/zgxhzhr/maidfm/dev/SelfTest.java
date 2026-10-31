@@ -9,6 +9,7 @@ import io.github.zgxhzhr.maidfm.network.MaidProfileCodec;
 import io.github.zgxhzhr.maidfm.network.MaidBackupCodec;
 import io.github.zgxhzhr.maidfm.network.MaidInfoCodec;
 import io.github.zgxhzhr.maidfm.service.MaidEffectCodec;
+import io.github.zgxhzhr.maidfm.service.TlmBackupCopier;
 import io.github.zgxhzhr.maidfm.service.TlmDataCodec;
 import io.github.zgxhzhr.maidfm.service.UuidAllocator;
 import io.github.zgxhzhr.maidfm.config.BaubleImportConfig;
@@ -83,6 +84,7 @@ public final class SelfTest {
         testClientConfig();
         testServerConfig();
         testTlmDataCodec();
+        testTlmBackupCopier();
         testFilenameSanitize();
         testPlayerNameSanitize();
         testResolvePlayerDir();
@@ -1199,6 +1201,33 @@ public final class SelfTest {
         keys[0] = "TAMPERED";
         eq("改动副本不影响内部", "MaidBaubleInventory", TlmDataCodec.alwaysExtractKeys()[0]);
         eq("crossVersionOnlyKeys 返回 16 个", 16, TlmDataCodec.crossVersionOnlyKeys().length);
+    }
+
+    private static void testTlmBackupCopier() {
+        System.out.println("\n-- service.TlmBackupCopier（UUID -> IntArray 编码） --");
+
+        // 实体 NBT 里 UUID 的 IntArray 形态：MSB 高/低 32 位 + LSB 高/低 32 位。
+        // 编码顺序决定了备份 .dat 里的 UUID 是否被正确改写——错了会导致
+        // 「备份目录对了但备份文件仍自称旧 UUID」，导出的 source_maid_uuid 取到旧值。
+        java.util.UUID u = new java.util.UUID(0x0123456789ABCDEFL, 0x0FEDCBA987654321L);
+        int[] got = TlmBackupCopier.uuidToIntArray(u);
+        eq("uuidToIntArray: 长度 4", 4, got.length);
+        eq("uuidToIntArray: MSB 高 32 位", 0x01234567, got[0]);
+        eq("uuidToIntArray: MSB 低 32 位", 0x89ABCDEF, got[1]);
+        eq("uuidToIntArray: LSB 高 32 位", 0x0FEDCBA9, got[2]);
+        eq("uuidToIntArray: LSB 低 32 位", 0x87654321, got[3]);
+
+        // 边界：全零 / 全 F
+        int[] zero = TlmBackupCopier.uuidToIntArray(new java.util.UUID(0L, 0L));
+        eq("全零 UUID -> 全零数组", true,
+                zero[0] == 0 && zero[1] == 0 && zero[2] == 0 && zero[3] == 0);
+
+        int[] ones = TlmBackupCopier.uuidToIntArray(new java.util.UUID(-1L, -1L));
+        eq("全 F UUID -> 全 -1 数组", true,
+                ones[0] == -1 && ones[1] == -1 && ones[2] == -1 && ones[3] == -1);
+
+        // 同一 UUID 两次编码必须一致（无隐藏状态）
+        eq("uuidToIntArray 幂等", java.util.Arrays.equals(got, TlmBackupCopier.uuidToIntArray(u)), true);
     }
 
     private static void testModelDisplayNames() {
