@@ -262,5 +262,14 @@
   "gui.maid_file_manager.backup.help.line8": "配對成功後該玩家的所有備份都顯示名字，並記入快取，下次直接顯示。",
   "gui.maid_file_manager.backup.help.line9": "提示「未找到匹配的玩家」＝名字打錯，或該玩家不在這台電腦的存檔裡。",
   "gui.maid_file_manager.backup.help.line10": "上方搜尋框只篩列表，不觸發任何查詢。",
-  "gui.maid_file_manager.backup.help.btn": "說明"
+  "gui.maid_file_manager.backup.help.btn": "說明",
+  "maid_file_manager.import.migration_details": "。其他模組資料說明：",
+  "maid_file_manager.import.migration.no_provider": "%s：目前環境沒有能處理這段資料的模組，已跳過。",
+  "maid_file_manager.import.migration.provider_unavailable": "%s：這段資料所屬的模組未安裝，已跳過。",
+  "maid_file_manager.import.migration.failed": "%s：遷移失敗（%s）。",
+  "maid_file_manager.import.migration.failed_unclassified": "%s：遷移失敗，原因見伺服器日誌。",
+  "maid_file_manager.import.migration.more": "（另有 %s 條說明）",
+  "maid_file_manager.export.migration.failed": "%s 的資料未能匯出（該模組報錯）。",
+  "maid_file_manager.export.migration_details": "。其他模組資料說明：",
+  "maid_file_manager.export.migration.more": "（另有 %s 條說明）"
 }

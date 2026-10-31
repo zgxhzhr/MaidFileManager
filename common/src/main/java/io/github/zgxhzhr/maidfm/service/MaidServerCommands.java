@@ -174,6 +174,8 @@ public final class MaidServerCommands {
         // 而 exportall / OP 统一导出这条路径**不消费**它（只有 sendExportResults 会调
         // curiosDropTip 取走），残留值会串到下一位玩家的提示里。
         io.github.zgxhzhr.maidfm.data.CuriosBaubleFilter.takeBatch();
+        // 同理清掉上一轮残留的「附加数据未带上」记录
+        io.github.zgxhzhr.maidfm.data.MigrationNoteCollector.discard();
         int totalOk = 0;
         int totalFail = 0;
         List<Component> details = new ArrayList<>();
@@ -244,6 +246,22 @@ public final class MaidServerCommands {
         if (!skipped.isEmpty()) {
             out.append(Component.translatable("maid_file_manager.command.export.skipped"));
             out.append(joinWithSeparator(skipped));
+        }
+        // 附加数据未带上：这条路径是服务端写盘，不能静默
+        List<Component> migrationNotes = io.github.zgxhzhr.maidfm.data.MigrationNoteCollector.take();
+        if (!migrationNotes.isEmpty()) {
+            out.append(Component.translatable("maid_file_manager.export.migration_details"));
+            int shown = Math.min(migrationNotes.size(), 5);
+            for (int i = 0; i < shown; i++) {
+                if (i > 0) {
+                    out.append(Component.translatable("maid_file_manager.list_separator.newline"));
+                }
+                out.append(migrationNotes.get(i));
+            }
+            if (migrationNotes.size() > shown) {
+                out.append(Component.translatable(
+                        "maid_file_manager.export.migration.more", migrationNotes.size() - shown));
+            }
         }
         return out;
     }
