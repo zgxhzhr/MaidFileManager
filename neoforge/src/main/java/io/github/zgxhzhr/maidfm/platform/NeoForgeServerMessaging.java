@@ -1,0 +1,30 @@
+package io.github.zgxhzhr.maidfm.platform;
+
+import io.github.zgxhzhr.maidfm.network.MaidFilePayloads;
+import io.github.zgxhzhr.maidfm.platform.services.ServerMessaging;
+
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.network.PacketDistributor;
+
+import java.util.List;
+
+/**
+ * NeoForge 26.1.2 的 {@link ServerMessaging} 实现。
+ *
+ * <p>用 payload record，发送走 {@code PacketDistributor}。26.1.2 的 NBT / 渲染 API 与本类无关，
+ * 所以实现与 21.1 版相同。
+ */
+public final class NeoForgeServerMessaging implements ServerMessaging {
+
+    @Override
+    public void sendFeedback(ServerPlayer player, Component message) {
+        PacketDistributor.sendToPlayer(player, new MaidFilePayloads.FeedbackPayload(message));
+    }
+
+    @Override
+    public void sendImportBatchResult(ServerPlayer player, Component summary, List<Boolean> spawned) {
+        PacketDistributor.sendToPlayer(player,
+                new MaidFilePayloads.ImportBatchResultPayload(summary, spawned));
+    }
+}
