@@ -255,4 +255,27 @@ public final class ModelNames {
 
     // ================= TLM 客户端模型表（自定义包英文名兜底） =================
 
+
+    /**
+     * 导出文件用的展示名（含 YSM 换模）。
+     *
+     * <p><b>为什么不能只看 modelId</b>：女仆被 YSM 换模后，TLM 的 {@code modelId} 仍是底层
+     * geckolib 模型 ID，而 {@code .maid} 里的 {@code displayName} 是服务端算好的
+     * ——见 {@code MaidTransferService.doSerializeMaid}，那里优先取 YSM 模型名。
+     * 客户端若再用 {@code displayModelId(modelId)} 反查，就会把 YSM 名覆盖回旧的车万女仆包
+     * 模型名，表现为「界面显示 Bn_月雪宫子：常服，导出文件名却是尔子田田里乃」。
+     *
+     * <p>所以规则是：**先用 data 里记的 displayName，它为空才回退到按 modelId 反查**。
+     */
+    public static String exportDisplayName(io.github.zgxhzhr.maidfm.data.MaidFileData data) {
+        if (data == null) {
+            return "unknown";
+        }
+        String dn = data.getDisplayName();
+        if (dn != null && !dn.isEmpty()) {
+            return dn;
+        }
+        String modelId = data.getModelId();
+        return (modelId != null && !modelId.isEmpty()) ? displayModelId(modelId) : "unknown";
+    }
 }
