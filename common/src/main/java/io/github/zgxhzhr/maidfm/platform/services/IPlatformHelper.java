@@ -106,13 +106,14 @@ public interface IPlatformHelper {
     void baubleSetStack(EntityMaid maid, int slot, ItemStack stack);
 
     /**
-     * 从物品的原始存档 NBT 完整解析 ItemStack（保留附魔、耐久、数据组件等全部物品状态）。
-     * 仅用于<b>同版本</b>导入：1.20.x 与 1.21.x 的物品 NBT 结构不同
-     * （1.21 起标签内联为 components 数据组件），跨版本解析结果不可信，调用方须改走全新化重建。
+     * 按物品 NBT 完整解析一个 ItemStack（保留附魔/耐久/组件等全部状态）。
+     * 同版本导入饰品时使用；解析失败返回 {@link ItemStack#EMPTY}，由调用方回退为全新物品。
+     * 1.20.x 物品 NBT 为 id+Count+tag 结构，直接 ItemStack.of 即可，registries 参数不使用；
+     * 1.21+ 为数据组件结构，需要 RegistryAccess 参与解析。
      *
-     * @param registries 当前世界的注册表访问（1.21 组件解析需要；1.20.x 实现忽略此参数）
-     * @param tag        物品栏条目 NBT（含 Slot 等容器字段亦不影响解析）
-     * @return 完整物品；物品不存在/标签损坏时返回空物品栈（ItemStack.EMPTY），由调用方回退全新化
+     * @param registries 注册表访问（1.21+ 组件解析需要，1.20.x 实现忽略）
+     * @param tag        物品条目 NBT
+     * @return 解析得到的物品栈；失败返回 EMPTY
      */
     ItemStack parseItemStack(RegistryAccess registries, CompoundTag tag);
 
