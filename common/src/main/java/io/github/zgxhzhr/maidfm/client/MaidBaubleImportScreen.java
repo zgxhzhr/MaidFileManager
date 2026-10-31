@@ -63,19 +63,6 @@ public class MaidBaubleImportScreen extends Screen {
     private static final int LABEL_ALLOW = 0xFFB8E08A;
     private static final int LABEL_DENY = 0xFFB0B0B0;
     /** 手绘复选框（与主管理界面同款） */
-    private static final int CHECK_SIZE = 9;
-    private static final int CHECK_BORDER = 0xFFA89070;
-    private static final int CHECK_INNER = 0xFF18120C;
-    private static final int CHECK_MARK = 0xFFFFD700;
-    private static final int[][] CHECK_PIXELS = {
-            {5, 0},
-            {4, 1}, {5, 1},
-            {3, 2}, {4, 2},
-            {1, 3}, {2, 3}, {3, 3}, {4, 3},
-            {0, 4}, {1, 4}, {2, 4}, {3, 4},
-            {1, 5}, {2, 5},
-            {2, 6}
-    };
 
     private static final int PANEL_W = 360;
     private static final int SWITCH_W = 64;
@@ -517,11 +504,11 @@ public class MaidBaubleImportScreen extends Screen {
             if (selected) {
                 graphics.fill(listX, top, listX + listW, top + ROW_H, ROW_SELECTED);
             }
-            drawCheckBox(graphics, listX + 4, top + (ROW_H - CHECK_SIZE) / 2, selected);
-            graphics.renderItem(e.stack, listX + 4 + CHECK_SIZE + 4, top + 2);
+            MaidScreenDraw.drawCheckBox(graphics, listX + 4, top + (ROW_H - MaidScreenDraw.CHECK_SIZE) / 2, selected);
+            graphics.renderItem(e.stack, listX + 4 + MaidScreenDraw.CHECK_SIZE + 4, top + 2);
             // 整合包强制项置灰，提示该项只读、不可取消勾选
             graphics.drawString(this.font, e.stack.getHoverName(),
-                    listX + 4 + CHECK_SIZE + 4 + 18, top + 6, forced ? SUBTEXT_COLOR : TEXT_COLOR, false);
+                    listX + 4 + MaidScreenDraw.CHECK_SIZE + 4 + 18, top + 6, forced ? SUBTEXT_COLOR : TEXT_COLOR, false);
         }
         graphics.disableScissor();
         // 滚动条（仅在内容超出可视区时绘制）
@@ -543,17 +530,6 @@ public class MaidBaubleImportScreen extends Screen {
             return filtered.get(index);
         }
         return null;
-    }
-
-    /** 手绘复选框（与主管理界面同款） */
-    private void drawCheckBox(GuiGraphics graphics, int x, int y, boolean checked) {
-        graphics.fill(x, y, x + CHECK_SIZE, y + CHECK_SIZE, CHECK_BORDER);
-        graphics.fill(x + 1, y + 1, x + CHECK_SIZE - 1, y + CHECK_SIZE - 1, CHECK_INNER);
-        if (checked) {
-            for (int[] p : CHECK_PIXELS) {
-                graphics.fill(x + 1 + p[0], y + 1 + p[1], x + 2 + p[0], y + 2 + p[1], CHECK_MARK);
-            }
-        }
     }
 
     /** 打断 Screen 默认的 4 参 renderBackground 调用链（1.21.x 会画泥土背景并触发背景模糊） */

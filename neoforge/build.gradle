@@ -61,3 +61,19 @@ publishMods {
         displayName = 'Maid File Manager v' + project.version + ' neoforge 1.21.1'
     }
 }
+
+// ============================================================
+// 离线自检：./gradlew :neoforge:selfTest
+// ============================================================
+tasks.register('selfTest', JavaExec) {
+    group = 'verification'
+    description = '离线自检：纯函数断言（不启动 Minecraft）'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'io.github.zgxhzhr.maidfm.dev.SelfTest'
+    ignoreExitValue = false
+    jvmArgs = ['-Dfile.encoding=UTF-8']
+}
+
+jar {
+    exclude 'io/github/zgxhzhr/maidfm/dev/**'
+}
