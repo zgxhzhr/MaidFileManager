@@ -49,7 +49,7 @@ public final class ChunkedUploadDispatcher {
     private static void saveProfile(ServerPlayer player, byte[] full) {
         FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(full));
         int entityId = buf.readVarInt();
-        MaidProfile profile = MaidFilePackets.readMaidProfile(buf);
+        MaidProfile profile = MaidProfileCodec.readMaidProfile(buf);
         if (profile == null) {
             feedback(player, "gui.maid_file_manager.profile.save_failed");
             return;
