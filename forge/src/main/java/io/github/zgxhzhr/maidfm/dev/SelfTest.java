@@ -1,9 +1,11 @@
 package io.github.zgxhzhr.maidfm.dev;
 
 import io.github.zgxhzhr.maidfm.data.MaidFileIo;
+import io.github.zgxhzhr.maidfm.data.NbtMigration;
 import io.github.zgxhzhr.maidfm.data.NbtVersion;
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
 import io.github.zgxhzhr.maidfm.service.UuidAllocator;
+import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import net.minecraft.nbt.CompoundTag;
 import io.netty.buffer.Unpooled;
@@ -32,6 +34,11 @@ import java.util.function.BooleanSupplier;
  * {@code jar} 任务排除出最终产物。
  *
  * <p><b>测什么：</b>只测**纯函数**——不启动 Minecraft、不需要游戏资源、不需要网络。
+ *
+ * <p><b>测不了的：</b>{@code NbtDowngrade.downgradeItemStackNbt} 返回 {@code ItemStack}，
+ * 而 {@code ItemStack} 的静态初始化依赖 Minecraft 引导（{@code NoClassDefFoundError:
+ * Could not initialize class net.minecraft.world.item.ItemStack}），离线环境跑不了。
+ * 那部分只能靠游戏内实测覆盖，不在这里硬凑。
  */
 public final class SelfTest {
 
@@ -48,6 +55,8 @@ public final class SelfTest {
         testNbtVersion();
         testPacketCodec();
         testUuidAllocator();
+        testNbtMigration();
+        testConfigKeys();
         testFilenameSanitize();
         testPlayerNameSanitize();
         testResolvePlayerDir();
@@ -296,6 +305,121 @@ public final class SelfTest {
                 () -> !UuidAllocator.isUuidOccupied(null, null));
         check("isLoadedMaidWithUuid(null, uuid) 返回 false",
                 () -> !UuidAllocator.isLoadedMaidWithUuid(null, source));
+    }
+
+    private static void testNbtMigration() {
+        System.out.println("\n-- data.NbtMigration（导入裁剪） --");
+
+        // 构造一个「什么都带一点」的实体 NBT
+        CompoundTag src = new CompoundTag();
+        src.putFloat("Health", 20f);                 // 运行时状态 -> 删
+        src.putShort("HurtTime", (short) 0);         // 运行时状态 -> 删
+        src.putFloat("FallDistance", 0f);            // 运行时状态 -> 删
+        src.putString("MaidInventory", "x");         // 物品容器 -> 删
+        src.putString("HandItems", "x");             // 物品容器 -> 删
+        src.putString("MaidBackpackData", "x");      // 物品容器 -> 删
+        src.putString("BedPosition", "x");           // 日程位置 -> 删
+        src.putString("MaidRestrictRadius", "x");    // 日程位置 -> 删
+        src.putString("CustomName", "草东");          // 业务键 -> 保留
+        src.putString("OwnerUUID", "uuid-here");     // 业务键 -> 保留
+        src.putString("ModelId", "cao_dong:001");    // 业务键 -> 保留
+        src.putString("SomethingElse", "keep");      // 未知键 -> 保留
+
+        CompoundTag out = NbtMigration.migrate(src, NbtVersion.MC_1_20_1, NbtVersion.MC_1_20_1,
+                null, null, false);
+
+        check("migrate 返回非 null", () -> out != null);
+        check("Health 被裁掉", () -> !out.contains("Health"));
+        check("HurtTime 被裁掉", () -> !out.contains("HurtTime"));
+        check("FallDistance 被裁掉", () -> !out.contains("FallDistance"));
+        check("MaidInventory 被裁掉", () -> !out.contains("MaidInventory"));
+        check("HandItems 被裁掉", () -> !out.contains("HandItems"));
+        check("MaidBackpackData 被裁掉", () -> !out.contains("MaidBackpackData"));
+        check("BedPosition 被裁掉", () -> !out.contains("BedPosition"));
+        check("MaidRestrictRadius 被裁掉", () -> !out.contains("MaidRestrictRadius"));
+        check("CustomName 保留", () -> out.contains("CustomName"));
+        check("OwnerUUID 保留", () -> out.contains("OwnerUUID"));
+        check("ModelId 保留（同版本不改名）", () -> out.contains("ModelId"));
+        check("未知键保留（不做白名单过滤）", () -> out.contains("SomethingElse"));
+        eq("CustomName 内容不变", "草东", out.getString("CustomName"));
+        check("不修改入参（在原对象上仍能读到 Health）", () -> src.contains("Health"));
+
+        // 跨版本：ModelId -> model_id，且 YSM 一组键整体清空
+        CompoundTag cross = new CompoundTag();
+        cross.putString("ModelId", "cao_dong:001");
+        cross.putByte("IsYsmModel", (byte) 1);
+        cross.putString("YsmModelId", "Wine Fox/02 New Year");
+        cross.putString("YsmModelName", "酒尾狐");
+        cross.putString("YsmModelTexture", "tex");
+        cross.putString("YsmRoamingVars", "roam");   // 漫游数据，与 YSM 换模无关 -> 保留
+
+        CompoundTag migrated = NbtMigration.migrate(cross, NbtVersion.MC_1_20_1, NbtVersion.MC_1_21,
+                null, null, false);
+        check("跨版本 ModelId 改名为 model_id", () -> !migrated.contains("ModelId") && migrated.contains("model_id"));
+        check("跨版本 IsYsmModel 清空", () -> !migrated.contains("IsYsmModel"));
+        check("跨版本 YsmModelId 清空", () -> !migrated.contains("YsmModelId"));
+        check("跨版本 YsmModelName 清空", () -> !migrated.contains("YsmModelName"));
+        check("跨版本 YsmModelTexture 清空", () -> !migrated.contains("YsmModelTexture"));
+        check("YsmRoamingVars 不受影响", () -> migrated.contains("YsmRoamingVars"));
+
+        // 同版本：YSM 键不应被动
+        CompoundTag sameVer = new CompoundTag();
+        sameVer.putByte("IsYsmModel", (byte) 1);
+        sameVer.putString("YsmModelName", "酒尾狐");
+        CompoundTag kept = NbtMigration.migrate(sameVer, NbtVersion.MC_1_20_1, NbtVersion.MC_1_20_1,
+                null, null, false);
+        check("同版本 YSM 键保留", () -> kept.contains("IsYsmModel") && kept.contains("YsmModelName"));
+
+        // 版本未知：只做卫生清理，不做结构改名
+        CompoundTag unknownVer = new CompoundTag();
+        unknownVer.putString("ModelId", "m:p");
+        unknownVer.putFloat("Health", 1f);
+        CompoundTag u = NbtMigration.migrate(unknownVer, NbtVersion.UNKNOWN, NbtVersion.UNKNOWN,
+                null, null, false);
+        check("版本未知仍做卫生清理", () -> !u.contains("Health"));
+        check("版本未知不改名 ModelId", () -> u.contains("ModelId") && !u.contains("model_id"));
+
+        // null 输入
+        eq("null 输入返回 null", null, NbtMigration.migrate(null, NbtVersion.MC_1_20_1,
+                NbtVersion.MC_1_20_1, null, null, false));
+    }
+
+    private static void testConfigKeys() {
+        System.out.println("\n-- config.MaidConfigManager（键映射） --");
+
+        // getServerConfigByKey 是纯读，不写盘；未初始化时返回各字段默认值
+        check("null 键返回 false", () -> !MaidConfigManager.getServerConfigByKey(null));
+        check("未知键返回 false", () -> !MaidConfigManager.getServerConfigByKey("no_such_key_xyz"));
+        check("空串键返回 false", () -> !MaidConfigManager.getServerConfigByKey(""));
+
+        // 已知键不应抛异常，返回值只需是布尔（默认值取决于实现）
+        for (String key : new String[]{
+                "allow_client_import", "allow_baubles", "allow_advancements",
+                "allow_effects", "allow_invulnerable", "bauble_strip_attributes", "carry_curios"}) {
+            check("已知键 " + key + " 可读且不抛异常", () -> {
+                try {
+                    MaidConfigManager.getServerConfigByKey(key);
+                    return true;
+                } catch (Throwable t) {
+                    return false;
+                }
+            });
+        }
+
+        // 白名单判定：默认未强制时任何 ID 都应放行
+        check("默认配置下 isBaubleWhitelistPass 不抛异常", () -> {
+            try {
+                MaidConfigManager.isBaubleWhitelistPass("touhou_little_maid:maid_soul_stone", null);
+                return true;
+            } catch (Throwable t) {
+                return false;
+            }
+        });
+
+        // 强制拦截清单：默认应为空（内置声明之外）
+        check("getBaubleBlockedList 返回非 null", () -> MaidConfigManager.getBaubleBlockedList() != null);
+        check("getBaubleBlacklist 返回非 null", () -> MaidConfigManager.getBaubleBlacklist() != null);
+        check("getBaubleWhitelist 返回非 null", () -> MaidConfigManager.getBaubleWhitelist() != null);
     }
 
     private static void testModelDisplayNames() {
