@@ -24,6 +24,7 @@ import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import net.minecraft.network.chat.Component;
 import io.github.zgxhzhr.maidfm.data.ImportResult;
+import io.github.zgxhzhr.maidfm.data.MigrationNoteCollector;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.nbt.CompoundTag;
@@ -93,6 +94,7 @@ public final class SelfTest {
         testResolvePlayerDir();
         testExportFileName();
         testMigrationNotes();
+        testMigrationNoteCollector();
 
         System.out.println();
         System.out.printf("结果：%d 通过，%d 失败%n", passed, failed);
@@ -1394,5 +1396,37 @@ public final class SelfTest {
                 .withMigrationNotes(java.util.List.of(Component.literal("k")));
         check("失败态可带备注", () -> failedWithNote.migrationNotes().size() == 1);
         check("失败态 spawned 为 false", () -> !failedWithNote.spawned());
+    }
+
+    /**
+     * 导出侧「附加数据未带上」累积器（第八节第三项的导出侧）。
+     *
+     * <p>重点测生命周期：{@code take()} 必须清零，否则残留会串到下一位玩家的提示里；
+     * {@code discard()} 用于流程开头清残。
+     */
+    private static void testMigrationNoteCollector() {
+        System.out.println("\n-- data.MigrationNoteCollector（导出侧累积器） --");
+
+        MigrationNoteCollector.discard();
+        check("discard 后为空", () -> MigrationNoteCollector.take().isEmpty());
+
+        MigrationNoteCollector.add(Component.literal("huhutalk:archive 未导出"));
+        check("add 后能取出", () -> MigrationNoteCollector.take().size() == 1);
+
+        check("take 即清零", () -> MigrationNoteCollector.take().isEmpty());
+
+        MigrationNoteCollector.add(null);
+        check("add(null) 被忽略", () -> MigrationNoteCollector.take().isEmpty());
+
+        // 多条按加入顺序保留
+        MigrationNoteCollector.add(Component.literal("a"));
+        MigrationNoteCollector.add(Component.literal("b"));
+        java.util.List<Component> two = MigrationNoteCollector.take();
+        check("多条按序取出", () -> two.size() == 2);
+
+        // discard 清残
+        MigrationNoteCollector.add(Component.literal("x"));
+        MigrationNoteCollector.discard();
+        check("discard 清掉残留", () -> MigrationNoteCollector.take().isEmpty());
     }
 }
