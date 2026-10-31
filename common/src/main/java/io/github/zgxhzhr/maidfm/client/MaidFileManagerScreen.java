@@ -1580,9 +1580,9 @@ public class MaidFileManagerScreen extends Screen
                 displayNames.add(null);
                 continue;
             }
-            String dn = data.getDisplayName() != null
-                    ? ModelNames.displayModelId(data.getModelId())
-                    : (data.getModelId() != null ? ModelNames.displayModelId(data.getModelId()) : "unknown");
+            // 优先用 .maid 里记的 displayName（服务端算它时已优先取 YSM 模型名），
+            // 不能再按 modelId 反查——那会把 YSM 名覆盖回旧的车万女仆包模型名。
+            String dn = ModelNames.exportDisplayName(data);
             displayNames.add(MaidFileIo.composeDisplayName(data.getCustomName(), dn));
         }
         final Minecraft mc = net.minecraft.client.Minecraft.getInstance();
