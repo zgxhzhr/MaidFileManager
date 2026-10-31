@@ -270,11 +270,35 @@ public final class ModelNames {
         if (data == null) {
             return "unknown";
         }
-        String dn = data.getDisplayName();
-        if (dn != null && !dn.isEmpty()) {
-            return dn;
+        // YSM 换模：TLM 的 modelId 只是底层 geckolib ID，本地反查会得到「换模之前」的模型名，
+        // 所以这种情况下只能信服务端算好的 displayName（那里优先取了 YSM 模型名）。
+        if (data.isYsmModel()) {
+            String dn = data.getDisplayName();
+            if (dn != null && !dn.isEmpty()) {
+                return dn;
+            }
         }
+        // 非 YSM：必须用客户端本地解析——服务端算 displayName 时读的是
+        // ServerCustomPackLoader，在专用服务端上拿不到中文语言表，只会给出英文名
+        // （表现：界面显示「酒尾狐」，导出文件名却是 Winefox_Nine_Tailed）。
         String modelId = data.getModelId();
-        return (modelId != null && !modelId.isEmpty()) ? displayModelId(modelId) : "unknown";
+        if (modelId != null && !modelId.isEmpty()) {
+            String local = displayModelId(modelId);
+            // displayModelId 解析不出来时返回的就是 prettifyModelPath(path)，非空但没意义
+            // （会变成「001」这类美化名，比服务端给的名字还差）。
+            // 用 fallback 比对来判断是否真的解析成功——同 MaidBackupBrowserScreen 的判据。
+            String pathOnly = modelId;
+            int c = modelId.indexOf(':');
+            if (c >= 0 && c + 1 < modelId.length()) {
+                pathOnly = modelId.substring(c + 1);
+            }
+            String fallback = prettifyModelPath(pathOnly);
+            if (local != null && !local.isEmpty() && !local.equals(fallback)) {
+                return local;
+            }
+        }
+        // 兜底：本地解析不出来（没装该模型包）就用服务端给的名字
+        String dn = data.getDisplayName();
+        return (dn != null && !dn.isEmpty()) ? dn : "unknown";
     }
 }
