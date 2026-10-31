@@ -254,8 +254,11 @@ public final class MaidFilePackets {
             NbtIo.read(dis, NbtAccounter.create(MAX_NBT_DECOMPRESSED_BYTES));
             return false;
         } catch (RuntimeException e) {
-            // NbtAccounter 超配额时抛 RuntimeException（"Tried to read NBT tag that was too big"）
-            return true;
+            // 只认 NbtAccounter 的越界信息；其余 RuntimeException（NBT 深度超限、
+            // 未知 tag、负数长度等）属于数据损坏，不应报成「超配额」——
+            // 那会把排查方向引到体积上，而实际文件是坏的。
+            String msg = e.getMessage();
+            return msg != null && msg.startsWith("Tried to read NBT tag that was too big");
         } catch (java.io.IOException e) {
             // 数据本身损坏：不是配额问题，交给客户端解码时的错误处理
             return false;

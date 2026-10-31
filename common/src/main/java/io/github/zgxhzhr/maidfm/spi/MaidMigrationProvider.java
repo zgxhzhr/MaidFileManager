@@ -54,7 +54,15 @@ public interface MaidMigrationProvider {
      * @param maid 刚导入生成的女仆实体
      * @param data 该 provider 在导出时返回的 CompoundTag
      */
-    void importData(EntityMaid maid, CompoundTag data);
+    default void importData(EntityMaid maid, CompoundTag data) {
+        // 二参也给了默认实现，好处是「只实现三参重载」的接入方能编译通过——
+        // 否则二参 abstract 会强制他们额外写一个空方法（对外文档里没提这点，是个坑）。
+        //
+        // 框架统一只调用三参版本，所以正常流程不会走到这里。真走到了说明有代码
+        // 直接调了二参，那属于框架内部用错，抛出来比静默跳过好。
+        throw new UnsupportedOperationException(
+                "请实现三参 importData(EntityMaid, CompoundTag, MigrationReporter)");
+    }
 
     /**
      * 导入：把数据写回女仆或其关联的外部系统，并可选地向玩家补充说明。
