@@ -43,6 +43,21 @@ public final class PacketSender {
         public void sendMaidProfile(ServerPlayer player, io.github.zgxhzhr.maidfm.data.MaidProfileView view) {
             Constants.LOG.error("[maid_file_manager] ServerMessaging 未加载，女仆档案被丢弃");
         }
+
+        @Override
+        public void sendServerConfig(ServerPlayer player) {
+            Constants.LOG.error("[maid_file_manager] ServerMessaging 未加载，服务端配置无法下发");
+        }
+
+        @Override
+        public boolean hasOpPermission(ServerPlayer player) {
+            return false;
+        }
+
+        @Override
+        public net.minecraft.server.MinecraftServer serverOf(ServerPlayer player) {
+            return null;
+        }
     };
 
     private PacketSender() {
@@ -85,5 +100,44 @@ public final class PacketSender {
             return;
         }
         messaging().sendMaidProfile(player, view);
+    }
+
+    /** 把服务端配置推给单个玩家。 */
+    public static void sendServerConfig(net.minecraft.server.level.ServerPlayer player) {
+        if (player == null) {
+            return;
+        }
+        messaging().sendServerConfig(player);
+    }
+
+    /**
+     * 把服务端配置广播给全服玩家（配置变更后调用）。
+     *
+     * <p>遍历逻辑放在这里而不是各端：它是纯 common 代码，而且漏掉某个玩家会导致
+     * 该玩家的客户端配置与服务端不一致——正是这类「六端各写一遍」最容易写错的地方。
+     */
+    public static void broadcastServerConfig(net.minecraft.server.MinecraftServer server) {
+        if (server == null) {
+            return;
+        }
+        for (net.minecraft.server.level.ServerPlayer p : server.getPlayerList().getPlayers()) {
+            sendServerConfig(p);
+        }
+    }
+
+    /** 该玩家是否 OP（平台差异收敛见 ServerMessaging#hasOpPermission）。 */
+    public static boolean hasOpPermission(net.minecraft.server.level.ServerPlayer player) {
+        return player != null && messaging().hasOpPermission(player);
+    }
+
+    /** 取玩家所属服务端（平台差异收敛见 ServerMessaging#serverOf）。 */
+    public static net.minecraft.server.MinecraftServer serverOf(
+            net.minecraft.server.level.ServerPlayer player) {
+        return player == null ? null : messaging().serverOf(player);
+    }
+
+    /** 把配置广播给玩家所在的全服（自己拿 server，供业务层调用）。 */
+    public static void broadcastServerConfigTo(net.minecraft.server.level.ServerPlayer context) {
+        broadcastServerConfig(serverOf(context));
     }
 }
