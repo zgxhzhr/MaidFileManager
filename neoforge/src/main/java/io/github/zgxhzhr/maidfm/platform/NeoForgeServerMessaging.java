@@ -27,4 +27,10 @@ public final class NeoForgeServerMessaging implements ServerMessaging {
         PacketDistributor.sendToPlayer(player,
                 new MaidFilePayloads.ImportBatchResultPayload(summary, spawned));
     }
+
+    @Override
+    public void sendMaidList(ServerPlayer player, java.util.List<io.github.zgxhzhr.maidfm.data.MaidInfo> list) {
+        net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
+                player, new io.github.zgxhzhr.maidfm.network.MaidFilePayloads.MaidListPayload(list));
+    }
 }
