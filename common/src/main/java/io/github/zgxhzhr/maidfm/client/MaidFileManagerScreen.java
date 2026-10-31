@@ -116,11 +116,15 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private boolean serverExportMode;
     /** 统一导出异步结果正在等待：此期间网络回调 onFeedbackReceived 仅显示聊天栏，不覆盖主界面底部黄字（Fix 截图3「共成功0个」多余黄字） */
     private long serverExportSuppressFeedbackUntil = 0L;
-    /** 统一导出确认后：等服务端列表回包再全选并提交（否则 owner 映射为空，导出 0 条） */
     /**
-     * @deprecated 已废弃：统一导出确认窗不再自动执行导出（改为只进入面板后由用户勾选），
+     * 统一导出确认后：等服务端列表回包再全选并提交（否则 owner 映射为空，导出 0 条）。
+     *
+     * <p><b>已废弃：</b>统一导出确认窗不再自动执行导出（改为只进入面板后由用户勾选），
      * 此标志恒为 {@code false}。字段与下方消费分支保留作防护网——将来若要恢复
      * 「确认即导出」的快捷流程可直接复用，不必重写切换 Tab / 反馈抑制等安全逻辑。
+     *
+     * <p>注：这里刻意不用 javadoc 的 {@code @deprecated} 标签——字段并未标 {@code @Deprecated}
+     * （因为消费分支还在用），标了会触发 {@code dep-ann} 编译警告。
      */
     private boolean pendingServerExport;
     /** 导出批次在途：从发请求到「写盘回执已发」期间为真，用于串行化导出 */

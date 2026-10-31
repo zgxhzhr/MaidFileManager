@@ -635,7 +635,7 @@ public final class MaidTransferService {
         // addFreshEntity 返回 false，走通用的"添加到世界失败"提示；原女仆已死亡 / 已移除
         // （导出时不保留）/ 区块未加载 / 收入魂符时均不拦截，导入正常进行。
         // 无法解析源 UUID 的极早期文件退回 new EntityMaid 的随机 UUID，不影响导入。
-        UUID sourceMaidUuid = resolveSourceMaidUuid(data, originalNbt);
+        UUID sourceMaidUuid = UuidAllocator.resolveSourceMaidUuid(data, originalNbt);
         // 四层解析：幂等记录 → 默认保留原 UUID → 冲突派生 → 派生时迁移备份。
         UUID mappedEntityUuid = resolveImportUuid(player, sourceMaidUuid);
 
@@ -834,7 +834,7 @@ public final class MaidTransferService {
             // 失败原因细分：确定性目标 UUID 在已加载世界中已有女仆实体（最常见为同一文件重复导入
             // 且原女仆/前次副本就在身边）时，给出明确的重复提示；其他原因走通用添加失败文案。
             // 仅查已加载实体：未加载区块、魂符中的实体不会导致 addFreshEntity 失败，那些场景本就放行。
-            if (mappedEntityUuid != null && isLoadedMaidWithUuid(player.getServer(), mappedEntityUuid)) {
+            if (mappedEntityUuid != null && UuidAllocator.isLoadedMaidWithUuid(player.getServer(), mappedEntityUuid)) {
                 String maidLabel = data.getCustomName() != null ? data.getCustomName()
                         : data.getDisplayName() != null ? data.getDisplayName() : "?";
                 Constants.LOG.info("[maid_file_manager] addFreshEntity 因同 UUID 女仆已存在被拒绝 uuid={} player={}",
@@ -1642,38 +1642,6 @@ public final class MaidTransferService {
     }
 
     /**
-     * 解析源女仆实体 UUID：优先读 .maid 顶层 source_maid_uuid（v6 起写入）；
-     * 旧文件无此字段时从实体根 NBT 兜底（1.9+ int 数组 "UUID"，或 1.8 的 UUIDMost/UUIDLeast）。
-     * 注意必须在 {@link NbtMigration#migrate} 之前读取——迁移会恒删实体根 UUID 键。
-     *
-     * @return 源女仆 UUID；无法解析（极早期文件且 NBT 缺键）返回 null，调用方退回随机实体 UUID
-     */
-    private static UUID resolveSourceMaidUuid(MaidFileData data, CompoundTag originalNbt) {
-        String topLevel = data.getSourceMaidUuid();
-        if (topLevel != null) {
-            try {
-                return UUID.fromString(topLevel);
-            } catch (IllegalArgumentException ignored) {
-                // 顶层字段非法，落回实体 NBT 兜底
-            }
-        }
-        if (originalNbt != null) {
-            try {
-                if (originalNbt.hasUUID("UUID")) {
-                    return originalNbt.getUUID("UUID");
-                }
-                if (originalNbt.contains("UUIDMost", Tag.TAG_LONG)
-                        && originalNbt.contains("UUIDLeast", Tag.TAG_LONG)) {
-                    return new UUID(originalNbt.getLong("UUIDMost"), originalNbt.getLong("UUIDLeast"));
-                }
-            } catch (Throwable t) {
-                Constants.LOG.warn("[maid_file_manager] 从实体 NBT 解析源女仆 UUID 失败: {}", t.toString());
-            }
-        }
-        return null;
-    }
-
-    /**
      * 确定性导入 UUID 映射：同一玩家导入同一源女仆，永远得到同一目标 UUID；
      * 不同玩家（多人服分享文件）因玩家 UUID 参与哈希而得到不同 UUID，互不冲突。
      *
@@ -1701,32 +1669,16 @@ public final class MaidTransferService {
         if (recorded != null) {
             return recorded;
         }
-        if (!isUuidOccupied(server, sourceMaidUuid)) {
+        if (!UuidAllocator.isUuidOccupied(server, sourceMaidUuid)) {
             ArchiveImportMap.record(server, sourceMaidUuid, player.getUUID(), sourceMaidUuid);
             return sourceMaidUuid;
         }
-        UUID derived = mapImportUuid(sourceMaidUuid, player.getUUID());
+        UUID derived = UuidAllocator.mapImportUuid(sourceMaidUuid, player.getUUID());
         ArchiveImportMap.record(server, sourceMaidUuid, player.getUUID(), derived);
         migrateTlmBackups(player, sourceMaidUuid, derived);
         Constants.LOG.info("[maid_file_manager] 原 UUID {} 在本存档被占用，派生新 UUID {} 导入",
                 sourceMaidUuid, derived);
         return derived;
-    }
-
-    /**
-     * 判定 UUID 是否已被占用。只查已加载实体（任意维度）：未加载区块里的实体查不到，
-     * 但那种情况下 addFreshEntity 本身不会因 UUID 冲突失败，按「可用」处理更贴近原生行为。
-     */
-    private static boolean isUuidOccupied(MinecraftServer server, UUID uuid) {
-        if (server == null || uuid == null) {
-            return false;
-        }
-        for (ServerLevel serverLevel : server.getAllLevels()) {
-            if (serverLevel.getEntity(uuid) != null) {
-                return true;
-            }
-        }
-        return false;
     }
 
         /**
@@ -1816,29 +1768,6 @@ public final class MaidTransferService {
             Constants.LOG.warn("[maid_file_manager] 清理旧备份目录失败（残留不影响功能）: {}", t.toString());
         }
     }
-    private static UUID mapImportUuid(UUID sourceMaidUuid, UUID importerPlayerUuid) {
-        String name = "maid_file_manager|import-v1|" + sourceMaidUuid + "|" + importerPlayerUuid;
-        return UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-    }
-
-    /**
-     * 判定指定 UUID 在已加载世界（任意维度）中是否已有女仆实体。
-     * 仅供 addFreshEntity 失败后的原因细分：同 UUID 实体只有处在已加载区块时才会导致原生拒绝，
-     * 未加载区块 / 魂符中的实体查不到也不应影响判定（那些场景导入本就成功）。
-     * server 为 null 时返回 false，使调用方落回通用失败文案。
-     */
-    private static boolean isLoadedMaidWithUuid(MinecraftServer server, UUID entityId) {
-        if (server == null) {
-            return false;
-        }
-        for (ServerLevel serverLevel : server.getAllLevels()) {
-            if (serverLevel.getEntity(entityId) instanceof EntityMaid) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     /**
      * 双胞胎判定：源女仆是否仍以本世界"存活实体"的身份存在。
      * <ol>

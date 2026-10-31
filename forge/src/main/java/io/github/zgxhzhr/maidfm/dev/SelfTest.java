@@ -3,10 +3,14 @@ package io.github.zgxhzhr.maidfm.dev;
 import io.github.zgxhzhr.maidfm.data.MaidFileIo;
 import io.github.zgxhzhr.maidfm.data.NbtVersion;
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
+import io.github.zgxhzhr.maidfm.service.UuidAllocator;
+import io.github.zgxhzhr.maidfm.data.MaidFileData;
+import net.minecraft.nbt.CompoundTag;
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
 
 import java.util.ArrayList;
+import java.util.UUID;
 import java.util.List;
 import io.github.zgxhzhr.maidfm.util.ModelDisplayNames;
 
@@ -43,6 +47,7 @@ public final class SelfTest {
         testModelDisplayNames();
         testNbtVersion();
         testPacketCodec();
+        testUuidAllocator();
         testFilenameSanitize();
         testPlayerNameSanitize();
         testResolvePlayerDir();
@@ -229,6 +234,68 @@ public final class SelfTest {
             String v = MaidFilePackets.PROTOCOL_VERSION;
             return v != null && !v.isEmpty();
         });
+    }
+
+    private static void testUuidAllocator() {
+        System.out.println("\n-- service.UuidAllocator（UUID 派生与解析） --");
+
+        UUID source = UUID.fromString("11111111-2222-3333-4444-555555555555");
+        UUID alice = UUID.fromString("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        UUID bob = UUID.fromString("99999999-8888-7777-6666-555555555555");
+
+        // ---- mapImportUuid：纯函数，必须确定性 ----
+        UUID a1 = UuidAllocator.mapImportUuid(source, alice);
+        UUID a2 = UuidAllocator.mapImportUuid(source, alice);
+        eq("同一输入两次派生结果相同（确定性）", a1, a2);
+
+        UUID b1 = UuidAllocator.mapImportUuid(source, bob);
+        check("不同玩家派生出不同 UUID（多人服共享文件互不冲突）", () -> !a1.equals(b1));
+
+        UUID otherSource = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID a3 = UuidAllocator.mapImportUuid(otherSource, alice);
+        check("不同源女仆派生出不同 UUID", () -> !a1.equals(a3));
+
+        check("派生结果是 v3(MD5 名字) UUID", () -> a1.version() == 3);
+        check("派生结果不是源 UUID（默认路径才保留源）", () -> !a1.equals(source));
+
+        // ---- resolveSourceMaidUuid：顶层字段优先 ----
+        MaidFileData data = new MaidFileData();
+        data.setSourceMaidUuid(source.toString());
+        eq("顶层 source_maid_uuid 被正确解析", source,
+                UuidAllocator.resolveSourceMaidUuid(data, null));
+
+        // 顶层字段非法 -> 落回 NBT 兜底；NBT 也没有 -> null
+        MaidFileData bad = new MaidFileData();
+        bad.setSourceMaidUuid("not-a-uuid");
+        eq("顶层字段非法且无 NBT 兜底 -> null", null,
+                UuidAllocator.resolveSourceMaidUuid(bad, null));
+
+        // NBT 兜底：UUID 整型数组
+        CompoundTag nbt = new CompoundTag();
+        nbt.putUUID("UUID", source);
+        eq("NBT 的 UUID 键作为兜底", source,
+                UuidAllocator.resolveSourceMaidUuid(new MaidFileData(), nbt));
+
+        // NBT 兜底：UUIDMost/UUIDLeast（1.8 格式）
+        CompoundTag old = new CompoundTag();
+        old.putLong("UUIDMost", source.getMostSignificantBits());
+        old.putLong("UUIDLeast", source.getLeastSignificantBits());
+        eq("NBT 的 UUIDMost/UUIDLeast 作为兜底", source,
+                UuidAllocator.resolveSourceMaidUuid(new MaidFileData(), old));
+
+        // 顶层优先于 NBT
+        MaidFileData withBoth = new MaidFileData();
+        withBoth.setSourceMaidUuid(alice.toString());
+        eq("顶层字段优先于 NBT 兜底", alice,
+                UuidAllocator.resolveSourceMaidUuid(withBoth, nbt));
+
+        // ---- 查询类方法：server 为 null 时必须安全返回 false ----
+        check("isUuidOccupied(null, uuid) 返回 false",
+                () -> !UuidAllocator.isUuidOccupied(null, source));
+        check("isUuidOccupied(server, null) 返回 false",
+                () -> !UuidAllocator.isUuidOccupied(null, null));
+        check("isLoadedMaidWithUuid(null, uuid) 返回 false",
+                () -> !UuidAllocator.isLoadedMaidWithUuid(null, source));
     }
 
     private static void testModelDisplayNames() {
