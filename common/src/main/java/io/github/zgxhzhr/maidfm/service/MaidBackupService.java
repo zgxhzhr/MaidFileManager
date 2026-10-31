@@ -246,7 +246,13 @@ public final class MaidBackupService {
                         customName = null;
                     }
                     String shownName;
-                    if (customName == null || customName.isEmpty()) {
+                    if (latestTagIsYsm) {
+                        // YSM 换模时**不能**再把模型名拼进括号：这里的 modelName 是用 TLM 底层
+                        // model_id（geckolib 那个）解析出来的，也就是「换模之前」的车万女仆包模型名。
+                        // 女仆现在显然不是那个模型了，把它显示出来只会误导玩家。
+                        // 口径与导出界面保持一致（MaidListWidget：ysmModel 行只显示服务端给的展示名）。
+                        shownName = (customName != null && !customName.isEmpty()) ? customName : modelName;
+                    } else if (customName == null || customName.isEmpty()) {
                         shownName = modelName;
                     } else if (modelName.isEmpty() || modelName.equals(customName)) {
                         shownName = customName;
