@@ -1,0 +1,14 @@
+{
+  "_comment": "把本文件复制为 sync.local.json 并填入本机路径。sync.local.json 已在 .gitignore 中，不会被提交。",
+  "base": "<六端仓库所在的目录，例如 D:/projects>",
+  "master": "forge-1.20.1",
+  "gradleUserHome": "<GRADLE_USER_HOME，留空字符串则用默认值>",
+  "ports": {
+    "forge-1.20.1":    { "module": "forge",    "jdk": "<JDK 17 路径>", "selfTest": true },
+    "fabric-1.20.1":   { "module": "fabric",   "jdk": "<JDK 17 路径>", "selfTest": true },
+    "neoforge-1.21.1": { "module": "neoforge", "jdk": "<JDK 21 路径>", "selfTest": true },
+    "fabric-1.21.1":   { "module": "fabric",   "jdk": "<JDK 21 路径>", "selfTest": true },
+    "neoforge-26.1.2": { "module": "neoforge", "jdk": "<JDK 25 路径>", "selfTest": false },
+    "fabric-26.1.2":   { "module": "fabric",   "jdk": "<JDK 25 路径>", "selfTest": false }
+  }
+}
