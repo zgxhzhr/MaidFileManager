@@ -1,7 +1,6 @@
 package io.github.zgxhzhr.maidfm.platform;
 
 import io.github.zgxhzhr.maidfm.Constants;
-import io.github.zgxhzhr.maidfm.network.IMaidFileNetwork;
 import io.github.zgxhzhr.maidfm.platform.services.IPlatformHelper;
 
 import java.util.ServiceLoader;
@@ -10,7 +9,6 @@ import java.util.function.Supplier;
 public class Services {
 
     public static final ServiceProvider<IPlatformHelper> PLATFORM = new ServiceProvider<>();
-    public static final ServiceProvider<IMaidFileNetwork> NETWORK = new ServiceProvider<>();
 
     static {
         try {

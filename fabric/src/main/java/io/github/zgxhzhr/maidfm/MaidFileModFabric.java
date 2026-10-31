@@ -215,7 +215,7 @@ public class MaidFileModFabric implements ModInitializer {
                 byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
                         player.getUUID(), kind, sessionId, total, index, chunk);
                 if (full != null) {
-                    io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.dispatch(player, kind, full);
+                    io.github.zgxhzhr.maidfm.service.ChunkedUploadDispatcher.dispatch(player, kind, full);
                 }
             } catch (Throwable e) {
                 Constants.LOG.warn("[maid_file_manager] 分片上传处理失败: {}", e.toString());
@@ -414,7 +414,7 @@ public class MaidFileModFabric implements ModInitializer {
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             MaidConfigManager.removeClientConsent(handler.player.getUUID());
             // 清掉该玩家未完成的分片会话：否则中途断线的分片累积器会一直留在内存里
-            io.github.zgxhzhr.maidfm.network.ChunkedUploadDispatcher.onPlayerDisconnect(handler.player.getUUID());
+            io.github.zgxhzhr.maidfm.service.ChunkedUploadDispatcher.onPlayerDisconnect(handler.player.getUUID());
             // 同时清掉待删登记：回执不可能再来了，否则该玩家「导出并移除」会一直命中 remove_busy
             MaidFileModFabric.clearPendingRemoval(handler.player.getUUID());
         });
