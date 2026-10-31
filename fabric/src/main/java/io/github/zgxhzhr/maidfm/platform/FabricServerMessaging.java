@@ -34,4 +34,13 @@ public final class FabricServerMessaging implements ServerMessaging {
         MaidFilePackets.writeBooleanList(out, spawned);
         ServerPlayNetworking.send(player, MaidFilePackets.ID_IMPORT_BATCH_RESULT, out);
     }
+
+    @Override
+    public void sendMaidList(ServerPlayer player, java.util.List<io.github.zgxhzhr.maidfm.data.MaidInfo> list) {
+        net.minecraft.network.FriendlyByteBuf out =
+                net.fabricmc.fabric.api.networking.v1.PacketByteBufs.create();
+        io.github.zgxhzhr.maidfm.network.MaidInfoCodec.writeMaidInfoList(out, list);
+        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(
+                player, io.github.zgxhzhr.maidfm.network.MaidFilePackets.ID_MAID_LIST, out);
+    }
 }

@@ -33,6 +33,11 @@ public final class PacketSender {
             Constants.LOG.error("[maid_file_manager] ServerMessaging 未加载，批量导入结果被丢弃: {}",
                     summary.getString());
         }
+
+        @Override
+        public void sendMaidList(ServerPlayer player, java.util.List<io.github.zgxhzhr.maidfm.data.MaidInfo> list) {
+            Constants.LOG.error("[maid_file_manager] ServerMessaging 未加载，女仆列表被丢弃（{} 条）", list.size());
+        }
     };
 
     private PacketSender() {
@@ -57,5 +62,14 @@ public final class PacketSender {
             return;
         }
         messaging().sendImportBatchResult(player, summary, spawned == null ? List.of() : spawned);
+    }
+
+    /** 发送女仆列表。 */
+    public static void sendMaidList(net.minecraft.server.level.ServerPlayer player,
+                                    java.util.List<io.github.zgxhzhr.maidfm.data.MaidInfo> list) {
+        if (player == null) {
+            return;
+        }
+        messaging().sendMaidList(player, list == null ? java.util.List.of() : list);
     }
 }

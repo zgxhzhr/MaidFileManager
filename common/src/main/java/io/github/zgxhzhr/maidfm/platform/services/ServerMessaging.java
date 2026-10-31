@@ -46,4 +46,12 @@ public interface ServerMessaging {
      * @param spawned 与请求顺序对齐的成功标志
      */
     void sendImportBatchResult(ServerPlayer player, Component summary, List<Boolean> spawned);
+
+    /**
+     * 发送当前玩家的女仆列表（导出 Tab 的数据源）。
+     *
+     * @param player 接收者
+     * @param list   {@code MaidTransferService.listOwnMaids} 的结果
+     */
+    void sendMaidList(ServerPlayer player, java.util.List<io.github.zgxhzhr.maidfm.data.MaidInfo> list);
 }

@@ -64,14 +64,8 @@ public class MaidFileModFabric implements ModInitializer {
         });
 
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_MAID_LIST, (server, player, buf) -> {
-            // 频次限制：这类请求在主线程同步跑，循环发包能把服务器卡死（不需 OP）
-            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "maid_list", 1000L)) {
-                return;
-            }
-            List<MaidInfo> list = MaidTransferService.listOwnMaids(player);
-            FriendlyByteBuf out = PacketByteBufs.create();
-            MaidInfoCodec.writeMaidInfoList(out, list);
-            ServerPlayNetworking.send(player, MaidFilePackets.ID_MAID_LIST, out);
+            // 业务逻辑已下沉到 ServerPacketHandlers（六端共用一份）；本端只做转发
+            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestMaidList(player);
         });
 
         registerC2SReceiver(MaidFilePackets.ID_EXPORT_MAID, (server, player, buf) -> {
