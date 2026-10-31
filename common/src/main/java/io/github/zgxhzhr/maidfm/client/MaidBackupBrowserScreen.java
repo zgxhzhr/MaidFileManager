@@ -505,6 +505,7 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         // 服务端分支同样必须重建渲染行：rows 才是界面实际遍历的列表，
         // 只填 worlds 会让界面一直停在「未找到任何女仆备份」空状态。
         rebuildRows();
+        refreshButtons();
     }
 
     private OwnerNode buildOwner(IMaidFileNetwork.BackupOwner o) {
