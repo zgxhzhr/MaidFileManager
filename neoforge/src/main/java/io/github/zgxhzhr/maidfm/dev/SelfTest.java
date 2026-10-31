@@ -12,6 +12,7 @@ import io.github.zgxhzhr.maidfm.service.MaidEffectCodec;
 import io.github.zgxhzhr.maidfm.service.UuidAllocator;
 import io.github.zgxhzhr.maidfm.config.BaubleImportConfig;
 import io.github.zgxhzhr.maidfm.config.ClientConfig;
+import io.github.zgxhzhr.maidfm.config.ServerConfig;
 import io.github.zgxhzhr.maidfm.config.ConfigFileIo;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
@@ -79,6 +80,7 @@ public final class SelfTest {
         testConfigFileIo();
         testBaubleImportConfig();
         testClientConfig();
+        testServerConfig();
         testFilenameSanitize();
         testPlayerNameSanitize();
         testResolvePlayerDir();
@@ -975,6 +977,99 @@ public final class SelfTest {
         } finally {
             // 重置静态状态：指向不存在的路径（load 得到默认值），且 save 不会再写盘
             ClientConfig.init(tmpDir != null ? tmpDir.resolve("reset.properties") : null);
+            if (tmpDir != null) {
+                try (var s = Files.walk(tmpDir)) {
+                    s.sorted(java.util.Comparator.reverseOrder()).forEach(x -> {
+                        try {
+                            Files.deleteIfExists(x);
+                        } catch (Exception ignored) {
+                        }
+                    });
+                } catch (Exception ignored) {
+                }
+            }
+        }
+    }
+
+    private static void testServerConfig() {
+        System.out.println("\n-- config.ServerConfig（服务端配置持久化与键校验） --");
+
+        Path tmpDir = null;
+        try {
+            tmpDir = Files.createTempDirectory("maidfm_sc");
+            Path file = tmpDir.resolve("server.properties");
+
+            // ============ 1. 首次（文件不存在）-> 默认值 ============
+            ServerConfig.init(file);
+            eq("默认: allowClientImport=true", true, ServerConfig.isAllowClientImport());
+            eq("默认: allowBaubles=true", true, ServerConfig.isAllowBaubles());
+            eq("默认: allowAdvancements=true", true, ServerConfig.isAllowAdvancements());
+            eq("默认: allowEffects=true", true, ServerConfig.isAllowEffects());
+            eq("默认: allowInvulnerable=false", false, ServerConfig.isAllowInvulnerable());
+            eq("默认: baubleStripAttributes=false", false, ServerConfig.isBaubleStripAttributes());
+            eq("默认: carryCurios=false", false, ServerConfig.isCarryCurios());
+            eq("默认: OP 清单空", List.of(), ServerConfig.opBlockedNamespaces());
+
+            // ============ 2. setByKey 合法键 ============
+            eq("setByKey(allow_baubles,false) -> true", true,
+                    ServerConfig.setByKey(ServerConfig.KEY_ALLOW_BAUBLES, false));
+            eq("setByKey(allow_invulnerable,true) -> true", true,
+                    ServerConfig.setByKey(ServerConfig.KEY_ALLOW_INVULNERABLE, true));
+            eq("setByKey(carry_curios,true) -> true", true,
+                    ServerConfig.setByKey(ServerConfig.KEY_CARRY_CURIOS, true));
+
+            // ============ 3. setByKey 未知键 -> false ============
+            eq("setByKey(未知键) -> false", false,
+                    ServerConfig.setByKey("no_such_key", true));
+            eq("setByKey(null) -> false", false, ServerConfig.setByKey(null, true));
+
+            // ============ 4. setListByKey ============
+            eq("setListByKey(namespaces) -> true", true,
+                    ServerConfig.setListByKey(ServerConfig.KEY_BAUBLE_BLOCKED_NAMESPACES,
+                            List.of("EvilMod", "  AnotherMod  ", "evilmod")));
+            eq("清单归一（小写+去重+trim）", List.of("evilmod", "anothermod"),
+                    ServerConfig.opBlockedNamespaces());
+            eq("setListByKey(未知键) -> false", false,
+                    ServerConfig.setListByKey("no_such_list", List.of("x")));
+
+            // ============ 5. 重新 init（模拟重启）-> 全部读回 ============
+            ServerConfig.init(file);
+            eq("重启后: allowBaubles=false", false, ServerConfig.isAllowBaubles());
+            eq("重启后: allowInvulnerable=true", true, ServerConfig.isAllowInvulnerable());
+            eq("重启后: carryCurios=true", true, ServerConfig.isCarryCurios());
+            eq("重启后: 清单保留", List.of("evilmod", "anothermod"),
+                    ServerConfig.opBlockedNamespaces());
+
+            // ============ 6. getByKey ============
+            eq("getByKey(allow_baubles) -> false", false,
+                    ServerConfig.getByKey(ServerConfig.KEY_ALLOW_BAUBLES));
+            eq("getByKey(allow_client_import) -> true", true,
+                    ServerConfig.getByKey(ServerConfig.KEY_ALLOW_CLIENT_IMPORT));
+            eq("getByKey(null) -> false", false, ServerConfig.getByKey(null));
+            eq("getByKey(未知键) -> false", false, ServerConfig.getByKey("nope"));
+
+            // ============ 7. applyServerSync（客户端缓存） ============
+            ServerConfig.applyServerSync(false, true, false, true, true, false, true,
+                    List.of("SyncMod"), List.of("Ring"), List.of("bad:item"));
+            eq("同步后: allowClientImport=false", false, ServerConfig.isAllowClientImport());
+            eq("同步后: allowAdvancements=false", false, ServerConfig.isAllowAdvancements());
+            eq("同步后: allowInvulnerable=true", true, ServerConfig.isAllowInvulnerable());
+            eq("同步后: carryCurios=false", false, ServerConfig.isCarryCurios());
+            eq("同步后: 清单归一", List.of("syncmod"), ServerConfig.opBlockedNamespaces());
+            eq("同步后: 槽位清单归一", List.of("ring"), ServerConfig.opBlockedCuriosSlots());
+            eq("同步后: OP 禁用清单", List.of("bad:item"), ServerConfig.opBlockedList());
+
+            // null 清单容错
+            ServerConfig.applyServerSync(true, true, true, true, false, false, false,
+                    null, null, null);
+            eq("同步 null 清单: 清单清空", List.of(), ServerConfig.opBlockedNamespaces());
+            eq("同步 null 清单: 不抛异常且值生效", false, ServerConfig.isAllowInvulnerable());
+        } catch (Exception e) {
+            check("ServerConfig 用例整体执行", () -> false);
+            System.out.println("        异常: " + e);
+        } finally {
+            // 重置静态状态：指向不存在的路径（load 得默认值，save 不会再写盘）
+            ServerConfig.init(tmpDir != null ? tmpDir.resolve("reset.properties") : null);
             if (tmpDir != null) {
                 try (var s = Files.walk(tmpDir)) {
                     s.sorted(java.util.Comparator.reverseOrder()).forEach(x -> {
