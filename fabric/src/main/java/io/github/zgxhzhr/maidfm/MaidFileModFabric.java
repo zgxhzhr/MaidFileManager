@@ -531,18 +531,12 @@ public class MaidFileModFabric implements ModInitializer {
     }
 
     private static void sendFeedback(ServerPlayer player, Component message) {
-        FriendlyByteBuf out = PacketByteBufs.create();
-        // 1.20.x 旧网络 API 可用 FriendlyByteBuf.writeComponent（1.20.5 后才移除）
-        out.writeComponent(message);
-        ServerPlayNetworking.send(player, MaidFilePackets.ID_FEEDBACK, out);
+        io.github.zgxhzhr.maidfm.platform.PacketSender.sendFeedback(player, message);
     }
 
     /** 批量导入 + 删除源文件：汇总文案 + 逐项 spawned 标志（顺序与请求对齐） */
     private static void sendImportBatchResult(ServerPlayer player, Component summary, List<Boolean> spawned) {
-        FriendlyByteBuf out = PacketByteBufs.create();
-        out.writeComponent(summary);
-        MaidFilePackets.writeBooleanList(out, spawned);
-        ServerPlayNetworking.send(player, MaidFilePackets.ID_IMPORT_BATCH_RESULT, out);
+        io.github.zgxhzhr.maidfm.platform.PacketSender.sendImportBatchResult(player, summary, spawned);
     }
 
     /**
