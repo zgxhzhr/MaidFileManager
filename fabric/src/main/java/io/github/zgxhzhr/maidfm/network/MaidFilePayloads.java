@@ -138,7 +138,7 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     // 业务逻辑已下沉到 ServerPacketHandlers（六端共用一份）；本端只做转发
-                    io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestMaidList(sp);
+                    io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.requestMaidList(sp);
                 }
             });
         }
@@ -163,7 +163,7 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
-                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.exportMaid(sp, entityId);
+                        io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.exportMaid(sp, entityId);
                     } catch (Throwable t) {
                         handleError(sp, "EXPORT_MAID", t);
                     }
@@ -284,7 +284,7 @@ public final class MaidFilePayloads {
                         java.util.List<Integer> ids =
                                 io.github.zgxhzhr.maidfm.network.MaidFilePackets.readIntList(fbb);
                         boolean removeAfter = fbb.readBoolean();
-                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.exportBatch(sp, ids, removeAfter);
+                        io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.exportBatch(sp, ids, removeAfter);
                     } catch (Throwable t) {
                         handleError(sp, "EXPORT_BATCH", t);
                     }
@@ -422,7 +422,7 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
-                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestServerExportList(sp);
+                        io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.requestServerExportList(sp);
                     } catch (Throwable t) {
                         handleError(sp, "REQUEST_SERVER_EXPORT_LIST", t);
                     }
@@ -503,7 +503,7 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
-                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.setServerConfig(sp, key, value);
+                        io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.setServerConfig(sp, key, value);
                     } catch (Throwable t) {
                         handleError(sp, "SET_SERVER_CONFIG", t);
                     }
@@ -539,7 +539,7 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
-                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.setServerListConfig(sp, key, ids);
+                        io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.setServerListConfig(sp, key, ids);
                     } catch (Throwable t) {
                         handleError(sp, "SET_SERVER_BAUBLE_BLOCKED_LIST", t);
                     }
@@ -566,7 +566,7 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
-                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestMaidProfile(sp, entityId);
+                        io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.requestMaidProfile(sp, entityId);
                     } catch (Throwable t) {
                         handleError(sp, "REQUEST_MAID_PROFILE", t);
                     }
@@ -601,7 +601,7 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
-                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.saveMaidProfile(sp, entityId, profile);
+                        io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.saveMaidProfile(sp, entityId, profile);
                     } catch (Throwable t) {
                         handleError(sp, "SAVE_MAID_PROFILE", t);
                     }
@@ -667,7 +667,7 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
-                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestBackupList(sp);
+                        io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.requestBackupList(sp);
                     } catch (Throwable t) {
                         handleError(sp, "REQUEST_BACKUP_LIST", t);
                     }
