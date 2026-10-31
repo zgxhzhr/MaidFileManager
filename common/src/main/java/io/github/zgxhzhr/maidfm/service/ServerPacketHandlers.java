@@ -222,10 +222,17 @@ public final class ServerPacketHandlers {
             return false;
         }
         // 导出侧没有独立上限，但导入侧 MAX_NBT_DECOMPRESSED_BYTES(4 MiB) 是硬闸门：
-        // 超过它的档案「导得出、导不回」，留一条 WARN 便于排查
+        // 超过它的档案「导得出、导不回」。
+        //
+        // 原来只写一条 WARN——玩家不会去看日志，等于没做。
+        // 现在明确告知，但**不阻断**：单个文件超限不该连累同批其他女仆导出。
         if (declaredTotal > MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES) {
             Constants.LOG.warn("[maid_file_manager] 导出数据 {} 字节超过导入侧 4 MiB 上限，"
                     + "该 .maid 可能无法再导入: player={}", declaredTotal, player.getName().getString());
+            PacketSender.sendFeedback(player, Component.translatable(
+                    "maid_file_manager.export.quota_exceeded",
+                    declaredTotal / 1024,
+                    MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES / 1024));
         }
         byte[] encoded = encodeMaidDataBlobs(blobs);
         if (encoded.length > ChunkedUploadAssembler.CHUNK_BYTES) {
