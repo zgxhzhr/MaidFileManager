@@ -8,6 +8,7 @@ import io.github.zgxhzhr.maidfm.network.MaidInfoCodec;
 import io.github.zgxhzhr.maidfm.network.RequestThrottle;
 import io.github.zgxhzhr.maidfm.Constants;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
+import io.github.zgxhzhr.maidfm.data.ImportResult;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import io.github.zgxhzhr.maidfm.data.MaidInfo;
 import io.github.zgxhzhr.maidfm.data.MaidProfile;
@@ -422,5 +423,159 @@ public final class ServerPacketHandlers {
             return;
         }
         PacketSender.sendBackupList(player, owners);
+    }
+
+    // ==================== 需要从线上读复杂结构的请求（读仍在平台层） ====================
+    //
+    // 这几个 handler 的载荷是嵌套缓冲（decode 时 readBytes(len) 出来的独立堆缓冲），
+    // 里面还有一层读取。做法是：平台层把内层读完，只在参数里传已解码的值。
+    // 这样 common 不需要认识 FriendlyByteBuf，线格式也完全不变。
+
+    /**
+     * 处理「导入单个 .maid 文件」。
+     *
+     * <p>频控必须在业务之前：这条通道和批量通道做的是同一件重活（生成实体 + 写盘），
+     * 批量通道有频控，单发通道不能成为绕过口。
+     */
+    public static void importFile(ServerPlayer player, MaidFileData maidData, boolean keepBaubles) {
+        if (player == null) {
+            return;
+        }
+        if (!RequestThrottle.allow(player.getUUID(), "import_file", 1000L)) {
+            return;
+        }
+        if (maidData == null) {
+            PacketSender.sendFeedback(player,
+                    Component.translatable("maid_file_manager.import.fail.invalid"));
+            return;
+        }
+        // 饰品导入策略由服务端配置决定，客户端不上传（杜绝非 OP 绕过）
+        ImportResult result = MaidTransferService.importMaidFromData(
+                player, maidData, keepBaubles,
+                MaidConfigManager.isBaubleStripAttributes(),
+                MaidConfigManager.getBaubleBlockedList());
+        // 单条导入同样要消费 Curios 批次统计，否则残留到后续导出提示
+        BaubleHandler.curiosDropTip();
+        PacketSender.sendFeedback(player, BaubleHandler.withBaubleDetails(result));
+    }
+
+    /**
+     * 处理「批量导入 .maid 文件」。
+     *
+     * <p>逐条独立处理：一条失败不影响其余条目的结果统计。
+     */
+    public static void importBatch(ServerPlayer player, List<MaidFileData> list,
+                                   boolean keepBaubles, boolean deleteAfterImport) {
+        if (player == null || list == null) {
+            return;
+        }
+        // 频次限制：这是写盘/生成实体类 handler，比只读请求更重
+        if (!RequestThrottle.allow(player.getUUID(), "import_batch", 1000L)) {
+            return;
+        }
+        boolean stripAttributes = MaidConfigManager.isBaubleStripAttributes();
+        List<String> blockedList = MaidConfigManager.getBaubleBlockedList();
+        // 成败统计只认 ImportResult.State 枚举，严禁反解中文展示文案
+        List<ImportResult> results = new java.util.ArrayList<>(list.size());
+        for (MaidFileData d : list) {
+            if (d == null) {
+                results.add(ImportResult.failed(Component.translatable(
+                        "maid_file_manager.import.fail.invalid")));
+                continue;
+            }
+            results.add(MaidTransferService.importMaidFromData(
+                    player, d, keepBaubles, stripAttributes, blockedList));
+        }
+        // 导入路径同样会产生 Curios 批次统计，必须消费掉，
+        // 否则统计会残留到下一位玩家导出时被当成「导出丢弃」提示
+        BaubleHandler.curiosDropTip();
+        Component summary = MaidTransferService.buildBatchSummary(results);
+        if (deleteAfterImport) {
+            // 请求删除源文件：回传逐项 spawned 标志（与请求顺序对齐），客户端只删成功的文件
+            List<Boolean> spawned = new java.util.ArrayList<>(results.size());
+            for (ImportResult r : results) {
+                spawned.add(r.spawned());
+            }
+            PacketSender.sendImportBatchResult(player, summary, spawned);
+        } else {
+            PacketSender.sendFeedback(player, summary);
+        }
+    }
+
+    /**
+     * 处理「OP 统一导出提交」：代各玩家导出到服务端磁盘。
+     *
+     * <p>权限用 {@link PacketSender#hasOpPermission}，不直接读 hasPermissions：
+     * 26.1.2 的权限 API 不同，已收敛到平台层。
+     */
+    public static void serverExportBatch(ServerPlayer player,
+                                         List<IMaidFileNetwork.PlayerExportRequest> requests) {
+        if (player == null) {
+            return;
+        }
+        if (!PacketSender.hasOpPermission(player)) {
+            PacketSender.sendFeedback(player,
+                    Component.translatable("maid_file_manager.server.bulk_export_op_only"));
+            return;
+        }
+        Component result = MaidServerCommands.exportForPlayers(
+                PacketSender.serverOf(player), requests == null ? List.of() : requests);
+        PacketSender.sendFeedback(player, result);
+    }
+
+    /**
+     * 处理「导出某条自动备份」。
+     *
+     * <p>体积预检必须在编码之前算好：单条备份超过接收端上限时必须明确回执失败，
+     * 而不是发出一个对端解不了的包。
+     */
+    public static void requestBackupExport(ServerPlayer player, String ownerUuid,
+                                           String maidUuid, String fileName) {
+        if (player == null) {
+            return;
+        }
+        // 频次限制：读盘 + 编码，比只读请求重
+        if (!RequestThrottle.allow(player.getUUID(), "backup_export", 2000L)) {
+            return;
+        }
+        MaidFileData out = MaidBackupService.readForExport(
+                PacketSender.serverOf(player), player.getUUID(),
+                PacketSender.hasOpPermission(player), ownerUuid, maidUuid, fileName);
+        if (out == null) {
+            PacketSender.sendFeedback(player,
+                    Component.translatable("gui.maid_file_manager.backup.export_failed"));
+            return;
+        }
+        byte[] blob = MaidFilePackets.serializeMaidFileData(out);
+        if (blob == null || blob.length > MaidFilePackets.MAX_SINGLE_FILE_BYTES) {
+            Constants.LOG.warn("[maid_file_manager] 备份导出体积异常，拒绝发送: owner={}, maid={}, size={}",
+                    ownerUuid, maidUuid, blob == null ? -1 : blob.length);
+            PacketSender.sendFeedback(player,
+                    Component.translatable("maid_file_manager.server.backup_too_large"));
+            return;
+        }
+        PacketSender.sendBackupExportResult(player, blob);
+    }
+
+    /**
+     * 处理「分片上传的一片」。
+     *
+     * <p>组装器负责累积；返回非 null 表示这一片正好收齐，交给分发器处理。
+     * 整段包 try/catch：畸形的分片数据不能让主线程崩。
+     */
+    public static void chunkedUpload(ServerPlayer player, String kind, int sessionId,
+                                     int total, int index, byte[] chunk) {
+        if (player == null) {
+            return;
+        }
+        try {
+            byte[] full = ChunkedUploadAssembler.accept(
+                    player.getUUID(), kind, sessionId, total, index, chunk);
+            if (full != null) {
+                io.github.zgxhzhr.maidfm.service.ChunkedUploadDispatcher.dispatch(player, kind, full);
+            }
+        } catch (Throwable e) {
+            Constants.LOG.warn("[maid_file_manager] 分片上传处理失败: {}", e.toString());
+        }
     }
 }

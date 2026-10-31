@@ -123,4 +123,13 @@ public interface ServerMessaging {
      */
     void sendBackupList(ServerPlayer player,
                         java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.BackupOwner> owners);
+
+    /**
+     * 回传「某条自动备份导出」的结果载荷。
+     *
+     * <p>参数是已编码好的 {@code .maid} 数据（外层按线格式写 {@code VarInt 长度 + 字节}）。
+     * 之所以收 byte[] 而不是领域对象：编码在平台层（各端 {@code MaidFilePackets.serializeMaidFileData}
+     * 与写 buf 的方式一致），common 只负责「算出这份数据」。
+     */
+    void sendBackupExportResult(ServerPlayer player, byte[] encodedMaidFile);
 }

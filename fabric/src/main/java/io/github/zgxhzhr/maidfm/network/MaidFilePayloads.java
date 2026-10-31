@@ -212,33 +212,19 @@ public final class MaidFilePayloads {
             return TYPE;
         }
 
-        public void handle(PayloadCtx ctx) {
-            ctx.enqueueWork(() -> {
-                if (ctx.player() instanceof ServerPlayer sp) {
-                    // 旧单发通道不能成为频控绕过口（第六轮 N3）。
-                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "import_file", 1000L)) {
-                        return;
-                    }
-                    try {
-                        MaidFileData data = MaidFilePackets.deserializeMaidFileData(bytes);
-                        if (data == null) {
-                            feedback(sp, Component.translatable(
-                                    "maid_file_manager.import.fail.invalid"));
-                            return;
-                        }
-                        // 饰品导入策略由服务端配置决定，客户端不上传，杜绝非 OP 绕过
-                        ImportResult result = MaidTransferService.importMaidFromData(sp, data, keepBaubles,
-                                MaidConfigManager.isBaubleStripAttributes(),
-                                MaidConfigManager.getBaubleBlockedList());
-                        // 单条导入同样要消费 Curios 批次统计（第六轮 N5）。
-                        BaubleHandler.curiosDropTip();
-                        feedback(sp, BaubleHandler.withBaubleDetails(result));
-                    } catch (Throwable t) {
-                        handleError(sp, "IMPORT_FILE", t);
-                    }
-                }
-            });
+public void handle(PayloadCtx ctx) {
+    ctx.enqueueWork(() -> {
+        if (ctx.player() instanceof ServerPlayer sp) {
+            try {
+                // 反序列化属于「读」，留在平台层；业务在 ServerPacketHandlers（六端共用）
+                MaidFileData data = MaidFilePackets.deserializeMaidFileData(bytes);
+                io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.importFile(sp, data, keepBaubles);
+            } catch (Throwable t) {
+                handleError(sp, "IMPORT_FILE", t);
+            }
         }
+    });
+}
     }
 
     public record ExportBatchPayload(byte[] encoded) implements CustomPacketPayload {
@@ -333,50 +319,21 @@ public final class MaidFilePayloads {
         }
         @Override
         public Type<? extends CustomPacketPayload> type() { return TYPE; }
-        public void handle(PayloadCtx ctx) {
-            ctx.enqueueWork(() -> {
-                if (ctx.player() instanceof ServerPlayer sp) {
-                    // 频次限制：导入会生成实体并写盘，同 EXPORT_BATCH 一并纳入节流
-                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "import_batch", 1000L)) {
-                        return;
-                    }
-                    try {
-                        FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
-                        List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(fbb);
-                        // 饰品导入策略以服务端配置为准（客户端不上传，杜绝非 OP 绕过）；
-                        // 禁用清单直接取服务端配置（含整合包 bauble_import.json 的中文名条目），不再做命名空间收窄
-                        boolean stripAttributes = MaidConfigManager.isBaubleStripAttributes();
-                        List<String> blocked = MaidConfigManager.getBaubleBlockedList();
-                        // 成败统计只认 ImportResult.State 枚举，严禁反解中文展示文案
-                        List<ImportResult> results = new ArrayList<>(list.size());
-                        for (MaidFileData d : list) {
-                            if (d == null) {
-                                results.add(ImportResult.failed(Component.translatable(
-                                        "maid_file_manager.import.fail.invalid")));
-                                continue;
-                            }
-                            results.add(MaidTransferService.importMaidFromData(sp, d, keepBaubles,
-                                    stripAttributes, blocked));
-                        }
-                        // 导入路径同样会产生 Curios 批次统计，必须在每次导入结束时消费掉（第六轮 N5）。
-                        BaubleHandler.curiosDropTip();
-                        Component summary = MaidTransferService.buildBatchSummary(results);
-                        if (deleteAfterImport) {
-                            // 请求删除源文件：回传逐项 spawned 标志（与请求顺序对齐），客户端只删成功的文件
-                            List<Boolean> spawned = new ArrayList<>(results.size());
-                            for (ImportResult r : results) {
-                                spawned.add(r.spawned());
-                            }
-                            sendImportBatchResult(sp, summary, spawned);
-                        } else {
-                            feedback(sp, summary);
-                        }
-                    } catch (Throwable t) {
-                        handleError(sp, "IMPORT_BATCH", t);
-                    }
-                }
-            });
+public void handle(PayloadCtx ctx) {
+    ctx.enqueueWork(() -> {
+        if (ctx.player() instanceof ServerPlayer sp) {
+            try {
+                // 解码属于「读」，留在平台层；业务在 ServerPacketHandlers（六端共用）
+                FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
+                List<MaidFileData> list = MaidFilePackets.readMaidFileDataList(fbb);
+                io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.importBatch(
+                        sp, list, keepBaubles, deleteAfterImport);
+            } catch (Throwable t) {
+                handleError(sp, "IMPORT_BATCH", t);
+            }
         }
+    });
+}
     }
 
     public record ClientConsentPayload(boolean allow) implements CustomPacketPayload {
@@ -463,25 +420,21 @@ public final class MaidFilePayloads {
         }
         @Override
         public Type<? extends CustomPacketPayload> type() { return TYPE; }
-        public void handle(PayloadCtx ctx) {
-            ctx.enqueueWork(() -> {
-                if (ctx.player() instanceof ServerPlayer sp) {
-                    try {
-                        if (!sp.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_MODERATOR)) {
-                            feedback(sp, Component.translatable("maid_file_manager.server.bulk_export_op_only"));
-                            return;
-                        }
-                        FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
-                        List<IMaidFileNetwork.PlayerExportRequest> requests = MaidInfoCodec.readPlayerExportRequests(fbb);
-                        Component result = io.github.zgxhzhr.maidfm.service.MaidServerCommands
-                                .exportForPlayers(((net.minecraft.server.level.ServerLevel) sp.level()).getServer(), requests);
-                        feedback(sp, result);
-                    } catch (Throwable t) {
-                        handleError(sp, "SERVER_EXPORT_BATCH", t);
-                    }
-                }
-            });
+public void handle(PayloadCtx ctx) {
+    ctx.enqueueWork(() -> {
+        if (ctx.player() instanceof ServerPlayer sp) {
+            try {
+                // 解码属于「读」；OP 权限判定与导出都在 ServerPacketHandlers 里
+                FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
+                List<IMaidFileNetwork.PlayerExportRequest> requests =
+                        MaidInfoCodec.readPlayerExportRequests(fbb);
+                io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.serverExportBatch(sp, requests);
+            } catch (Throwable t) {
+                handleError(sp, "SERVER_EXPORT_BATCH", t);
+            }
         }
+    });
+}
     }
 
     public record SetServerConfigPayload(String key, boolean value) implements CustomPacketPayload {
@@ -702,34 +655,19 @@ public final class MaidFilePayloads {
             return TYPE;
         }
 
-        public void handle(PayloadCtx ctx) {
-            ctx.enqueueWork(() -> {
-                if (ctx.player() instanceof ServerPlayer sp) {
-                    // 频次限制：写盘/生成实体类 handler，原先只有只读请求有节流
-                    if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(sp.getUUID(), "backup_export", 2000L)) {
-                        return;
-                    }
-                    try {
-                        MaidFileData data = io.github.zgxhzhr.maidfm.service.MaidBackupService.readForExport(
-                                ((net.minecraft.server.level.ServerLevel) sp.level()).getServer(), sp.getUUID(), sp.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_MODERATOR), ownerUuid, maidUuid, fileName);
-                        if (data == null) {
-                            feedback(sp, Component.translatable("gui.maid_file_manager.backup.export_failed"));
-                            return;
-                        }
-                        byte[] blob = MaidFilePackets.serializeMaidFileData(data);
-                        if (blob == null || blob.length > MaidFilePackets.MAX_SINGLE_FILE_BYTES) {
-                            Constants.LOG.warn("[maid_file_manager] 备份导出体积异常，拒绝发送: owner={}, maid={}, size={}",
-                                    ownerUuid, maidUuid, blob == null ? -1 : blob.length);
-                            feedback(sp, Component.translatable("maid_file_manager.server.backup_too_large"));
-                            return;
-                        }
-                        ServerPlayNetworking.send(sp, new BackupExportResultPayload(blob));
-                    } catch (Throwable t) {
-                        handleError(sp, "REQUEST_BACKUP_EXPORT", t);
-                    }
-                }
-            });
+public void handle(PayloadCtx ctx) {
+    ctx.enqueueWork(() -> {
+        if (ctx.player() instanceof ServerPlayer sp) {
+            try {
+                // 字段已由 StreamCodec 解好；权限、读盘、体积预检、回包都在 ServerPacketHandlers
+                io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.requestBackupExport(
+                        sp, ownerUuid, maidUuid, fileName);
+            } catch (Throwable t) {
+                handleError(sp, "REQUEST_BACKUP_EXPORT", t);
+            }
         }
+    });
+}
     }
 
     /** 解析请求者名下的女仆：实体不存在或不属于请求者时返回 null */
@@ -1173,23 +1111,16 @@ public final class MaidFilePayloads {
             return TYPE;
         }
 
-        public void handle(PayloadCtx ctx) {
-            ctx.enqueueWork(() -> {
-                if (!(ctx.player() instanceof ServerPlayer sp)) {
-                    return;
-                }
-                byte[] full = io.github.zgxhzhr.maidfm.network.ChunkedUploadAssembler.accept(
-                        sp.getUUID(), kind, sessionId, total, index, chunk);
-                if (full == null) {
-                    return;
-                }
-                // 统一交给共享分发器：SAVE_PROFILE / IMPORT_BATCH / EXPORT_BATCH 三种负载
-                // 与 Forge、Fabric 两端走同一份实现（此前只有 SAVE_PROFILE 接了，
-                // IMPORT_BATCH 落到一条 WARN 上——而带一张头像的 .maid 就超过 24 KiB，
-                // 该端的批量导入实际上基本全废）。
-                io.github.zgxhzhr.maidfm.service.ChunkedUploadDispatcher.dispatch(sp, kind, full);
-            });
+public void handle(PayloadCtx ctx) {
+    ctx.enqueueWork(() -> {
+        if (!(ctx.player() instanceof ServerPlayer sp)) {
+            return;
         }
+        // 组装与分发都在 ServerPacketHandlers（内部已包 try/catch）
+        io.github.zgxhzhr.maidfm.service.ServerPacketHandlers.chunkedUpload(
+                sp, kind, sessionId, total, index, chunk);
+    });
+}
     }
 
     /**

@@ -81,4 +81,11 @@ public final class FabricServerMessaging implements ServerMessaging {
         net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
                 new io.github.zgxhzhr.maidfm.network.MaidFilePayloads.BackupListPayload(owners));
     }
+
+    @Override
+    public void sendBackupExportResult(ServerPlayer player, byte[] encodedMaidFile) {
+        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
+                new io.github.zgxhzhr.maidfm.network.MaidFilePayloads
+                        .BackupExportResultPayload(encodedMaidFile));
+    }
 }

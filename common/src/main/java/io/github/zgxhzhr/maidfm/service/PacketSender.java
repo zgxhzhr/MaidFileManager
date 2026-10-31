@@ -97,6 +97,12 @@ public final class PacketSender {
         }
 
         @Override
+        public void sendBackupExportResult(ServerPlayer player, byte[] encodedMaidFile) {
+            Constants.LOG.error("[maid_file_manager] ServerMessaging 未加载，备份导出结果被丢弃（{} 字节）",
+                    encodedMaidFile.length);
+        }
+
+        @Override
         public boolean hasOpPermission(ServerPlayer player) {
             return false;
         }
@@ -222,5 +228,13 @@ public final class PacketSender {
             return;
         }
         messaging().sendBackupList(player, owners == null ? java.util.List.of() : owners);
+    }
+
+    /** 回传某条自动备份的导出结果（已编码的 .maid 数据）。 */
+    public static void sendBackupExportResult(ServerPlayer player, byte[] encodedMaidFile) {
+        if (player == null || encodedMaidFile == null) {
+            return;
+        }
+        messaging().sendBackupExportResult(player, encodedMaidFile);
     }
 }
