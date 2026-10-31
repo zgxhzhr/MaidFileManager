@@ -9,6 +9,7 @@ import io.github.zgxhzhr.maidfm.network.MaidProfileCodec;
 import io.github.zgxhzhr.maidfm.network.MaidBackupCodec;
 import io.github.zgxhzhr.maidfm.network.MaidInfoCodec;
 import io.github.zgxhzhr.maidfm.service.MaidEffectCodec;
+import io.github.zgxhzhr.maidfm.service.TlmDataCodec;
 import io.github.zgxhzhr.maidfm.service.UuidAllocator;
 import io.github.zgxhzhr.maidfm.config.BaubleImportConfig;
 import io.github.zgxhzhr.maidfm.config.ClientConfig;
@@ -81,6 +82,7 @@ public final class SelfTest {
         testBaubleImportConfig();
         testClientConfig();
         testServerConfig();
+        testTlmDataCodec();
         testFilenameSanitize();
         testPlayerNameSanitize();
         testResolvePlayerDir();
@@ -1082,6 +1084,121 @@ public final class SelfTest {
                 }
             }
         }
+    }
+
+    private static void testTlmDataCodec() {
+        System.out.println("\n-- service.TlmDataCodec（TLM 数据抽取规则） --");
+
+        // 构造一份「什么都有」的实体 NBT
+        java.util.function.Supplier<CompoundTag> makeFull = () -> {
+            CompoundTag t = new CompoundTag();
+            // 始终抽取的物品容器
+            t.putString("MaidBaubleInventory", "x");
+            t.putString("MaidInventory", "x");
+            t.putString("MaidHideInventory", "x");
+            t.putString("MaidTaskInventory", "x");
+            // 仅跨版本抽取的复杂容器
+            t.putString("MaidSubConfig", "x");
+            t.putString("MaidGameSkillData", "x");
+            t.putString("MaidTaskDataMaps", "x");
+            t.putString("YsmRoamingVars", "x");
+            t.putString("Brain", "x");
+            t.putString("MaidSchedulePos", "x");
+            // 简单值字段：永远保留在 NBT 里（由 restoreTlmData 单独处理）
+            t.putString("ModelId", "m:p");
+            t.putInt("MaidFavorability", 5);
+            // 无关键
+            t.putString("CustomName", "草东");
+            return t;
+        };
+
+        // ==================== 同版本：只抽 4 个物品容器 ====================
+        CompoundTag same = makeFull.get();
+        CompoundTag out1 = TlmDataCodec.extract(same, true);
+        eq("同版本: 抽出 4 个物品容器", 4, out1.getAllKeys().size());
+        eq("同版本: 抽出 MaidBaubleInventory", true, out1.contains("MaidBaubleInventory"));
+        eq("同版本: 抽出 MaidInventory", true, out1.contains("MaidInventory"));
+        eq("同版本: 抽出 MaidHideInventory", true, out1.contains("MaidHideInventory"));
+        eq("同版本: 抽出 MaidTaskInventory", true, out1.contains("MaidTaskInventory"));
+
+        // 关键回归断言：跨版本专用的键必须**留在** NBT 里（历史 bug 就是这里被误抽）
+        eq("同版本: MaidSubConfig 保留在 NBT（历史 bug 回归）", true, same.contains("MaidSubConfig"));
+        eq("同版本: MaidGameSkillData 保留在 NBT", true, same.contains("MaidGameSkillData"));
+        eq("同版本: MaidTaskDataMaps 保留在 NBT", true, same.contains("MaidTaskDataMaps"));
+        eq("同版本: YsmRoamingVars 保留在 NBT", true, same.contains("YsmRoamingVars"));
+        eq("同版本: Brain 保留在 NBT", true, same.contains("Brain"));
+        eq("同版本: MaidSchedulePos 保留在 NBT", true, same.contains("MaidSchedulePos"));
+
+        // 抽出后入参确实被移除
+        eq("同版本: 入参已移除 MaidBaubleInventory", false, same.contains("MaidBaubleInventory"));
+        eq("同版本: 入参已移除 MaidInventory", false, same.contains("MaidInventory"));
+
+        // 简单值与无关键都还在
+        eq("同版本: ModelId 保留", true, same.contains("ModelId"));
+        eq("同版本: MaidFavorability 保留", true, same.contains("MaidFavorability"));
+        eq("同版本: CustomName 保留", true, same.contains("CustomName"));
+
+        // ==================== 跨版本：两档都抽 ====================
+        CompoundTag cross = makeFull.get();
+        CompoundTag out2 = TlmDataCodec.extract(cross, false);
+        eq("跨版本: 抽出物品容器 + 跨版本键（4+6）", 10, out2.getAllKeys().size());
+        eq("跨版本: 抽出 MaidSubConfig", true, out2.contains("MaidSubConfig"));
+        eq("跨版本: 抽出 MaidGameSkillData", true, out2.contains("MaidGameSkillData"));
+        eq("跨版本: 抽出 YsmRoamingVars", true, out2.contains("YsmRoamingVars"));
+        eq("跨版本: 抽出 Brain", true, out2.contains("Brain"));
+        eq("跨版本: 入参已移除 MaidSubConfig", false, cross.contains("MaidSubConfig"));
+
+        // 简单值仍在（它们由 restoreTlmData 单独处理，不在抽取清单里）
+        eq("跨版本: ModelId 仍保留", true, cross.contains("ModelId"));
+        eq("跨版本: MaidFavorability 仍保留", true, cross.contains("MaidFavorability"));
+
+        // ==================== 边界 ====================
+        CompoundTag empty = new CompoundTag();
+        eq("空 NBT: 抽出为空", 0, TlmDataCodec.extract(empty, false).getAllKeys().size());
+        eq("空 NBT: 不抛异常且入参仍为空", 0, empty.getAllKeys().size());
+
+        CompoundTag onlyUnknown = new CompoundTag();
+        onlyUnknown.putString("SomethingElse", "x");
+        eq("只有无关键: 抽出为空", 0, TlmDataCodec.extract(onlyUnknown, true).getAllKeys().size());
+        eq("只有无关键: 入参未变", 1, onlyUnknown.getAllKeys().size());
+
+        // ==================== 26.1+ Transfer API 模式 ====================
+        // 26.1 起饰品容器走 Transfer API，同版本+允许携带时必须把 MaidBaubleInventory
+        // 留在 NBT 里让 TLM 自己反序列化；抽出来再反射回填在 26.1 会失败导致饰品丢失。
+        CompoundTag ta1 = makeFull.get();
+        CompoundTag out3 = TlmDataCodec.extract(ta1, true, true, true);
+        eq("TransferAPI+同版本+带饰品: 只抽 3 个", 3, out3.getAllKeys().size());
+        eq("TransferAPI+同版本+带饰品: 不抽 MaidBaubleInventory", false,
+                out3.contains("MaidBaubleInventory"));
+        eq("TransferAPI+同版本+带饰品: 饰品容器留在 NBT", true, ta1.contains("MaidBaubleInventory"));
+        eq("TransferAPI+同版本+带饰品: 其它物品容器已抽走", false, ta1.contains("MaidInventory"));
+
+        // 不允许携带饰品时，即使走 Transfer API 也要抽走 MaidBaubleInventory
+        CompoundTag ta2 = makeFull.get();
+        CompoundTag out4 = TlmDataCodec.extract(ta2, true, false, true);
+        eq("TransferAPI+同版本+不带饰品: 抽 4 个", 4, out4.getAllKeys().size());
+        eq("TransferAPI+同版本+不带饰品: 抽走 MaidBaubleInventory", true,
+                out4.contains("MaidBaubleInventory"));
+
+        // 跨版本时无论是否走 Transfer API，饰品容器都要抽（结构可能不兼容）
+        CompoundTag ta3 = makeFull.get();
+        CompoundTag out5 = TlmDataCodec.extract(ta3, false, true, true);
+        eq("TransferAPI+跨版本: 抽走 MaidBaubleInventory", true,
+                out5.contains("MaidBaubleInventory"));
+        eq("TransferAPI+跨版本: 同时抽跨版本键", true, out5.contains("MaidSubConfig"));
+
+        // baubleUsesTransferApi=false 时，同版本+带饰品仍然是 4 个（20/21 版语义）
+        CompoundTag ta4 = makeFull.get();
+        eq("非 TransferAPI+同版本+带饰品: 抽 4 个", 4,
+                TlmDataCodec.extract(ta4, true, true, false).getAllKeys().size());
+        eq("transferApiSafeKeys 返回 3 个", 3, TlmDataCodec.transferApiSafeKeys().length);
+
+        // 键表只读副本：改动返回的数组不应影响内部
+        String[] keys = TlmDataCodec.alwaysExtractKeys();
+        eq("alwaysExtractKeys 返回 4 个", 4, keys.length);
+        keys[0] = "TAMPERED";
+        eq("改动副本不影响内部", "MaidBaubleInventory", TlmDataCodec.alwaysExtractKeys()[0]);
+        eq("crossVersionOnlyKeys 返回 16 个", 16, TlmDataCodec.crossVersionOnlyKeys().length);
     }
 
     private static void testModelDisplayNames() {
