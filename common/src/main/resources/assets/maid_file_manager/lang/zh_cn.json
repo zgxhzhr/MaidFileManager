@@ -262,5 +262,11 @@
   "gui.maid_file_manager.backup.help.line8": "匹配成功后该玩家的所有备份都显示名字，并记入缓存，下次直接显示。",
   "gui.maid_file_manager.backup.help.line9": "提示「未找到匹配的玩家」= 名字打错，或该玩家不在本机存档里。",
   "gui.maid_file_manager.backup.help.line10": "上方搜索框只筛列表，不触发任何查询。",
-  "gui.maid_file_manager.backup.help.btn": "说明"
+  "gui.maid_file_manager.backup.help.btn": "说明",
+  "maid_file_manager.import.migration_details": "。附加数据说明：",
+  "maid_file_manager.import.migration.no_provider": "%s：当前环境没有对应的模组实现，这段数据未迁移",
+  "maid_file_manager.import.migration.provider_unavailable": "%s：依赖的模组未安装，这段数据未迁移",
+  "maid_file_manager.import.migration.failed": "%s：迁移失败（%s）",
+  "maid_file_manager.import.migration.failed_unclassified": "%s：迁移失败，原因见服务器日志",
+  "maid_file_manager.import.migration.more": "（另有 %s 条说明）"
 }
