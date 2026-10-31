@@ -38,6 +38,11 @@ public final class PacketSender {
         public void sendMaidList(ServerPlayer player, java.util.List<io.github.zgxhzhr.maidfm.data.MaidInfo> list) {
             Constants.LOG.error("[maid_file_manager] ServerMessaging 未加载，女仆列表被丢弃（{} 条）", list.size());
         }
+
+        @Override
+        public void sendMaidProfile(ServerPlayer player, io.github.zgxhzhr.maidfm.data.MaidProfileView view) {
+            Constants.LOG.error("[maid_file_manager] ServerMessaging 未加载，女仆档案被丢弃");
+        }
     };
 
     private PacketSender() {
@@ -71,5 +76,14 @@ public final class PacketSender {
             return;
         }
         messaging().sendMaidList(player, list == null ? java.util.List.of() : list);
+    }
+
+    /** 发送女仆档案视图。 */
+    public static void sendMaidProfile(net.minecraft.server.level.ServerPlayer player,
+                                       io.github.zgxhzhr.maidfm.data.MaidProfileView view) {
+        if (player == null || view == null) {
+            return;
+        }
+        messaging().sendMaidProfile(player, view);
     }
 }
