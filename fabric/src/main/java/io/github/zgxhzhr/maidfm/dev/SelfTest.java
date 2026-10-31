@@ -1,5 +1,6 @@
 package io.github.zgxhzhr.maidfm.dev;
 
+import io.github.zgxhzhr.maidfm.spi.MaidMigrationException;
 import io.github.zgxhzhr.maidfm.data.MaidFileIo;
 import io.github.zgxhzhr.maidfm.data.NbtMigration;
 import io.github.zgxhzhr.maidfm.data.NbtVersion;
@@ -21,6 +22,8 @@ import io.github.zgxhzhr.maidfm.data.MaidInfo;
 import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
+import net.minecraft.network.chat.Component;
+import io.github.zgxhzhr.maidfm.data.ImportResult;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.nbt.CompoundTag;
@@ -89,6 +92,7 @@ public final class SelfTest {
         testPlayerNameSanitize();
         testResolvePlayerDir();
         testExportFileName();
+        testMigrationNotes();
 
         System.out.println();
         System.out.printf("结果：%d 通过，%d 失败%n", passed, failed);
@@ -1342,5 +1346,53 @@ public final class SelfTest {
         // 显示名含非法字符时被清洗
         String f4 = MaidFileIo.buildExportFileName("a/b:c", "m:n", owner, t);
         check("非法字符不进文件名", () -> !f4.contains("/") && !f4.contains(":"));
+    }
+
+    /**
+     * 迁移备注通道（第八节承诺项）。
+     *
+     * <p>重点是手写 {@code with} 方法的链式覆盖：{@code ImportResult} 是 record，
+     * 每加一个字段就要在每个 with 方法里透传其余字段，漏一个就会静默丢数据。
+     */
+    private static void testMigrationNotes() {
+        System.out.println("\n-- spi.MaidMigrationException + ImportResult.migrationNotes --");
+
+        // 专用异常：code 与 message 都必须是 provider 写进去的原值。
+        // message 是唯一能到玩家面前的载体（框架不解析异常类型）
+        MaidMigrationException ex = new MaidMigrationException("archive_conflict", "目标世界已有同名归档");
+        check("异常 code 可读", () -> "archive_conflict".equals(ex.code()));
+        check("异常 message 可读", () -> "目标世界已有同名归档".equals(ex.getMessage()));
+        check("code 为 null 时归一为 unspecified",
+                () -> "unspecified".equals(new MaidMigrationException(null, "x").code()));
+        check("异常可带 cause 构造", () -> {
+            Throwable cause = new IllegalStateException("inner");
+            return new MaidMigrationException("c", "m", cause).getCause() == cause;
+        });
+
+        // withMigrationNotes：空/null 时返回自身，不产生额外对象
+        ImportResult base = ImportResult.ok(Component.literal("ok"));
+        check("空列表返回自身", () -> base == base.withMigrationNotes(java.util.List.of()));
+        check("null 返回自身", () -> base == base.withMigrationNotes(null));
+
+        // 非空时带上，且不破坏其它字段
+        ImportResult withNote = base.withMigrationNotes(
+                java.util.List.of(Component.literal("huhutalk:archive 未迁移")));
+        check("非空时备注条数正确", () -> withNote.migrationNotes().size() == 1);
+        check("带上备注后状态与 spawned 不变",
+                () -> withNote.state() == ImportResult.State.OK && withNote.spawned());
+
+        // 链式：三个 with 方法各透传其余字段，任何一个漏写都会在这里暴露
+        ImportResult chained = base.withBaublesStripped()
+                .withMigrationNotes(java.util.List.of(Component.literal("m")))
+                .withBaubleNotes(java.util.List.of(Component.literal("b")));
+        check("链式后 baublesStripped 保留", chained::baublesStripped);
+        check("链式后 migrationNotes 保留", () -> chained.migrationNotes().size() == 1);
+        check("链式后 baubleNotes 保留", () -> chained.baubleNotes().size() == 1);
+
+        // 失败态也要能带备注（provider 报错发生在实体已生成之后）
+        ImportResult failedWithNote = ImportResult.failed(Component.literal("失败"))
+                .withMigrationNotes(java.util.List.of(Component.literal("k")));
+        check("失败态可带备注", () -> failedWithNote.migrationNotes().size() == 1);
+        check("失败态 spawned 为 false", () -> !failedWithNote.spawned());
     }
 }
