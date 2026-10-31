@@ -46,29 +46,29 @@ import java.util.Set;
  */
 public class MaidBaubleImportScreen extends Screen {
     // ===== 配色（与设置界面保持一致） =====
-    private static final int SCREEN_BG = 0xFF101010;
-    private static final int PANEL_BG = 0xFF282018;
-    private static final int PANEL_BORDER = 0xFF8B5A2B;
-    private static final int HEADER_COLOR = 0xFFFFE082;
-    private static final int TEXT_COLOR = 0xFFFFFFFF;
-    private static final int SUBTEXT_COLOR = 0xFFB0B0B0;
-    private static final int ERROR_COLOR = 0xFFFF6B6B;
-    private static final int LIST_BG = 0xFF181008;
-    private static final int ROW_SELECTED = 0xFF2E3820;
+    static final int SCREEN_BG = 0xFF101010;
+    static final int PANEL_BG = 0xFF282018;
+    static final int PANEL_BORDER = 0xFF8B5A2B;
+    static final int HEADER_COLOR = 0xFFFFE082;
+    static final int TEXT_COLOR = 0xFFFFFFFF;
+    static final int SUBTEXT_COLOR = 0xFFB0B0B0;
+    static final int ERROR_COLOR = 0xFFFF6B6B;
+    static final int LIST_BG = 0xFF181008;
+    static final int ROW_SELECTED = 0xFF2E3820;
     /** 木色按钮配色（与主面板同色系，替代原版灰底按钮） */
-    private static final int BUTTON_BG = 0xFF3A2C1C;
-    private static final int BUTTON_BG_HOVER = 0xFF4A3826;
+    static final int BUTTON_BG = 0xFF3A2C1C;
+    static final int BUTTON_BG_HOVER = 0xFF4A3826;
     /** 滑动开关配色 */
-    private static final int TRACK_OFF = 0xFF4A4038;
-    private static final int TRACK_ON = 0xFF5A8A3A;
-    private static final int KNOB = 0xFFE8E0D0;
-    private static final int LABEL_ALLOW = 0xFFB8E08A;
-    private static final int LABEL_DENY = 0xFFB0B0B0;
+    static final int TRACK_OFF = 0xFF4A4038;
+    static final int TRACK_ON = 0xFF5A8A3A;
+    static final int KNOB = 0xFFE8E0D0;
+    static final int LABEL_ALLOW = 0xFFB8E08A;
+    static final int LABEL_DENY = 0xFFB0B0B0;
     /** 手绘复选框（与主管理界面同款） */
-    private static final int CHECK_SIZE = 9;
-    private static final int CHECK_BORDER = 0xFFA89070;
-    private static final int CHECK_INNER = 0xFF18120C;
-    private static final int CHECK_MARK = 0xFFFFD700;
+    static final int CHECK_SIZE = 9;
+    static final int CHECK_BORDER = 0xFFA89070;
+    static final int CHECK_INNER = 0xFF18120C;
+    static final int CHECK_MARK = 0xFFFFD700;
     private static final int[][] CHECK_PIXELS = {
             {5, 0},
             {4, 1}, {5, 1},
@@ -79,14 +79,14 @@ public class MaidBaubleImportScreen extends Screen {
             {2, 6}
     };
 
-    private static final int PANEL_W = 360;
-    private static final int SWITCH_W = 64;
-    private static final int SWITCH_H = 16;
-    private static final int SEARCH_H = 14;
-    private static final int DONE_H = 22;
-    private static final int ROW_H = 22;
-    private static final int LIST_H = 190;
-    private static final int SCROLL_W = 3;
+    static final int PANEL_W = 360;
+    static final int SWITCH_W = 64;
+    static final int SWITCH_H = 16;
+    static final int SEARCH_H = 14;
+    static final int DONE_H = 22;
+    static final int ROW_H = 22;
+    static final int LIST_H = 190;
+    static final int SCROLL_W = 3;
 
     private final Screen parent;
     private int panelX;
@@ -239,7 +239,8 @@ public class MaidBaubleImportScreen extends Screen {
             rowLabels.add(new RowLabel(Component.literal(stripLines.get(i)),
                     labelX, y + i * 9, TEXT_COLOR));
         }
-        stripToggle = new StripToggle(switchX, y + (stripRowH - 6 - SWITCH_H) / 2);
+        stripToggle = new StripToggle(switchX, y + (stripRowH - 6 - SWITCH_H) / 2,
+                this.stripAttributes, v -> this.stripAttributes = v);
         stripToggle.active = canEdit;
         addRenderableWidget(stripToggle);
         y += stripRowH;
@@ -593,99 +594,8 @@ public class MaidBaubleImportScreen extends Screen {
     private record ItemEntry(String id, ItemStack stack) {
     }
 
-    /**
-     * 丢弃饰品属性滑动开关：点击切换，滑块带平滑动画。
-     * 状态写入本屏字段 stripAttributes，点「完成」时统一提交服务端（非 OP 时禁用）。
-     */
-    private class StripToggle extends AbstractButton {
-        private boolean state;
-        /** 滑块动画进度：0=左（不丢弃=保留），1=右（丢弃） */
-        private float slide;
-
-        StripToggle(int x, int y) {
-            super(x, y, SWITCH_W, SWITCH_H, Component.empty());
-            this.state = MaidBaubleImportScreen.this.stripAttributes;
-            this.slide = this.state ? 1.0F : 0.0F;
-        }
-
-        @Override
-        public void onPress(net.minecraft.client.input.InputWithModifiers input) {
-            this.state = !this.state;
-            MaidBaubleImportScreen.this.stripAttributes = this.state;
-        }
-
-        @Override
-        protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-            float target = this.state ? 1.0F : 0.0F;
-            this.slide += (target - this.slide) * 0.35F;
-            if (Math.abs(target - this.slide) < 0.02F) {
-                this.slide = target;
-            }
-            int track = this.active
-                    ? blendColor(TRACK_OFF, TRACK_ON, this.slide)
-                    : blendColor(0xFF332E28, 0xFF3A4433, this.slide);
-            graphics.fill(getX(), getY(), getX() + width, getY() + height, track);
-            graphics.outline(getX(), getY(), width, height, PANEL_BORDER);
-
-            Component text = Component.translatable(this.state
-                    ? "gui.maid_file_manager.config.on_label"
-                    : "gui.maid_file_manager.config.off_label");
-            int textColor = this.active ? (this.state ? LABEL_ALLOW : LABEL_DENY) : LABEL_DENY;
-            int textX = this.state
-                    ? getX() + 5
-                    : getX() + width - 5 - MaidBaubleImportScreen.this.font.width(text);
-            graphics.text(MaidBaubleImportScreen.this.font, text, textX, getY() + (height - 8) / 2, textColor, false);
-
-            int knobW = 22;
-            int travel = width - 4 - knobW;
-            int knobX = getX() + 2 + (int) (travel * this.slide);
-            graphics.fill(knobX, getY() + 2, knobX + knobW, getY() + height - 2,
-                    this.active ? KNOB : 0xFF9A9284);
-            graphics.outline(knobX, getY() + 2, knobW, height - 4, 0xFF000000);
-        }
-
-        @Override
-        protected void updateWidgetNarration(NarrationElementOutput output) {
-            this.defaultButtonNarrationText(output);
-        }
-    }
-
-    /**
-     * 木色完成按钮：与主面板同色系的深棕底 + 木色描边 + 白字（无阴影），
-     * 替代原版灰色按钮，避免与木色面板风格冲突。
-     */
-    private class WoodButton extends AbstractButton {
-        private final Runnable action;
-
-        WoodButton(int x, int y, int width, int height, Component message, Runnable action) {
-            super(x, y, width, height, message);
-            this.action = action;
-        }
-
-        @Override
-        public void onPress(net.minecraft.client.input.InputWithModifiers input) {
-            this.action.run();
-        }
-
-        @Override
-        protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-            boolean hovered = isHoveredOrFocused();
-            graphics.fill(getX(), getY(), getX() + width, getY() + height,
-                    hovered ? BUTTON_BG_HOVER : BUTTON_BG);
-            graphics.outline(getX(), getY(), width, height, PANEL_BORDER);
-            int tx = getX() + (width - MaidBaubleImportScreen.this.font.width(getMessage())) / 2;
-            int ty = getY() + (height - 8) / 2;
-            graphics.text(MaidBaubleImportScreen.this.font, getMessage(), tx, ty, TEXT_COLOR, false);
-        }
-
-        @Override
-        protected void updateWidgetNarration(NarrationElementOutput output) {
-            this.defaultButtonNarrationText(output);
-        }
-    }
-
     /** 颜色线性插值（不透明） */
-    private static int blendColor(int from, int to, float t) {
+    static int blendColor(int from, int to, float t) {
         int fr = (from >> 16) & 0xFF;
         int fg = (from >> 8) & 0xFF;
         int fb = from & 0xFF;
