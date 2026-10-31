@@ -97,6 +97,7 @@ public final class SelfTest {
         testMigrationNotes();
         testMigrationNoteCollector();
         testMigrationReporter();
+        testExportQuotaDetection();
 
         System.out.println();
         System.out.printf("结果：%d 通过，%d 失败%n", passed, failed);
@@ -1451,5 +1452,60 @@ public final class SelfTest {
         // 多次上报按调用顺序累积（框架会把每个 key 的说明分别拼进提示）
         reporter.note("第二条");
         check("多次上报累积", () -> captured.size() == 2);
+    }
+
+    /**
+     * 导出侧的同口径配额检查。
+     *
+     * <p>关键用例是最后一个：**压缩后很小、解压后超配额**。这正是原来拿压缩后字节
+     * 去比的情况会漏掉的档案（会安静地「导出成功」、到导入时读不出来）。
+     * 能在这个测试里构造出来，说明现在的检查确实按导入侧口径算。
+     */
+    private static void testExportQuotaDetection() {
+        System.out.println("\n-- MaidFilePackets.findOverQuotaBlobs（导出侧同口径配额） --");
+
+        check("null 输入返回空", () -> MaidFilePackets.findOverQuotaBlobs(null).isEmpty());
+        check("空列表返回空", () -> MaidFilePackets.findOverQuotaBlobs(java.util.List.of()).isEmpty());
+
+        // 正常小档案不误报
+        CompoundTag small = new CompoundTag();
+        small.putString("k", "v");
+        byte[] smallBlob = compressToBlob(small);
+        check("正常小档案不误报", () -> smallBlob != null
+                && MaidFilePackets.findOverQuotaBlobs(java.util.List.of(smallBlob)).isEmpty());
+
+        // 损坏数据只当损坏，不当「超配额」
+        byte[] garbage = new byte[]{1, 2, 3, 4};
+        check("损坏数据不误报为超配额",
+                () -> MaidFilePackets.findOverQuotaBlobs(java.util.List.of(garbage)).isEmpty());
+
+        // 关键用例：5 MB 的字节数组。
+        //
+        // 不能用大字符串——NBT 的字符串走 DataOutputStream.writeUTF，单串硬限 65535 字节，
+        // 塞 3 MB 会在 writeUTF 里直接抛 UTFDataFormatException，根本写不进 NBT。
+        // （这条限制本身就值得记住：超 64 KiB 的文本不能按 StringTag 存。）
+        //
+        // ByteArrayTag 没有这个限制，NbtAccounter 对字节数组按 1:1 计费，
+        // 5 MB => 约 5 MB > 4 MiB 配额；而全 0 的数组 GZIP 后只有几十 KB，
+        // 正是「压缩后很小、解压后超配额」的典型。
+        CompoundTag huge = new CompoundTag();
+        huge.putByteArray("big", new byte[5 * 1024 * 1024]);
+        byte[] hugeBlob = compressToBlob(huge);
+
+        check("压缩后体积远小于配额", () -> hugeBlob != null && hugeBlob.length < 1024 * 1024);
+        check("解压后超配额的档案被识别", () -> hugeBlob != null
+                && !MaidFilePackets.findOverQuotaBlobs(java.util.List.of(hugeBlob)).isEmpty());
+        check("旧口径（压缩后字节）会漏掉它", () -> hugeBlob != null
+                && hugeBlob.length <= MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES);
+    }
+
+    /** 把 CompoundTag 压成导出用的 blob 格式 */
+    private static byte[] compressToBlob(CompoundTag tag) {
+        try (java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream()) {
+            net.minecraft.nbt.NbtIo.writeCompressed(tag, baos);
+            return baos.toByteArray();
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
