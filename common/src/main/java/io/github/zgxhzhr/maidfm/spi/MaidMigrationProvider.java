@@ -57,10 +57,6 @@ public interface MaidMigrationProvider {
     void importData(EntityMaid maid, CompoundTag data);
 
     /**
-     * 该 provider 是否可用（依赖的模组是否已加载）。
-     * 默认实现用 {@link #getDependencyModId()} 检测。
-     */
-/**
      * 导入：把数据写回女仆或其关联的外部系统，并可选地向玩家补充说明。
      *
      * <p><b>这是一个带默认实现的重载，老 provider 不用改</b>：默认实现直接转调
@@ -72,7 +68,8 @@ public interface MaidMigrationProvider {
      *
      * <p><b>两种异常的分工</b>：
      * <ul>
-     *   <li>整段迁移失败 → 抛 {@link MaidMigrationException}，玩家看到「迁移失败（你的 message）」</li>
+     *   <li>单段迁移失败 → 抛 {@link MaidMigrationException}，玩家看到「部分数据未能迁移（你的 message）」。
+     *       注意这**不会**让整次导入算失败，女仆仍会生成并计入成功数</li>
      *   <li>迁移成功但不完整 → 调 {@code reporter.note(...)}，玩家看到「成功」+ 你写的说明</li>
      * </ul>
      *
@@ -86,6 +83,10 @@ public interface MaidMigrationProvider {
         importData(maid, data);
     }
 
+    /**
+     * 该 provider 是否可用（依赖的模组是否已加载）。
+     * 默认实现用 {@link #getDependencyModId()} 检测。
+     */
     default boolean isAvailable() {
         String dep = getDependencyModId();
         return dep == null || dep.isEmpty() || Services.PLATFORM.get().isModLoaded(dep);

@@ -270,7 +270,7 @@
   "maid_file_manager.import.migration.failed_unclassified": "%s：部分数据未能迁移，原因见服务器日志。",
   "maid_file_manager.import.migration.more": "（另有 %s 条说明）",
   "maid_file_manager.export.migration.failed": "%s 的数据未能导出（该模组报错）。",
-  "maid_file_manager.export.migration_details": "。其他模组数据说明：",
+  "maid_file_manager.export.migration_details": "其他模组数据说明：",
   "maid_file_manager.export.migration.more": "（另有 %s 条说明）",
   "maid_file_manager.import.migration.provider_note": "%s：%s",
   "maid_file_manager.export.quota_exceeded": "有 %s 个导出文件的档案数据超过导入读取配额（%s KB），这些 .maid 以后可能无法再导入。"
