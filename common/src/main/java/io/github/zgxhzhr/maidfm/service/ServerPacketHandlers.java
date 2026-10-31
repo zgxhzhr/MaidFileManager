@@ -181,6 +181,16 @@ public final class ServerPacketHandlers {
      * @return true=已发送；false=序列化失败 / 契约预检被拒 / 分片超限（都已回执原因）
      */
     public static boolean sendExportResults(ServerPlayer player, List<MaidFileData> results) {
+        return sendExportResults(player, results, null);
+    }
+
+    /**
+     * @param skippedOut 可选：收集「因超导入配额被剔除」的下标（对应 {@code results} 的下标）。
+     *                   调用方必须据此把这些女仆从待删登记里去掉——它们的 `.maid` 没有发送，
+     *                   一旦登记删除就是「女仆没了、文件也没有」。
+     */
+    public static boolean sendExportResults(ServerPlayer player, List<MaidFileData> results,
+                                            java.util.List<Integer> skippedOut) {
         if (player == null) {
             return false;
         }
@@ -196,6 +206,35 @@ public final class ServerPacketHandlers {
             PacketSender.sendFeedback(player,
                     Component.translatable("maid_file_manager.server.serialize_failed"));
             return false;
+        }
+        // ---- 导入配额检查：必须在契约预检与体积计算之前，而且要真的剔除 ----
+        //
+        // 导入侧的 4 MiB 是「解压后 NbtAccounter 配额」，不是压缩后字节数，所以解压后读一遍。
+        //
+        // 关键是「剔除」而不只是提示：超配额的 blob 一旦发出去，客户端解码会失败并被
+        // 静默丢弃（S2CPacket 里 `if (one != null) decoded.add(one)`），而「导出并移除」
+        // 仍会把这只女仆登记待删 → 文件没落盘、女仆被删，不可逆。
+        java.util.List<Integer> overQuota = MaidFilePackets.findOverQuotaBlobs(blobs);
+        if (!overQuota.isEmpty()) {
+            Constants.LOG.warn("[maid_file_manager] 导出结果有 {} 个文件解压后超导入侧 4 MiB 配额，"
+                    + "已从本批剔除（不发送、也不登记删除）: player={}, indices={}",
+                    overQuota.size(), player.getName().getString(), overQuota);
+            PacketSender.sendFeedback(player, Component.translatable(
+                    "maid_file_manager.export.quota_exceeded",
+                    overQuota.size(),
+                    MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES / 1024));
+            if (skippedOut != null) {
+                skippedOut.addAll(overQuota);
+            }
+            for (int i = overQuota.size() - 1; i >= 0; i--) {
+                int idx = overQuota.get(i);
+                if (idx >= 0 && idx < blobs.size()) {
+                    blobs.remove(idx);
+                }
+            }
+            if (blobs.isEmpty()) {
+                return false;
+            }
         }
         // 必须走 allowChunkedFallback=true：下面有分片路径。用 2 参版本会在 >1 MiB 时直接拒绝，
         // 这样同一操作在不同端表现不一致（十余只带头像女仆批量导出就报「超过单包上限」）。
@@ -220,21 +259,6 @@ public final class ServerPacketHandlers {
                     "maid_file_manager.server.export_too_large",
                     declaredTotal / 1024, ChunkedUploadAssembler.MAX_TOTAL_BYTES / 1024));
             return false;
-        }
-        // 导入侧的 4 MiB 是「解压后 NbtAccounter 配额」，不是压缩后字节数。
-        // 拿 declaredTotal（压缩后）去比它属于两个口径硬拼，会漏掉「压缩后几百 KB、
-        // 解压后超 4 MiB」这种档案。所以这里解压后用同样的 NbtAccounter 读一遍，同口径判断。
-        //
-        // 不阻断导出：单个文件超限不该连累同批其他女仆。
-        java.util.List<Integer> overQuota = MaidFilePackets.findOverQuotaBlobs(blobs);
-        if (!overQuota.isEmpty()) {
-            Constants.LOG.warn("[maid_file_manager] 导出结果有 {} 个文件解压后超导入侧 4 MiB 配额，"
-                    + "这些 .maid 可能无法再导入: player={}, indices={}",
-                    overQuota.size(), player.getName().getString(), overQuota);
-            PacketSender.sendFeedback(player, Component.translatable(
-                    "maid_file_manager.export.quota_exceeded",
-                    overQuota.size(),
-                    MaidFilePackets.MAX_NBT_DECOMPRESSED_BYTES / 1024));
         }
         byte[] encoded = encodeMaidDataBlobs(blobs);
         if (encoded.length > ChunkedUploadAssembler.CHUNK_BYTES) {
@@ -356,11 +380,21 @@ public final class ServerPacketHandlers {
                     exportedIds.add(entityId);
                 }
             }
-            if (!sendExportResults(player, results)) {
+            java.util.List<Integer> skippedByQuota = new java.util.ArrayList<>();
+            if (!sendExportResults(player, results, skippedByQuota)) {
                 // 整批导出失败时不要再补一条「X 的数据未能导出」——
                 // 那条会让人以为「只有 X 没导出、其余成功」，实际整批都没导出。
                 MigrationNoteCollector.take();
                 return;
+            }
+            // ★ 超配额被剔除的女仆绝不能登记待删：它们的 .maid 没有发送，
+            //   删掉就是「女仆没了、文件也没有」，不可逆。
+            //   下标与 results / exportedIds 一一对应（同一次循环成对添加）。
+            for (int i = skippedByQuota.size() - 1; i >= 0; i--) {
+                int idx = skippedByQuota.get(i);
+                if (idx >= 0 && idx < exportedIds.size()) {
+                    exportedIds.remove(idx);
+                }
             }
             // 空批次绝不能登记待删：客户端对空结果不发 ack，登记项会一直占到 TTL 过期，
             // 期间下一次「导出并移除」被误报 remove_busy、静默降级成只导出
