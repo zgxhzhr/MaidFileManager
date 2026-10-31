@@ -64,32 +64,32 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class MaidConfigManager {
     /** 服务端配置键：允许客户端导入女仆 */
-    public static final String KEY_ALLOW_CLIENT_IMPORT = "allow_client_import";
+    public static final String KEY_ALLOW_CLIENT_IMPORT = ServerConfig.KEY_ALLOW_CLIENT_IMPORT;
     /** 服务端配置键：导入时允许携带饰品 */
-    public static final String KEY_ALLOW_BAUBLES = "allow_baubles";
+    public static final String KEY_ALLOW_BAUBLES = ServerConfig.KEY_ALLOW_BAUBLES;
     /** 服务端配置键：导入时允许一并转移 TLM 成就 */
-    public static final String KEY_ALLOW_ADVANCEMENTS = "allow_advancements";
+    public static final String KEY_ALLOW_ADVANCEMENTS = ServerConfig.KEY_ALLOW_ADVANCEMENTS;
     /** 服务端配置键：导入时允许恢复药水效果到实体（关闭则效果保留在持久化标签，不恢复到实体） */
-    public static final String KEY_ALLOW_EFFECTS = "allow_effects";
+    public static final String KEY_ALLOW_EFFECTS = ServerConfig.KEY_ALLOW_EFFECTS;
     /** 服务端配置键：导入时携带 TLM 本体无敌状态（替身地藏赋予的 Invulnerable，默认关闭） */
-    public static final String KEY_ALLOW_INVULNERABLE = "allow_invulnerable";
+    public static final String KEY_ALLOW_INVULNERABLE = ServerConfig.KEY_ALLOW_INVULNERABLE;
     /** 服务端配置键：导入时丢弃饰品属性（附魔/耐久/无法破坏/属性修饰符等），恢复为全新物品（默认关=保留） */
-    public static final String KEY_BAUBLE_STRIP_ATTRIBUTES = "bauble_strip_attributes";
+    public static final String KEY_BAUBLE_STRIP_ATTRIBUTES = ServerConfig.KEY_BAUBLE_STRIP_ATTRIBUTES;
     /**
      * 服务端配置键：是否允许携带 Curios 饰品。
      * <p>默认关闭 = 女仆 Curios 槽位内的饰品一律不随女仆迁移；
      * 开启后也只携带<b>被声明允许</b>的命名空间（见 MaidBaubleCarrier），未声明仍丢弃。
      * <p>背包类槽位（back 等）无论本开关如何都被硬编码禁止携带。
      */
-    public static final String KEY_CARRY_CURIOS = "carry_curios_baubles";
+    public static final String KEY_CARRY_CURIOS = ServerConfig.KEY_CARRY_CURIOS;
 
     /** 服务端配置键：OP 维护的「按模组（命名空间）禁用携带」清单（逗号分隔；同时作用于饰品栏与 Curios） */
-    public static final String KEY_BAUBLE_BLOCKED_NAMESPACES = "bauble_blocked_namespaces";
+    public static final String KEY_BAUBLE_BLOCKED_NAMESPACES = ServerConfig.KEY_BAUBLE_BLOCKED_NAMESPACES;
 
     /** 服务端配置键：OP 维护的「按 Curios 槽位禁用携带」清单（逗号分隔） */
-    public static final String KEY_BAUBLE_BLOCKED_CURIOS_SLOTS = "bauble_blocked_curios_slots";
+    public static final String KEY_BAUBLE_BLOCKED_CURIOS_SLOTS = ServerConfig.KEY_BAUBLE_BLOCKED_CURIOS_SLOTS;
     /** 服务端配置键：禁用携带的饰品 ID 列表（逗号分隔，仅限车万本体/万法皆通两命名空间，导入时直接丢弃） */
-    public static final String KEY_BAUBLE_BLOCKED_LIST = "bauble_blocked_list";
+    public static final String KEY_BAUBLE_BLOCKED_LIST = ServerConfig.KEY_BAUBLE_BLOCKED_LIST;
     /** 客户端配置键：允许服务端统一导出你的女仆 */
     public static final String KEY_ALLOW_SERVER_EXPORT = ClientConfig.KEY_ALLOW_SERVER_EXPORT;
     /** 客户端配置键：界面背景音乐开关（试验性功能，默认开启） */
@@ -99,33 +99,15 @@ public final class MaidConfigManager {
     /** 客户端配置键：导出并移除女仆时跳过"背包物品将丢失"二次确认的键前缀，完整键为 前缀+存档标识 */
     public static final String SKIP_REMOVE_CONFIRM_PREFIX = ClientConfig.SKIP_REMOVE_CONFIRM_PREFIX;
 
-    /** 服务端配置内存值（volatile 保证跨线程可见：网络线程写、服务端逻辑线程读）；默认开启（方便单人玩家） */
-    private static volatile boolean serverAllowClientImport = true;
-    private static volatile boolean serverAllowBaubles = true;
-    private static volatile boolean serverAllowAdvancements = true;
-    private static volatile boolean serverAllowEffects = true;
-    private static volatile boolean serverAllowInvulnerable = false;
-    /** 服务端配置内存值：导入时丢弃饰品属性（默认关=保留） */
-    private static volatile boolean serverBaubleStripAttributes = false;
-    /** 服务端配置内存值：是否允许携带 Curios 饰品（默认关=一律不迁移） */
-    private static volatile boolean serverCarryCurios = false;
-    /** 服务端配置内存值：OP 维护的按模组（命名空间）禁用清单（不可变，默认空） */
-    private static volatile List<String> serverBaubleBlockedNamespaces = List.of();
-    /** 服务端配置内存值：OP 维护的按 Curios 槽位禁用清单（不可变，默认空） */
-    private static volatile List<String> serverBaubleBlockedCuriosSlots = List.of();
-    /** 服务端配置内存值：OP 在游戏内维护的「禁用携带饰品」清单（不可变，默认空；与整合包黑名单相互独立） */
-    private static volatile List<String> serverBaubleBlockedList = List.of();
-    /** 服务端侧记录的各客户端同意状态（UUID → allowServerExport），登录默认 false */
-    private static final Map<UUID, Boolean> CLIENT_CONSENT = new ConcurrentHashMap<>();
 
-    private static Path serverConfigFile;
 
     private MaidConfigManager() {
     }
 
     /** 由 loader 侧初始化（gameDir：专用服务器=服务器根目录，客户端=.minecraft，局域网=宿主 gameDir） */
     public static void init(Path gameDir) {
-        serverConfigFile = gameDir.resolve("config").resolve("maid_file_manager-server.properties");
+        java.nio.file.Path serverConfigFile =
+                gameDir.resolve("config").resolve("maid_file_manager-server.properties");
         java.nio.file.Path clientConfigFile =
                 gameDir.resolve("config").resolve("maid_file_manager-client.properties");
         Path baubleImportConfigFile =
@@ -134,12 +116,7 @@ public final class MaidConfigManager {
         MaidFileIo.migrateLegacyDirs(gameDir);
         // 配置解析必须逐段兜底：properties 里的非法转义（如单独的反斜杠）会抛 IllegalArgumentException，
         // json 语法错误会抛运行时异常；这些若外泄会让模组初始化失败，表现为游戏启动崩溃。
-        try {
-            loadServer();
-        } catch (Throwable t) {
-            io.github.zgxhzhr.maidfm.Constants.LOG.error(
-                    "[maid_file_manager] 服务端配置加载失败，已回退默认值: {}", t.toString());
-        }
+        ServerConfig.init(serverConfigFile);
         ClientConfig.init(clientConfigFile);
         // 整合包配置最后加载：存在时覆盖 properties 的黑名单并启用白名单（整合包作者优先级最高）
         try {
@@ -153,43 +130,48 @@ public final class MaidConfigManager {
     // ==================== 服务端配置（读取） ====================
 
     /** 是否允许客户端导入女仆 */
+    /** 是否允许客户端导入女仆（门面，实现见 {@link ServerConfig}） */
     public static boolean isClientImportAllowed() {
-        return serverAllowClientImport;
+        return ServerConfig.isAllowClientImport();
     }
 
     /** 导入时是否允许携带饰品 */
+    /** 导入时是否允许携带饰品（门面，实现见 {@link ServerConfig}） */
     public static boolean isBaublesAllowed() {
-        return serverAllowBaubles;
+        return ServerConfig.isAllowBaubles();
     }
 
     /** 导入时是否允许一并转移 TLM 成就 */
+    /** 导入时是否允许一并转移 TLM 成就（门面，实现见 {@link ServerConfig}） */
     public static boolean isAdvancementsAllowed() {
-        return serverAllowAdvancements;
+        return ServerConfig.isAllowAdvancements();
     }
 
     /** 导入时是否允许恢复药水效果到实体 */
+    /** 导入时是否允许恢复药水效果到实体（门面，实现见 {@link ServerConfig}） */
     public static boolean isEffectsAllowed() {
-        return serverAllowEffects;
+        return ServerConfig.isAllowEffects();
     }
 
     /** 导入时是否允许带走 TLM 本体无敌状态 */
+    /** 导入时是否允许带走 TLM 本体无敌状态（门面，实现见 {@link ServerConfig}） */
     public static boolean isInvulnerableAllowed() {
-        return serverAllowInvulnerable;
+        return ServerConfig.isAllowInvulnerable();
     }
 
-    /** 指定玩家是否同意服务端统一导出（默认 false） */
+    /** 指定玩家是否同意服务端统一导出（门面，实现见 {@link ClientConsentRegistry}） */
     public static boolean getClientConsent(UUID playerId) {
-        return CLIENT_CONSENT.getOrDefault(playerId, false);
+        return ClientConsentRegistry.get(playerId);
     }
 
     /** 玩家退出时清理同意状态 */
     public static void removeClientConsent(UUID playerId) {
-        CLIENT_CONSENT.remove(playerId);
+        ClientConsentRegistry.remove(playerId);
     }
 
     /** 服务端收到客户端同意状态上报（C2S 包处理） */
     public static void handleClientConsent(UUID playerId, boolean allow) {
-        CLIENT_CONSENT.put(playerId, allow);
+        ClientConsentRegistry.set(playerId, allow);
     }
 
     /**
@@ -198,42 +180,17 @@ public final class MaidConfigManager {
      * @return true=配置键合法且已生效；false=未知键，调用方须回执失败且不得触发全服广播
      */
     public static synchronized boolean setServerConfig(String key, boolean value) {
-        if (KEY_ALLOW_CLIENT_IMPORT.equals(key)) {
-            serverAllowClientImport = value;
-        } else if (KEY_ALLOW_BAUBLES.equals(key)) {
-            serverAllowBaubles = value;
-        } else if (KEY_ALLOW_ADVANCEMENTS.equals(key)) {
-            serverAllowAdvancements = value;
-        } else if (KEY_ALLOW_EFFECTS.equals(key)) {
-            serverAllowEffects = value;
-        } else if (KEY_ALLOW_INVULNERABLE.equals(key)) {
-            serverAllowInvulnerable = value;
-        } else if (KEY_BAUBLE_STRIP_ATTRIBUTES.equals(key)) {
-            serverBaubleStripAttributes = value;
-        } else if (KEY_CARRY_CURIOS.equals(key)) {
-            serverCarryCurios = value;
-        } else {
-            Constants.LOG.warn("[maid_file_manager] 收到未知服务端配置键: {}", key);
-            return false;
-        }
-        if (!saveServer()) {
-            return false;
-        }
-        return true;
+        return ServerConfig.setByKey(key, value);
     }
 
     /**
      * 服务端修改 OP 维护的「禁用携带的饰品」清单（C2S 包处理，调用方已做 OP 权限校验）。
-     * <p>仅做去除首尾空白与去重；命名空间收窄由调用方在写入前完成（收窄不放开）。
-     * <p>该清单与整合包黑名单相互独立：整合包黑名单由 bauble_import.json 托管、游戏内只读，
+     *
+     * <p>与整合包黑名单相互独立：后者由 bauble_import.json 托管、游戏内只读，
      * OP 仍可在此清单上追加/取消自己的禁用项，两者在导入判定时取并集。
      */
     public static synchronized boolean setServerBaubleBlockedList(List<String> ids) {
-        serverBaubleBlockedList = List.copyOf(ids == null ? List.of() : ids);
-        if (!saveServer()) {
-            return false;
-        }
-        return true;
+        return ServerConfig.setBaubleBlockedList(ids);
     }
 
     // ==================== 客户端配置 ====================
@@ -280,55 +237,45 @@ public final class MaidConfigManager {
     }
 
     /** 导入时是否丢弃饰品属性（恢复为全新物品）；服务端读配置、客户端读登录同步缓存 */
+    /** 导入时是否丢弃饰品属性（门面，实现见 {@link ServerConfig}） */
     public static boolean isBaubleStripAttributes() {
-        return serverBaubleStripAttributes;
+        return ServerConfig.isBaubleStripAttributes();
     }
 
     /**
      * 是否允许携带 Curios 饰品（服务端读配置；默认关 = Curios 饰品一律不随女仆迁移）。
      * <p>开启时也只携带被声明允许的命名空间；背包类槽位始终禁止。
      */
+    /** 是否允许携带 Curios 饰品（门面，实现见 {@link ServerConfig}） */
     public static boolean isCarryCurios() {
-        return serverCarryCurios;
+        return ServerConfig.isCarryCurios();
     }
 
     /**
-     * 按配置键读取**服务端**当前生效值（客户端缓存）。
+     * 按配置键读取**服务端**当前生效值（客户端缓存；门面，实现见 {@link ServerConfig#getByKey}）。
      *
      * <p>界面里的服务端开关是「乐观切换 + 超时回滚」：点击时先翻转本地显示并置 pending，
      * 若若干毫秒内没收到服务端配置同步，就用本方法取回权威值把开关复位。
-     * 未知键返回 {@code false}（调用方只在已知的服务端键上使用）。
+     * 未知键返回 {@code false}。
      */
     public static boolean getServerConfigByKey(String key) {
-        if (key == null) {
-            return false;
-        }
-        return switch (key) {
-            case KEY_ALLOW_CLIENT_IMPORT -> isClientImportAllowed();
-            case KEY_ALLOW_BAUBLES -> isBaublesAllowed();
-            case KEY_ALLOW_ADVANCEMENTS -> isAdvancementsAllowed();
-            case KEY_ALLOW_EFFECTS -> isEffectsAllowed();
-            case KEY_ALLOW_INVULNERABLE -> isInvulnerableAllowed();
-            case KEY_BAUBLE_STRIP_ATTRIBUTES -> isBaubleStripAttributes();
-            case KEY_CARRY_CURIOS -> isCarryCurios();
-            default -> false;
-        };
+        return ServerConfig.getByKey(key);
     }
 
-    /** OP 维护的「按模组禁用携带」清单（不可变；同时作用于女仆自带饰品栏与 Curios 槽位） */
+    /** OP 维护的「按模组禁用携带」清单 ∪ 整合包清单（不可变；同时作用于女仆自带饰品栏与 Curios 槽位） */
     public static List<String> getBaubleBlockedNamespaces() {
-        return ConfigFileIo.mergeLists(serverBaubleBlockedNamespaces, BaubleImportConfig.blockedNamespaces());
+        return ConfigFileIo.mergeLists(ServerConfig.opBlockedNamespaces(), BaubleImportConfig.blockedNamespaces());
     }
 
     /** 整合包按模组禁用清单（只读；用于界面把整合包强制的条目显示为不可取消） */
     /** 纯 OP 清单（不含整合包项）：用于 S2C 同步，客户端据此显示"可取消的勾选" */
     public static List<String> getOpBaubleBlockedNamespaces() {
-        return serverBaubleBlockedNamespaces;
+        return ServerConfig.opBlockedNamespaces();
     }
 
     /** 纯 OP 清单（不含整合包项）：用于 S2C 同步 */
     public static List<String> getOpBaubleBlockedCuriosSlots() {
-        return serverBaubleBlockedCuriosSlots;
+        return ServerConfig.opBlockedCuriosSlots();
     }
 
     /** 整合包按模组禁用清单（只读） */
@@ -336,9 +283,9 @@ public final class MaidConfigManager {
         return BaubleImportConfig.blockedNamespaces();
     }
 
-    /** OP 维护的「按 Curios 槽位禁用携带」清单（不可变） */
+    /** OP 维护的「按 Curios 槽位禁用携带」清单 ∪ 整合包清单（不可变） */
     public static List<String> getBaubleBlockedCuriosSlots() {
-        return ConfigFileIo.mergeLists(serverBaubleBlockedCuriosSlots, BaubleImportConfig.blockedCuriosSlots());
+        return ConfigFileIo.mergeLists(ServerConfig.opBlockedCuriosSlots(), BaubleImportConfig.blockedCuriosSlots());
     }
 
     /** 整合包按 Curios 槽位禁用清单（只读；用于界面把整合包强制的条目显示为不可取消） */
@@ -349,39 +296,27 @@ public final class MaidConfigManager {
     /**
      * 按清单键写入 OP 清单（供 C2S 提交与界面使用）。值统一做去空白 / 去重 / 小写规范化。
      *
-     * @return 键不认识返回 false
+     * @return 键不认识或写盘失败返回 false
      */
     public static synchronized boolean setServerListConfig(String key, List<String> values) {
-        List<String> cleaned = ConfigFileIo.sanitizeList(values);
-        if (KEY_BAUBLE_BLOCKED_LIST.equals(key)) {
-            serverBaubleBlockedList = cleaned;
-        } else if (KEY_BAUBLE_BLOCKED_NAMESPACES.equals(key)) {
-            serverBaubleBlockedNamespaces = cleaned;
-        } else if (KEY_BAUBLE_BLOCKED_CURIOS_SLOTS.equals(key)) {
-            serverBaubleBlockedCuriosSlots = cleaned;
-        } else {
-            Constants.LOG.warn("[maid_file_manager] 收到未知清单配置键: {}", key);
-            return false;
-        }
-        if (!saveServer()) {
-            return false;
-        }
-        return true;
+        return ServerConfig.setListByKey(key, values);
     }
 
     /** 导入判定用的禁用清单（OP 清单 ∪ 整合包黑名单，不可变）；服务端读配置、客户端读登录同步缓存 */
     public static List<String> getBaubleBlockedList() {
-        if (BaubleImportConfig.blacklist().isEmpty()) {
-            return serverBaubleBlockedList;
+        List<String> op = ServerConfig.opBlockedList();
+        List<String> pack = BaubleImportConfig.blacklist();
+        if (pack.isEmpty()) {
+            return op;
         }
-        List<String> merged = new ArrayList<>(serverBaubleBlockedList);
-        merged.addAll(BaubleImportConfig.blacklist());
+        List<String> merged = new ArrayList<>(op);
+        merged.addAll(pack);
         return List.copyOf(merged);
     }
 
     /** OP 在游戏内维护的禁用清单（不含整合包黑名单；客户端界面读写用） */
     public static List<String> getOpBaubleBlockedList() {
-        return serverBaubleBlockedList;
+        return ServerConfig.opBlockedList();
     }
 
     /** 整合包黑名单（不可变，只读；物品 ID 或中文显示名） */
@@ -424,7 +359,13 @@ public final class MaidConfigManager {
         return BaubleImportConfig.isWhitelistEnforced() && !BaubleImportConfig.isWhitelistPass(id, displayName);
     }
 
-    /** 客户端收到服务端配置同步（S2C 包处理）：更新本地缓存并回发同意状态 */
+    /**
+     * 客户端收到服务端配置同步（S2C 包处理）：更新本地缓存并回发同意状态。
+     *
+     * <p>这是<b>唯一跨三个配置域的方法</b>：服务端域的 7 个开关 + 3 张清单、
+     * 整合包域的 4 张清单 + 2 个判定标志、以及客户端域的同意状态回发。
+     * 所以它留在门面层做编排，各域自己负责落值——签名保持不变（配置同步协议不动）。
+     */
     public static void handleServerConfigSync(boolean allowImport, boolean allowBaubles, boolean allowAdvancements,
                                               boolean allowEffects, boolean allowInvulnerable, boolean carryCurios,
                                               boolean baubleStripAttributes, List<String> baubleBlockedList,
@@ -433,18 +374,9 @@ public final class MaidConfigManager {
                                               List<String> baubleBlockedCuriosSlots,
                                               List<String> baubleImportBlockedNamespaces,
                                               List<String> baubleImportBlockedCuriosSlots, boolean whitelistEnforced) {
-        serverAllowClientImport = allowImport;
-        serverAllowBaubles = allowBaubles;
-        serverAllowAdvancements = allowAdvancements;
-        serverAllowEffects = allowEffects;
-        serverAllowInvulnerable = allowInvulnerable;
-        serverCarryCurios = carryCurios;
-        serverBaubleBlockedNamespaces = List.copyOf(
-                baubleBlockedNamespaces == null ? List.of() : ConfigFileIo.sanitizeList(baubleBlockedNamespaces));
-        serverBaubleBlockedCuriosSlots = List.copyOf(
-                baubleBlockedCuriosSlots == null ? List.of() : ConfigFileIo.sanitizeList(baubleBlockedCuriosSlots));
-        serverBaubleStripAttributes = baubleStripAttributes;
-        serverBaubleBlockedList = List.copyOf(baubleBlockedList == null ? List.of() : baubleBlockedList);
+        ServerConfig.applyServerSync(allowImport, allowBaubles, allowAdvancements, allowEffects,
+                allowInvulnerable, carryCurios, baubleStripAttributes,
+                baubleBlockedNamespaces, baubleBlockedCuriosSlots, baubleBlockedList);
         // 整合包配置域整体交给 BaubleImportConfig。
         // 注意：原实现在这里写的是 `baubleImportBlockedNamespaces = List.copyOf(baubleImportBlockedNamespaces ...)`，
         // 参数名遮蔽了同名字段，赋值给了参数自己——字段从未被更新，客户端因此从未同步到
@@ -462,41 +394,41 @@ public final class MaidConfigManager {
 
     /** 客户端读取服务端配置缓存（设置界面显示用） */
     public static boolean cachedClientImportAllowed() {
-        return serverAllowClientImport;
+        return ServerConfig.isAllowClientImport();
     }
 
     public static boolean cachedBaublesAllowed() {
-        return serverAllowBaubles;
+        return ServerConfig.isAllowBaubles();
     }
 
     /** 客户端读取服务端配置缓存（设置界面显示用） */
     public static boolean cachedAdvancementsAllowed() {
-        return serverAllowAdvancements;
+        return ServerConfig.isAllowAdvancements();
     }
 
     /** 客户端读取服务端配置缓存（设置界面显示用） */
     public static boolean cachedEffectsAllowed() {
-        return serverAllowEffects;
+        return ServerConfig.isAllowEffects();
     }
 
     /** 客户端读取服务端配置缓存（设置界面显示用） */
     public static boolean cachedInvulnerableAllowed() {
-        return serverAllowInvulnerable;
+        return ServerConfig.isAllowInvulnerable();
     }
 
     /** 客户端读取服务端同步缓存：导入时是否丢弃饰品属性（饰品导入设置界面显示用） */
     public static boolean cachedBaubleStripAttributes() {
-        return serverBaubleStripAttributes;
+        return ServerConfig.isBaubleStripAttributes();
     }
 
     /** 客户端读取服务端同步缓存：是否允许携带 Curios 饰品（设置界面显示用） */
     public static boolean cachedCarryCurios() {
-        return serverCarryCurios;
+        return ServerConfig.isCarryCurios();
     }
 
     /** 客户端读取服务端同步缓存：按模组禁用清单（设置界面显示用） */
     public static List<String> cachedBaubleBlockedNamespaces() {
-        return serverBaubleBlockedNamespaces;
+        return ServerConfig.opBlockedNamespaces();
     }
 
     /** 客户端读取服务端同步缓存：按 Curios 槽位禁用清单（设置界面显示用） */
@@ -511,12 +443,12 @@ public final class MaidConfigManager {
     }
 
     public static List<String> cachedBaubleBlockedCuriosSlots() {
-        return serverBaubleBlockedCuriosSlots;
+        return ServerConfig.opBlockedCuriosSlots();
     }
 
     /** 客户端读取服务端同步缓存：OP 维护的禁用清单（饰品导入设置界面读写用） */
     public static List<String> cachedBaubleBlockedList() {
-        return serverBaubleBlockedList;
+        return ServerConfig.opBlockedList();
     }
 
     /** 客户端读取服务端同步缓存：整合包黑名单（只读展示用） */
@@ -536,44 +468,7 @@ public final class MaidConfigManager {
 
     // ==================== 文件 IO ====================
 
-    private static void loadServer() {
-        Properties props = ConfigFileIo.load(serverConfigFile, "服务端配置");
-        serverAllowClientImport = ConfigFileIo.parse(props, KEY_ALLOW_CLIENT_IMPORT, true);
-        serverAllowBaubles = ConfigFileIo.parse(props, KEY_ALLOW_BAUBLES, true);
-        serverAllowAdvancements = ConfigFileIo.parse(props, KEY_ALLOW_ADVANCEMENTS, true);
-        serverAllowEffects = ConfigFileIo.parse(props, KEY_ALLOW_EFFECTS, true);
-        serverAllowInvulnerable = ConfigFileIo.parse(props, KEY_ALLOW_INVULNERABLE, false);
-        serverBaubleStripAttributes = ConfigFileIo.parse(props, KEY_BAUBLE_STRIP_ATTRIBUTES, false);
-        serverCarryCurios = ConfigFileIo.parse(props, KEY_CARRY_CURIOS, false);
-        serverBaubleBlockedNamespaces = ConfigFileIo.parseSanitizedList(props, KEY_BAUBLE_BLOCKED_NAMESPACES);
-        serverBaubleBlockedCuriosSlots = ConfigFileIo.parseSanitizedList(props, KEY_BAUBLE_BLOCKED_CURIOS_SLOTS);
-        // 与另外两张清单口径对齐：统一走 parseSanitizedList（trim + 去重 + 小写），
-        // 否则手写配置里带大写字母的条目永远命中不了，黑名单方向属于"失败开放"。
-        serverBaubleBlockedList = ConfigFileIo.parseSanitizedList(props, KEY_BAUBLE_BLOCKED_LIST);
-    }
 
-
-    private static boolean saveServer() {
-        Properties props = new Properties();
-        props.setProperty(KEY_ALLOW_CLIENT_IMPORT, String.valueOf(serverAllowClientImport));
-        props.setProperty(KEY_ALLOW_BAUBLES, String.valueOf(serverAllowBaubles));
-        props.setProperty(KEY_ALLOW_ADVANCEMENTS, String.valueOf(serverAllowAdvancements));
-        props.setProperty(KEY_ALLOW_EFFECTS, String.valueOf(serverAllowEffects));
-        props.setProperty(KEY_ALLOW_INVULNERABLE, String.valueOf(serverAllowInvulnerable));
-        props.setProperty(KEY_BAUBLE_STRIP_ATTRIBUTES, String.valueOf(serverBaubleStripAttributes));
-        props.setProperty(KEY_CARRY_CURIOS, String.valueOf(serverCarryCurios));
-        if (!serverBaubleBlockedNamespaces.isEmpty()) {
-            props.setProperty(KEY_BAUBLE_BLOCKED_NAMESPACES, String.join(",", serverBaubleBlockedNamespaces));
-        }
-        if (!serverBaubleBlockedCuriosSlots.isEmpty()) {
-            props.setProperty(KEY_BAUBLE_BLOCKED_CURIOS_SLOTS, String.join(",", serverBaubleBlockedCuriosSlots));
-        }
-        // OP 维护的禁用清单始终写入 properties；整合包黑名单来自 bauble_import.json，不在此持久化
-        if (!serverBaubleBlockedList.isEmpty()) {
-            props.setProperty(KEY_BAUBLE_BLOCKED_LIST, String.join(",", serverBaubleBlockedList));
-        }
-        return ConfigFileIo.store(props, serverConfigFile);
-    }
 
 
 }
