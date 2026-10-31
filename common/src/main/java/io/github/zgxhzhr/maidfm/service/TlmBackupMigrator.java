@@ -22,7 +22,7 @@ public final class TlmBackupMigrator {
     private TlmBackupMigrator() {
     }
 
-    public static void migrateTlmBackups(ServerPlayer player, UUID oldUuid, UUID newUuid) {
+    public static void migrate(ServerPlayer player, UUID oldUuid, UUID newUuid) {
         try {
             MinecraftServer server = player.level().getServer();
             if (server == null) {
