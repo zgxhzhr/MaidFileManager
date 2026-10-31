@@ -8,6 +8,7 @@ import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import io.github.zgxhzhr.maidfm.service.MaidProfileService;
 import io.github.zgxhzhr.maidfm.service.MaidTransferService;
+import io.github.zgxhzhr.maidfm.service.BaubleHandler;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
@@ -182,8 +183,8 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.isBaubleStripAttributes(),
                 io.github.zgxhzhr.maidfm.config.MaidConfigManager.getBaubleBlockedList());
         // 单条导入同样要消费 Curios 批次统计，否则残留到后续导出提示（第六轮 N5）。
-        MaidTransferService.curiosDropTip();
-        sendFeedback(player, MaidTransferService.withBaubleDetails(result));
+        BaubleHandler.curiosDropTip();
+        sendFeedback(player, BaubleHandler.withBaubleDetails(result));
     }
 
     private static void handleExportBatch(ServerPlayer player, List<Integer> ids, boolean removeAfter) {
@@ -268,7 +269,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         }
         // 导入路径同样会产生 Curios 批次统计（strip 时累加），必须在每次导入结束时消费掉；
         // 否则统计会残留到**下一位玩家**走 sendExportResults 时被当成「导出丢弃」提示（第六轮 N5）。
-        MaidTransferService.curiosDropTip();
+        BaubleHandler.curiosDropTip();
         Component summary = MaidTransferService.buildBatchSummary(results);
         if (deleteAfterImport) {
             // 请求删除源文件：回传逐项 spawned 标志（与请求顺序对齐），客户端只删成功的文件
@@ -308,7 +309,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         // Curios 饰品裁剪提示：未声明模组的饰品不会随女仆迁移，必须明确告知发起导出的人。
         // curiosDropTip() 取出即清零，同一批次只提示一次。
         net.minecraft.network.chat.Component curiosTip =
-                io.github.zgxhzhr.maidfm.service.MaidTransferService.curiosDropTip();
+                io.github.zgxhzhr.maidfm.service.BaubleHandler.curiosDropTip();
         if (curiosTip != null) {
             sendFeedback(player, curiosTip);
         }
@@ -390,7 +391,7 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         List<String> values;
         if (io.github.zgxhzhr.maidfm.config.MaidConfigManager.KEY_BAUBLE_BLOCKED_LIST.equals(key)) {
             // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读，不在此写入
-            values = MaidTransferService.sanitizeBaubleBlockedList(ids);
+            values = BaubleHandler.sanitizeBaubleBlockedList(ids);
         } else if (io.github.zgxhzhr.maidfm.config.MaidConfigManager.KEY_BAUBLE_BLOCKED_NAMESPACES.equals(key)
                 || io.github.zgxhzhr.maidfm.config.MaidConfigManager.KEY_BAUBLE_BLOCKED_CURIOS_SLOTS.equals(key)) {
             // 模组 / 槽位清单：客户端提交可被篡改，服务端按标识符字符集收窄
