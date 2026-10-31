@@ -80,7 +80,7 @@ public class FabricNetwork implements IMaidFileNetwork {
         // 先把负载编码成「VarInt entityId + 档案 NBT」字节：分片路径与普通包共用这一格式。
         net.minecraft.network.FriendlyByteBuf probe = new net.minecraft.network.FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
         probe.writeVarInt(entityId);
-        MaidFilePackets.writeMaidProfile(probe, profile);
+        MaidProfileCodec.writeMaidProfile(probe, profile);
         byte[] encoded = new byte[probe.readableBytes()];
         probe.getBytes(0, encoded);
         // 不用 isLegacyPayloadLimit()：那个判定只对 1.20.x 有意义（32767 单包上限），

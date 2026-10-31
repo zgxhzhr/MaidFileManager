@@ -359,63 +359,9 @@ public final class MaidFilePackets {
     }
 
     /** 序列化 MaidInfo 列表到 buf */
-    public static void writeMaidInfoList(FriendlyByteBuf buf, List<MaidInfo> list) {
-        // 与读端 checkSize(MAX_MAID_LIST_ENTRIES) 对齐：超限截断，否则读端拒包直接断连
-        int size = Math.min(list.size(), MAX_MAID_LIST_ENTRIES);
-        buf.writeVarInt(size);
-        for (int i = 0; i < size; i++) {
-            writeMaidInfo(buf, list.get(i));
-        }
-    }
 
     /** 从 buf 反序列化 MaidInfo 列表 */
-    public static List<MaidInfo> readMaidInfoList(FriendlyByteBuf buf) {
-        int size = checkSize(buf.readVarInt(), MAX_MAID_LIST_ENTRIES, "maidInfoList");
-        List<MaidInfo> list = new ArrayList<>(size);
-        for (int i = 0; i < size; i++) {
-            list.add(readMaidInfo(buf));
-        }
-        return list;
-    }
 
-    public static void writeMaidInfo(FriendlyByteBuf buf, MaidInfo info) {
-        buf.writeInt(info.entityId());
-        buf.writeUtf(info.modelId(), MAX_TEXT_LEN);
-        buf.writeUtf(info.displayName(), MAX_TEXT_LEN);
-        buf.writeVarInt(info.favorability());
-        buf.writeFloat(info.health());
-        buf.writeFloat(info.maxHealth());
-        buf.writeBoolean(info.tamed());
-        buf.writeBoolean(info.ownerUuid() != null);
-        if (info.ownerUuid() != null) {
-            buf.writeUUID(info.ownerUuid());
-        }
-        buf.writeBoolean(info.ownerName() != null);
-        if (info.ownerName() != null) {
-            buf.writeUtf(info.ownerName(), MAX_TEXT_LEN);
-        }
-        buf.writeBoolean(info.customName() != null);
-        if (info.customName() != null) {
-            buf.writeUtf(info.customName(), MAX_TEXT_LEN);
-        }
-        buf.writeBoolean(info.ysmModel());
-    }
-
-    public static MaidInfo readMaidInfo(FriendlyByteBuf buf) {
-        int entityId = buf.readInt();
-        String modelId = buf.readUtf(MAX_TEXT_LEN);
-        String displayName = buf.readUtf(MAX_TEXT_LEN);
-        int favorability = buf.readVarInt();
-        float health = buf.readFloat();
-        float maxHealth = buf.readFloat();
-        boolean tamed = buf.readBoolean();
-        UUID ownerUuid = buf.readBoolean() ? buf.readUUID() : null;
-        String ownerName = buf.readBoolean() ? buf.readUtf(MAX_TEXT_LEN) : null;
-        String customName = buf.readBoolean() ? buf.readUtf(MAX_TEXT_LEN) : null;
-        boolean ysmModel = buf.readBoolean();
-        return new MaidInfo(entityId, modelId, displayName, favorability, health, maxHealth, tamed,
-                ownerUuid, ownerName, customName, ysmModel);
-    }
 
     // ---------- 批量导出辅助 ----------
 
@@ -438,48 +384,12 @@ public final class MaidFilePackets {
     }
 
     /** 写统一导出分组列表：每项 = 玩家名 + 同意状态 + 该玩家为中心的女仆列表 */
-    public static void writePlayerMaidGroups(FriendlyByteBuf buf, List<IMaidFileNetwork.PlayerMaidGroup> groups) {
-        int size = Math.min(groups.size(), MAX_PLAYER_GROUPS);
-        buf.writeVarInt(size);
-        for (int i = 0; i < size; i++) {
-            IMaidFileNetwork.PlayerMaidGroup g = groups.get(i);
-            buf.writeUtf(g.playerName(), MAX_TEXT_LEN);
-            buf.writeBoolean(g.consented());
-            writeMaidInfoList(buf, g.maids());
-        }
-    }
 
     /** 读统一导出分组列表 */
-    public static List<IMaidFileNetwork.PlayerMaidGroup> readPlayerMaidGroups(FriendlyByteBuf buf) {
-        int size = checkSize(buf.readVarInt(), MAX_PLAYER_GROUPS, "playerGroups");
-        List<IMaidFileNetwork.PlayerMaidGroup> groups = new ArrayList<>(size);
-        for (int i = 0; i < size; i++) {
-            String name = buf.readUtf(MAX_TEXT_LEN);
-            boolean consented = buf.readBoolean();
-            groups.add(new IMaidFileNetwork.PlayerMaidGroup(name, consented, readMaidInfoList(buf)));
-        }
-        return groups;
-    }
 
     /** 写统一导出提交请求：每项 = 玩家名 + 要导出的 entityId 列表 */
-    public static void writePlayerExportRequests(FriendlyByteBuf buf, List<IMaidFileNetwork.PlayerExportRequest> groups) {
-        buf.writeVarInt(groups.size());
-        for (IMaidFileNetwork.PlayerExportRequest g : groups) {
-            buf.writeUtf(g.playerName(), MAX_TEXT_LEN);
-            writeIntList(buf, g.entityIds());
-        }
-    }
 
     /** 读统一导出提交请求 */
-    public static List<IMaidFileNetwork.PlayerExportRequest> readPlayerExportRequests(FriendlyByteBuf buf) {
-        int size = checkSize(buf.readVarInt(), MAX_PLAYER_GROUPS, "playerExportRequests");
-        List<IMaidFileNetwork.PlayerExportRequest> groups = new ArrayList<>(size);
-        for (int i = 0; i < size; i++) {
-            String name = buf.readUtf(MAX_TEXT_LEN);
-            groups.add(new IMaidFileNetwork.PlayerExportRequest(name, readIntList(buf)));
-        }
-        return groups;
-    }
 
     /** 写 MaidFileData 列表 */
     public static void writeMaidFileDataList(FriendlyByteBuf buf, List<MaidFileData> list) {
@@ -556,59 +466,8 @@ public final class MaidFilePackets {
         return out;
     }
 
-    public static void writeBackupOwners(FriendlyByteBuf buf, List<IMaidFileNetwork.BackupOwner> owners) {
-        List<IMaidFileNetwork.BackupOwner> safe = owners == null ? List.of() : owners;
-        buf.writeVarInt(Math.min(safe.size(), MAX_BACKUP_OWNERS));
-        int ownerCount = Math.min(safe.size(), MAX_BACKUP_OWNERS);
-        for (int i = 0; i < ownerCount; i++) {
-            IMaidFileNetwork.BackupOwner owner = safe.get(i);
-            buf.writeUtf(owner.ownerUuid() == null ? "" : owner.ownerUuid(), MAX_TEXT_LEN);
-            buf.writeUtf(owner.ownerName() == null ? "" : owner.ownerName(), MAX_TEXT_LEN);
-            List<IMaidFileNetwork.BackupMaid> maids = owner.maids() == null ? List.of() : owner.maids();
-            int maidCount = Math.min(maids.size(), MAX_BACKUP_MAIDS);
-            buf.writeVarInt(maidCount);
-            for (int j = 0; j < maidCount; j++) {
-                IMaidFileNetwork.BackupMaid maid = maids.get(j);
-                buf.writeUtf(maid.maidUuid() == null ? "" : maid.maidUuid(), MAX_TEXT_LEN);
-                buf.writeUtf(maid.maidName() == null ? "" : maid.maidName(), MAX_TEXT_LEN);
-                // 原始模型 ID：让客户端自己解析显示名（服务端可能没装模型资源包）
-                buf.writeUtf(maid.modelId() == null ? "" : maid.modelId(), MAX_TEXT_LEN);
-                buf.writeBoolean(maid.ysmModel());
-                List<String> files = maid.files() == null ? List.of() : maid.files();
-                int fileCount = Math.min(files.size(), MAX_BACKUP_FILES);
-                buf.writeVarInt(fileCount);
-                for (int k = 0; k < fileCount; k++) {
-                    buf.writeUtf(files.get(k) == null ? "" : files.get(k), MAX_TEXT_LEN);
-                }
-            }
-        }
-    }
 
     /** 读备份列表；各层级数量超限一律拒绝（读端自律，坏包走异常断连/回执） */
-    public static List<IMaidFileNetwork.BackupOwner> readBackupOwners(FriendlyByteBuf buf) {
-        int ownerCount = checkSize(buf.readVarInt(), MAX_BACKUP_OWNERS, "backupOwners");
-        List<IMaidFileNetwork.BackupOwner> owners = new ArrayList<>(ownerCount);
-        for (int i = 0; i < ownerCount; i++) {
-            String ownerUuid = buf.readUtf(MAX_TEXT_LEN);
-            String ownerName = buf.readUtf(MAX_TEXT_LEN);
-            int maidCount = checkSize(buf.readVarInt(), MAX_BACKUP_MAIDS, "backupMaids");
-            List<IMaidFileNetwork.BackupMaid> maids = new ArrayList<>(maidCount);
-            for (int j = 0; j < maidCount; j++) {
-                String maidUuid = buf.readUtf(MAX_TEXT_LEN);
-                String maidName = buf.readUtf(MAX_TEXT_LEN);
-                String modelId = buf.readUtf(MAX_TEXT_LEN);
-                boolean ysmModel = buf.readBoolean();
-                int fileCount = checkSize(buf.readVarInt(), MAX_BACKUP_FILES, "backupFiles");
-                List<String> files = new ArrayList<>(fileCount);
-                for (int k = 0; k < fileCount; k++) {
-                    files.add(buf.readUtf(MAX_TEXT_LEN));
-                }
-                maids.add(new IMaidFileNetwork.BackupMaid(maidUuid, maidName, modelId, ysmModel, files));
-            }
-            owners.add(new IMaidFileNetwork.BackupOwner(ownerUuid, ownerName.isEmpty() ? null : ownerName, maids));
-        }
-        return owners;
-    }
 
     // ---------- 饰品导入设置（跨版本属性保留 / 禁用携带列表） ----------
 
@@ -635,88 +494,15 @@ public final class MaidFilePackets {
         return out;
     }
 
-    // ---------- 女仆档案 ----------
-
-    /** 随档案视图发送的饰品图标件数上限 */
-    public static final int MAX_BAUBLE_ICONS = 64;
-
     /** 写可空字符串（1 字节存在标志 + 字符串） */
-    private static void writeNullableUtf(FriendlyByteBuf buf, String s) {
-        buf.writeBoolean(s != null);
-        if (s != null) {
-            buf.writeUtf(s, MAX_TEXT_LEN);
-        }
-    }
 
     /** 读可空字符串 */
-    private static String readNullableUtf(FriendlyByteBuf buf) {
-        return buf.readBoolean() ? buf.readUtf(MAX_TEXT_LEN) : null;
-    }
 
     /** 写档案（可空）：存在标志 + NBT */
-    public static void writeMaidProfile(FriendlyByteBuf buf, MaidProfile profile) {
-        buf.writeBoolean(profile != null);
-        if (profile != null) {
-            // 总是带上照片：超过单包上限的情形已由 sendSaveMaidProfile 的分片上传兜底，
-            // 这里若再按版本裁剪，分片路径会连照片一起丢掉（实测「无法上传头像」即由此而来）。
-            buf.writeNbt(profile.writeToNbt());
-        }
-    }
 
     /** 读档案（可空） */
-    public static MaidProfile readMaidProfile(FriendlyByteBuf buf) {
-        if (!buf.readBoolean()) {
-            return null;
-        }
-        return MaidProfile.readFromNbt(buf.readNbt());
-    }
 
     /** 写档案视图（S2C） */
-    public static void writeMaidProfileView(FriendlyByteBuf buf, MaidProfileView v) {
-        buf.writeInt(v.entityId());
-        writeNullableUtf(buf, v.maidUuid());
-        writeNullableUtf(buf, v.ownerName());
-        buf.writeUtf(v.modelId() == null ? "" : v.modelId(), MAX_TEXT_LEN);
-        buf.writeUtf(v.displayName() == null ? "" : v.displayName(), MAX_TEXT_LEN);
-        writeNullableUtf(buf, v.customName());
-        buf.writeFloat(v.health());
-        buf.writeFloat(v.maxHealth());
-        buf.writeFloat(v.attackDamage());
-        buf.writeVarInt(v.favorability());
-        buf.writeBoolean(v.struckByLightning());
-        writeMaidProfile(buf, v.profile());
-        List<CompoundTag> baubles = v.baubleItems() == null ? List.of() : v.baubleItems();
-        int count = Math.min(baubles.size(), MAX_BAUBLE_ICONS);
-        buf.writeVarInt(count);
-        for (int i = 0; i < count; i++) {
-            buf.writeNbt(baubles.get(i));
-        }
-    }
 
     /** 读档案视图（S2C） */
-    public static MaidProfileView readMaidProfileView(FriendlyByteBuf buf) {
-        int entityId = buf.readInt();
-        String maidUuid = readNullableUtf(buf);
-        String ownerName = readNullableUtf(buf);
-        String modelId = buf.readUtf(MAX_TEXT_LEN);
-        String displayName = buf.readUtf(MAX_TEXT_LEN);
-        String customName = readNullableUtf(buf);
-        float health = buf.readFloat();
-        float maxHealth = buf.readFloat();
-        float attackDamage = buf.readFloat();
-        int favorability = buf.readVarInt();
-        boolean struckByLightning = buf.readBoolean();
-        boolean ysmModel = buf.readBoolean();
-        MaidProfile profile = readMaidProfile(buf);
-        int count = checkSize(buf.readVarInt(), MAX_BAUBLE_ICONS, "baubleIcons");
-        List<CompoundTag> baubles = new ArrayList<>(count);
-        for (int i = 0; i < count; i++) {
-            CompoundTag t = buf.readNbt();
-            if (t != null) {
-                baubles.add(t);
-            }
-        }
-        return new MaidProfileView(entityId, maidUuid, ownerName, modelId, displayName, customName,
-                health, maxHealth, attackDamage, favorability, struckByLightning, profile, baubles, ysmModel);
-    }
 }

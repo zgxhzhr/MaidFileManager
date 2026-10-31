@@ -498,7 +498,7 @@ public final class MaidFilePayloads {
                         FriendlyByteBuf probe =
                                 new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
                         try {
-                            MaidFilePackets.writePlayerMaidGroups(probe, groups);
+                            MaidInfoCodec.writePlayerMaidGroups(probe, groups);
                             int size = probe.readableBytes();
                             if (size > MaidFilePackets.MAX_PACKET_BYTES) {
                                 Constants.LOG.warn("[maid_file_manager] 统一导出列表 {} 字节超过单包上限 {}，拒绝发送",
@@ -537,7 +537,7 @@ public final class MaidFilePayloads {
         private static byte[] encodeRequests(List<IMaidFileNetwork.PlayerExportRequest> groups) {
             FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
             try {
-                MaidFilePackets.writePlayerExportRequests(fbb, groups);
+                MaidInfoCodec.writePlayerExportRequests(fbb, groups);
                 byte[] out = new byte[fbb.readableBytes()];
                 fbb.getBytes(0, out);
                 return out;
@@ -559,7 +559,7 @@ public final class MaidFilePayloads {
                             return;
                         }
                         FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
-                        List<IMaidFileNetwork.PlayerExportRequest> requests = MaidFilePackets.readPlayerExportRequests(fbb);
+                        List<IMaidFileNetwork.PlayerExportRequest> requests = MaidInfoCodec.readPlayerExportRequests(fbb);
                         Component result = io.github.zgxhzhr.maidfm.service.MaidServerCommands
                                 .exportForPlayers(((net.minecraft.server.level.ServerLevel) sp.level()).getServer(), requests);
                         feedback(sp, result);
@@ -712,12 +712,12 @@ public final class MaidFilePayloads {
                         (p, buf) -> {
                             FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
                             fbb.writeInt(p.entityId);
-                            MaidFilePackets.writeMaidProfile(fbb, p.profile);
+                            MaidProfileCodec.writeMaidProfile(fbb, p.profile);
                         },
                         buf -> {
                             FriendlyByteBuf fbb = new FriendlyByteBuf(buf);
                             int entityId = fbb.readInt();
-                            return new SaveMaidProfilePayload(entityId, MaidFilePackets.readMaidProfile(fbb));
+                            return new SaveMaidProfilePayload(entityId, MaidProfileCodec.readMaidProfile(fbb));
                         });
 
         @Override
@@ -822,7 +822,7 @@ public final class MaidFilePayloads {
                         }
                         FriendlyByteBuf probe = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
                         try {
-                            MaidFilePackets.writeBackupOwners(probe, owners);
+                            MaidBackupCodec.writeBackupOwners(probe, owners);
                             int size = probe.readableBytes();
                             if (size > MaidFilePackets.MAX_PACKET_BYTES) {
                                 Constants.LOG.warn("[maid_file_manager] 备份列表 {} 字节超过单包上限 {}，拒绝发送",
@@ -1022,8 +1022,8 @@ public final class MaidFilePayloads {
                 new Type<>(MaidFilePackets.ID_MAID_LIST);
         public static final StreamCodec<ByteBuf, MaidListPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
-                        (payload, buf) -> MaidFilePackets.writeMaidInfoList(new FriendlyByteBuf(buf), payload.list),
-                        buf -> new MaidListPayload(MaidFilePackets.readMaidInfoList(new FriendlyByteBuf(buf)))
+                        (payload, buf) -> MaidInfoCodec.writeMaidInfoList(new FriendlyByteBuf(buf), payload.list),
+                        buf -> new MaidListPayload(MaidInfoCodec.readMaidInfoList(new FriendlyByteBuf(buf)))
                 );
 
         @Override
@@ -1188,7 +1188,7 @@ public final class MaidFilePayloads {
         private static byte[] encodeGroups(List<IMaidFileNetwork.PlayerMaidGroup> groups) {
             FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
             try {
-                MaidFilePackets.writePlayerMaidGroups(fbb, groups);
+                MaidInfoCodec.writePlayerMaidGroups(fbb, groups);
                 byte[] out = new byte[fbb.readableBytes()];
                 fbb.getBytes(0, out);
                 return out;
@@ -1206,7 +1206,7 @@ public final class MaidFilePayloads {
                 var handler = IMaidFileNetwork.ClientHandlerHolder.get();
                 if (handler != null) {
                     FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(encoded));
-                    handler.onServerExportListReceived(MaidFilePackets.readPlayerMaidGroups(fbb));
+                    handler.onServerExportListReceived(MaidInfoCodec.readPlayerMaidGroups(fbb));
                 }
             });
         }
@@ -1218,8 +1218,8 @@ public final class MaidFilePayloads {
                 new Type<>(MaidFilePackets.ID_MAID_PROFILE);
         public static final StreamCodec<ByteBuf, MaidProfilePayload> STREAM_CODEC =
                 StreamCodec.ofMember(
-                        (p, buf) -> MaidFilePackets.writeMaidProfileView(new FriendlyByteBuf(buf), p.view),
-                        buf -> new MaidProfilePayload(MaidFilePackets.readMaidProfileView(new FriendlyByteBuf(buf))));
+                        (p, buf) -> MaidProfileCodec.writeMaidProfileView(new FriendlyByteBuf(buf), p.view),
+                        buf -> new MaidProfilePayload(MaidProfileCodec.readMaidProfileView(new FriendlyByteBuf(buf))));
 
         @Override
         public Type<? extends CustomPacketPayload> type() {
@@ -1242,8 +1242,8 @@ public final class MaidFilePayloads {
                 new Type<>(MaidFilePackets.ID_BACKUP_LIST);
         public static final StreamCodec<ByteBuf, BackupListPayload> STREAM_CODEC =
                 StreamCodec.ofMember(
-                        (p, buf) -> MaidFilePackets.writeBackupOwners(new FriendlyByteBuf(buf), p.owners),
-                        buf -> new BackupListPayload(MaidFilePackets.readBackupOwners(new FriendlyByteBuf(buf))));
+                        (p, buf) -> MaidBackupCodec.writeBackupOwners(new FriendlyByteBuf(buf), p.owners),
+                        buf -> new BackupListPayload(MaidBackupCodec.readBackupOwners(new FriendlyByteBuf(buf))));
 
         @Override
         public Type<? extends CustomPacketPayload> type() {
@@ -1373,7 +1373,7 @@ public final class MaidFilePayloads {
         try {
             FriendlyByteBuf fbb = new FriendlyByteBuf(io.netty.buffer.Unpooled.wrappedBuffer(full));
             int entityId = fbb.readVarInt();
-            MaidProfile profile = MaidFilePackets.readMaidProfile(fbb);
+            MaidProfile profile = MaidProfileCodec.readMaidProfile(fbb);
             if (profile == null) {
                 feedback(sp, Component.translatable("gui.maid_file_manager.profile.save_failed"));
                 return;
