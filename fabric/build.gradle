@@ -52,3 +52,21 @@ publishMods {
         displayName = 'Maid File Manager v' + project.version + ' fabric 1.20.1'
     }
 }
+
+// ============================================================
+// 离线自检：./gradlew :fabric:selfTest
+// 纯 JDK 实现（无 JUnit 制品可用），跑纯函数断言，不启动 Minecraft。
+// ============================================================
+tasks.register('selfTest', JavaExec) {
+    group = 'verification'
+    description = '离线自检：纯函数断言（不启动 Minecraft）'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'io.github.zgxhzhr.maidfm.dev.SelfTest'
+    ignoreExitValue = false
+    jvmArgs = ['-Dfile.encoding=UTF-8']
+}
+
+// 自检代码不进最终产物
+jar {
+    exclude 'io/github/zgxhzhr/maidfm/dev/**'
+}

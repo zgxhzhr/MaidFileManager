@@ -251,7 +251,7 @@ public final class MaidTransferService {
         int colon = modelId.indexOf(':');
         String path = colon >= 0 ? modelId.substring(colon + 1) : modelId;
         // 没有模型资源时的兜底名同样做可读化，避免备份列表里一堆同名占位
-        return io.github.zgxhzhr.maidfm.client.ModelNames.prettifyModelPath(path);
+        return io.github.zgxhzhr.maidfm.util.ModelDisplayNames.prettify(path);
     }
 
     public static MaidFileData exportMaidToData(ServerPlayer player, int entityId) {
@@ -324,7 +324,7 @@ public final class MaidTransferService {
             // 必须在写文件之前裁剪，未声明模组的饰品既不随 .maid 迁移，也无法被复制。
             CuriosBaubleFilter.Result curiosResult = CuriosBaubleFilter.strip(
                     fullNbt, MaidConfigManager.isCarryCurios(),
-                    MaidTransferService::allowCuriosItem, false);
+                    BaubleHandler::allowCuriosItem, false);
             if (curiosResult.hasDrops()) {
                 Constants.LOG.info("[maid_file_manager] 导出裁剪 Curios 饰品: 丢弃 {} 件(按命名空间 {}), "
                                 + "禁止槽位 {} 个(含 {} 件), 保留 {} 件",
@@ -635,7 +635,7 @@ public final class MaidTransferService {
         // addFreshEntity 返回 false，走通用的"添加到世界失败"提示；原女仆已死亡 / 已移除
         // （导出时不保留）/ 区块未加载 / 收入魂符时均不拦截，导入正常进行。
         // 无法解析源 UUID 的极早期文件退回 new EntityMaid 的随机 UUID，不影响导入。
-        UUID sourceMaidUuid = resolveSourceMaidUuid(data, originalNbt);
+        UUID sourceMaidUuid = UuidAllocator.resolveSourceMaidUuid(data, originalNbt);
         // 四层解析：幂等记录 → 默认保留原 UUID → 冲突派生 → 派生时迁移备份。
         UUID mappedEntityUuid = resolveImportUuid(player, sourceMaidUuid);
 
@@ -677,7 +677,7 @@ public final class MaidTransferService {
             // 用于给玩家一条明确说明，绝不静默丢弃。
             CuriosBaubleFilter.Stats curiosStats = new CuriosBaubleFilter.Stats();
             CompoundTag migrated = NbtMigration.migrate(originalNbt, sourceVersion, targetVersion, curiosStats,
-                    MaidTransferService::allowCuriosItem, stripAttributes);
+                    BaubleHandler::allowCuriosItem, stripAttributes);
             // .maid 是不可信输入（玩家可手工改造）：导出侧已剔除的容器，这里再无条件删一遍，
             // 防注入——否则塞入 HandItems/ArmorItems/equipment/MaidBackpackData 即可凭空获得物品。
             // 饰品不在此列：它走声明制裁剪（CuriosBaubleFilter / extractTlmData）。
@@ -690,7 +690,7 @@ public final class MaidTransferService {
                 // Curios 侧必须一并清空：否则该开关只挡住女仆自带饰品栏，
                 // Curios 里"命名空间已声明"的饰品仍会随 load() 恢复。
                 // 这里是玩家/服务端主动不要饰品，不计入"模组未声明"的提示统计。
-                CuriosBaubleFilter.strip(migrated, false, MaidTransferService::allowCuriosItem, false);
+                CuriosBaubleFilter.strip(migrated, false, BaubleHandler::allowCuriosItem, false);
             }
             CompoundTag tlmTag = extractTlmData(migrated, sameVersion);
             loadMaidNbt(maid, migrated, tlmTag, keepBaubles, sourceStruckByLightning, sameVersion,
@@ -707,7 +707,7 @@ public final class MaidTransferService {
                         curiosStats.missingItems()));
             }
             if (curiosStats.dropped() > 0) {
-                addBaubleNoticeOnce(baubleNotes);
+                BaubleHandler.addBaubleNoticeOnce(baubleNotes);
             }
             if (curiosStats.hasDrops()) {
                 Constants.LOG.info("[maid_file_manager] 导入裁剪 Curios 饰品: 命名空间未声明 {} 件, "
@@ -834,7 +834,7 @@ public final class MaidTransferService {
             // 失败原因细分：确定性目标 UUID 在已加载世界中已有女仆实体（最常见为同一文件重复导入
             // 且原女仆/前次副本就在身边）时，给出明确的重复提示；其他原因走通用添加失败文案。
             // 仅查已加载实体：未加载区块、魂符中的实体不会导致 addFreshEntity 失败，那些场景本就放行。
-            if (mappedEntityUuid != null && isLoadedMaidWithUuid(player.getServer(), mappedEntityUuid)) {
+            if (mappedEntityUuid != null && UuidAllocator.isLoadedMaidWithUuid(player.getServer(), mappedEntityUuid)) {
                 String maidLabel = data.getCustomName() != null ? data.getCustomName()
                         : data.getDisplayName() != null ? data.getDisplayName() : "?";
                 Constants.LOG.info("[maid_file_manager] addFreshEntity 因同 UUID 女仆已存在被拒绝 uuid={} player={}",
@@ -1049,7 +1049,7 @@ public final class MaidTransferService {
     private static void restoreTlmData(EntityMaid maid, CompoundTag tlmData, boolean keepBaubles,
                                        boolean sameVersion, boolean stripAttributes, List<String> blockedList,
                                        int sourceMojangDataVersion, List<Component> baubleNotes) {
-        restoreBaubles(maid, tlmData, keepBaubles, sameVersion, stripAttributes, blockedList,
+        BaubleHandler.restoreBaubles(maid, tlmData, keepBaubles, sameVersion, stripAttributes, blockedList,
                 sourceMojangDataVersion, baubleNotes);
 
         if (tlmData.contains("ModelId", Tag.TAG_STRING)) {
@@ -1181,163 +1181,6 @@ public final class MaidTransferService {
      * </ol>
      * 全程异常兜底，不影响女仆本体导入。
      */
-    private static void restoreBaubles(EntityMaid maid, CompoundTag tlmData, boolean keepBaubles,
-                                       boolean sameVersion, boolean stripAttributes, List<String> blockedList,
-                                       int sourceMojangDataVersion, List<Component> baubleNotes) {
-        if (!tlmData.contains("MaidBaubleInventory", Tag.TAG_COMPOUND) || !keepBaubles
-                || !MaidConfigManager.isBaublesAllowed()) {
-            return;
-        }
-        try {
-            ListTag items = tlmData.getCompound("MaidBaubleInventory").getList("Items", Tag.TAG_COMPOUND);
-            if (items.isEmpty()) {
-                return;
-            }
-            int currentSlots = Services.PLATFORM.get().baubleGetSlots(maid);
-            if (currentSlots <= 0) {
-                Constants.LOG.warn("[maid_file_manager] 饰品栏不可用，{} 件饰品全部跳过", items.size());
-                return;
-            }
-            int needed = currentSlots;
-            int oversized = 0;
-            for (int i = 0; i < items.size(); i++) {
-                CompoundTag entry = items.getCompound(i);
-                int slot = entry.contains("Slot", Tag.TAG_INT) ? entry.getInt("Slot") : i;
-                // 槽位号取自网络 NBT，绝不可信：负值或越过硬上限按坏数据丢弃，绝不据此扩容
-                if (slot < 0 || slot >= MAX_BAUBLE_SLOTS) {
-                    oversized++;
-                    continue;
-                }
-                if (slot + 1 > needed) {
-                    needed = slot + 1;
-                }
-            }
-            if (oversized > 0) {
-                Constants.LOG.warn("[maid_file_manager] 饰品数据含 {} 个非法槽位号（硬上限 {} 槽），对应饰品已丢弃",
-                        oversized, MAX_BAUBLE_SLOTS);
-            }
-            if (needed > currentSlots) {
-                // setSize 必须在写入前一次性完成（会重建槽位列表）
-                Services.PLATFORM.get().baubleResize(maid, needed);
-                currentSlots = needed;
-                Constants.LOG.debug("[maid_file_manager] 饰品栏扩容至 {} 槽", needed);
-            }
-            int restoredFull = 0;
-            int restoredFresh = 0;
-            int droppedBlocked = 0;
-            int droppedForeign = 0;
-            int droppedWhitelist = 0;
-            int droppedMissing = 0;
-            int droppedFailed = 0;
-            for (int i = 0; i < items.size(); i++) {
-                CompoundTag entry = items.getCompound(i);
-                try {
-                    int slot = entry.contains("Slot", Tag.TAG_INT) ? entry.getInt("Slot") : i;
-                    // 硬上限外的非法槽位已在第一遍计入 oversized 并 WARN，这里直接跳过，避免同一批条目被重复计数
-                    if (slot < 0 || slot >= MAX_BAUBLE_SLOTS) {
-                        continue;
-                    }
-                    if (slot >= currentSlots) {
-                        droppedFailed++;
-                        continue;
-                    }
-                    String id = entry.contains("id", Tag.TAG_STRING) ? entry.getString("id") : "";
-                    // 条目 ID 解析出的物品（跨版本旧键可能解析失败，此时仅能按 ID 匹配）
-                    Item preItem = id.isEmpty() ? null : resolveItem(id);
-                    // 步骤 1：禁用携带清单命中（OP 配置或整合包黑名单，支持物品 ID 或中文显示名精确匹配）→ 直接丢弃
-                    if (baubleMatchesList(id, preItem, blockedList)) {
-                        droppedBlocked++;
-                        addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.blocked", id);
-                        continue;
-                    }
-                    // 步骤 2：命名空间白名单前置。路径 A/DFU 解析后还会以实际物品键复核，
-                    // 此处先按 entry 的 id 快速拦截第三方物品，避免无谓解析。
-                    String namespace = namespaceOf(id);
-                    if (!isBaubleAllowed(namespace)) {
-                        droppedForeign++;
-                        addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.foreign", id);
-                        continue;
-                    }
-                    // 步骤 2b：整合包白名单（bauble_import.json 启用时）：ID 或中文显示名未命中即拒绝
-                    if (!MaidConfigManager.isBaubleWhitelistPass(id, displayNameOf(preItem))) {
-                        droppedWhitelist++;
-                        addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.whitelist", id);
-                        continue;
-                    }
-                    // 步骤 3~5：未开启"丢弃饰品属性"时尝试完整状态恢复（同版本直接解析；
-                    // 跨版本先经平台层升级/降级到当前版本再解析，保留附魔/耐久/无法破坏/属性修饰符）。
-                    ItemStack full = stripAttributes ? ItemStack.EMPTY
-                            : tryParseFullBauble(maid, entry, sameVersion, sourceMojangDataVersion);
-                    if (full != null && !full.isEmpty()) {
-                        // 以解析后注册表中的实际物品键复核白名单，伪造 id 与实际物品不符也无法绕过
-                        net.minecraft.resources.ResourceLocation fullKey =
-                                net.minecraft.core.registries.BuiltInRegistries.ITEM.getKey(full.getItem());
-                        String fullId = fullKey.toString();
-                        if (!isBaubleAllowed(fullKey.getNamespace())) {
-                            // 完整解析得到非白名单物品：不得退回全新化（全新化仍是同一件第三方物品），直接丢弃
-                            droppedForeign++;
-                            addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.foreign", id);
-                            continue;
-                        }
-                        // 解析后物品可能与条目 id 不一致：禁用清单与整合包白名单同步复核
-                        if (baubleMatchesList(fullId, full.getItem(), blockedList)) {
-                            droppedBlocked++;
-                            addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.blocked", id);
-                            continue;
-                        }
-                        if (!MaidConfigManager.isBaubleWhitelistPass(fullId, displayNameOf(full.getItem()))) {
-                            droppedWhitelist++;
-                            addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.whitelist", id);
-                            continue;
-                        }
-                        Services.PLATFORM.get().baubleSetStack(maid, slot, full);
-                        restoredFull++;
-                        continue;
-                    }
-                    // 步骤 6：全新化重建（开启丢弃属性 / 跨版本无法转换 / 同版本解析失败）
-                    // 白名单与禁用清单已在前面按条目 ID 复核，此处复用已解析的物品，避免重复查表
-                    if (id.isEmpty()) {
-                        droppedFailed++;
-                        continue;
-                    }
-                    Item item = preItem;
-                    if (item == null || Items.AIR.equals(item)) {
-                        droppedMissing++;
-                        addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.missing_item", id);
-                        continue;
-                    }
-                    int count = 1;
-                    if (entry.contains("Count", Tag.TAG_ANY_NUMERIC)) {
-                        count = entry.getInt("Count");
-                    } else if (entry.contains("count", Tag.TAG_ANY_NUMERIC)) {
-                        count = entry.getInt("count");
-                    }
-                    count = Math.max(1, count);
-                    ItemStack fresh = new ItemStack(item, count);
-                    fresh.setCount(Math.min(count, fresh.getMaxStackSize()));
-                    Services.PLATFORM.get().baubleSetStack(maid, slot, fresh);
-                    restoredFresh++;
-                    // 全新化原因区分：开启丢弃属性 → 设置原因；否则 → 格式无法解析（跨版本转换失败/版本未知/同版本解析失败）
-                    if (stripAttributes) {
-                        addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.stripped", id);
-                    } else {
-                        addBaubleNote(baubleNotes, "maid_file_manager.import.bauble.unparseable", id);
-                    }
-                } catch (Throwable t) {
-                    droppedFailed++;
-                    Constants.LOG.warn("[maid_file_manager] 单件饰品恢复失败，跳过: {}", t.toString());
-                }
-            }
-            Constants.LOG.info("[maid_file_manager] 饰品恢复完成: 完整恢复={} 全新化={} 禁用清单={} 非TLM命名空间={} 未入整合包白名单={} 目标世界缺失={} 失败={} 非法槽位={} 同版本={}",
-                    restoredFull, restoredFresh, droppedBlocked, droppedForeign, droppedWhitelist,
-                    droppedMissing, droppedFailed, oversized, sameVersion);            // 有"模组尚未适配"类丢弃时统一追加一次说明（逐条说明里不再重复那段括号注）
-            if (droppedForeign > 0) {
-                addBaubleNoticeOnce(baubleNotes);
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] 饰品整体恢复失败（不影响女仆导入）: {}", t.toString());
-        }
-    }
 
     /**
      * 尝试完整状态恢复单件饰品（保留属性），返回空物品栈表示应回退全新化。
@@ -1345,87 +1188,18 @@ public final class MaidTransferService {
      * 升级（1.21 平台 DFU）/降级（1.20 平台手动组件→tag 转换）后再解析。
      * 任何失败返回空物品栈（日志留痕，非静默失败）。
      */
-    private static ItemStack tryParseFullBauble(EntityMaid maid, CompoundTag entry,
-                                                boolean sameVersion, int sourceMojangDataVersion) {
-        try {
-            if (sameVersion) {
-                return Services.PLATFORM.get().parseItemStack(maid.level().registryAccess(), entry);
-            }
-            if (sourceMojangDataVersion > 0) {
-                return Services.PLATFORM.get().convertItemStackNbt(
-                        maid.level().registryAccess(), entry, sourceMojangDataVersion);
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] 饰品完整状态恢复失败，回退全新化: {}", t.toString());
-        }
-        return ItemStack.EMPTY;
-    }
 
     /** 饰品条目在提示语中的名称：物品可解析时用游戏内名称，否则回退原始 ID */
-    private static Component baubleItemLabel(String id) {
-        if (id != null && !id.isEmpty()) {
-            Item item = resolveItem(id);
-            if (item != null && !Items.AIR.equals(item)) {
-                return item.getName(new ItemStack(item));
-            }
-            return Component.literal(id);
-        }
-        return Component.literal("?");
-    }
 
     /**
      * 判断饰品条目是否命中清单（禁用清单 / 整合包白名单）。
      * <p>为兼顾整合包作者的书写习惯，支持<b>物品注册 ID 或物品中文显示名</b>两种写法精确匹配。
      */
-    private static boolean baubleMatchesList(String id, Item item, List<String> list) {
-        if (list == null || list.isEmpty()) {
-            return false;
-        }
-        // 匹配侧再归一化一次（双保险）：即使清单由旧版本或外部工具写入未小写，也不会漏判。
-        if (id != null && !id.isEmpty()
-                && list.contains(id.toLowerCase(java.util.Locale.ROOT))) {
-            return true;
-        }
-        String name = displayNameOf(item);
-        return name != null && list.contains(name.toLowerCase(java.util.Locale.ROOT));
-    }
 
     /** 物品的游戏内显示名（含语言文件本地化）；无法解析时返回 null，绝不抛出 */
-    private static String displayNameOf(Item item) {
-        if (item == null || Items.AIR.equals(item)) {
-            return null;
-        }
-        try {
-            return item.getName(new ItemStack(item)).getString();
-        } catch (Throwable t) {
-            return null;
-        }
-    }
 
     /** 追加一条饰品处理说明（translatable，由客户端按自身语言本地化） */
     /** 追加"模组尚未适配"的统一说明；同一次导入/导出只出现一次（逐条说明里不再重复括号注） */
-    private static void addBaubleNoticeOnce(List<Component> notes) {
-        if (notes == null) {
-            return;
-        }
-        Component notice = Component.translatable("maid_file_manager.bauble.notice");
-        if (!notes.contains(notice)) {
-            notes.add(0, notice);
-        }
-    }
-    private static void addBaubleNote(List<Component> notes, String langKey, String id) {
-        if (notes == null) {
-            return;
-        }
-        if ("maid_file_manager.import.bauble.foreign".equals(langKey)) {
-            // 明确责任方与下一步：是"某个模组没声明支持迁移"，不是档案管理器的故障，
-            // 玩家应去找该模组的作者（第二参数给出模组标识，避免玩家不知道是谁）。
-            notes.add(Component.translatable(langKey, baubleItemLabel(id),
-                    Services.PLATFORM.get().getModDisplayName(namespaceOf(id))));
-            return;
-        }
-        notes.add(Component.translatable(langKey, baubleItemLabel(id)));
-    }
 
     /**
      * 饰品命名空间判定：改由 {@link MaidBaubleCarrierRegistry} 决定——只有<b>主动声明</b>可携带的
@@ -1435,13 +1209,6 @@ public final class MaidTransferService {
      * 车万女仆本体（{@code touhou_little_maid}）与万法皆通（{@code touhou_little_maid_spell}）
      * 作为内置声明登记在注册表里，行为与旧版写死的白名单一致。
      */
-    private static boolean isBaubleAllowed(String namespace) {
-        // OP 按模组禁用：同时管住女仆自带饰品栏与 Curios 槽位（否则放 Curios 槽里即可绕过）
-        if (namespace != null && MaidConfigManager.getBaubleBlockedNamespaces().contains(namespace)) {
-            return false;
-        }
-        return MaidBaubleCarrierRegistry.isNamespaceCarriable(namespace);
-    }
 
     /**
      * 服务端收窄校验：仅保留车万本体/法术附属两命名空间内的物品 ID。
@@ -1450,22 +1217,6 @@ public final class MaidTransferService {
      * <p>服务端配置（properties / 整合包 {@code bauble_import.json}）在读取时<b>不做</b>此收窄，
      * 因为整合包配置允许书写中文显示名（不含命名空间前缀），收窄会误删。
      */
-    public static List<String> sanitizeBaubleBlockedList(List<String> ids) {
-        if (ids == null || ids.isEmpty()) {
-            return List.of();
-        }
-        List<String> out = new ArrayList<>(ids.size());
-        for (String id : ids) {
-            if (id == null || id.isBlank()) {
-                continue;
-            }
-            String trimmed = id.trim();
-            if (isBaubleAllowed(namespaceOf(trimmed)) && !out.contains(trimmed)) {
-                out.add(trimmed);
-            }
-        }
-        return List.copyOf(out);
-    }
     /**
      * 服务端收窄校验：命名空间 / Curios 槽位清单。
      * <p>C2S 提交可能被篡改，只允许标识符字符集（小写字母、数字、下划线、点、连字符），
@@ -1503,21 +1254,7 @@ public final class MaidTransferService {
         return List.copyOf(out);
     }
 
-    private static String namespaceOf(String id) {
-        int colon = id.indexOf(':');
-        return colon >= 0 ? id.substring(0, colon) : "minecraft";
-    }
 
-    private static Item resolveItem(String id) {
-        try {
-            net.minecraft.resources.ResourceLocation rl = net.minecraft.resources.ResourceLocation.tryParse(id);
-            return rl == null ? null
-                    : net.minecraft.core.registries.BuiltInRegistries.ITEM.getOptional(rl).orElse(null);
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] 解析物品 {} 失败: {}", id, t.toString());
-            return null;
-        }
-    }
 
     private static void rebuildAttributesAndModel(EntityMaid maid, MaidFileData data,
                                                   boolean sourceStruckByLightning) {
@@ -1642,38 +1379,6 @@ public final class MaidTransferService {
     }
 
     /**
-     * 解析源女仆实体 UUID：优先读 .maid 顶层 source_maid_uuid（v6 起写入）；
-     * 旧文件无此字段时从实体根 NBT 兜底（1.9+ int 数组 "UUID"，或 1.8 的 UUIDMost/UUIDLeast）。
-     * 注意必须在 {@link NbtMigration#migrate} 之前读取——迁移会恒删实体根 UUID 键。
-     *
-     * @return 源女仆 UUID；无法解析（极早期文件且 NBT 缺键）返回 null，调用方退回随机实体 UUID
-     */
-    private static UUID resolveSourceMaidUuid(MaidFileData data, CompoundTag originalNbt) {
-        String topLevel = data.getSourceMaidUuid();
-        if (topLevel != null) {
-            try {
-                return UUID.fromString(topLevel);
-            } catch (IllegalArgumentException ignored) {
-                // 顶层字段非法，落回实体 NBT 兜底
-            }
-        }
-        if (originalNbt != null) {
-            try {
-                if (originalNbt.hasUUID("UUID")) {
-                    return originalNbt.getUUID("UUID");
-                }
-                if (originalNbt.contains("UUIDMost", Tag.TAG_LONG)
-                        && originalNbt.contains("UUIDLeast", Tag.TAG_LONG)) {
-                    return new UUID(originalNbt.getLong("UUIDMost"), originalNbt.getLong("UUIDLeast"));
-                }
-            } catch (Throwable t) {
-                Constants.LOG.warn("[maid_file_manager] 从实体 NBT 解析源女仆 UUID 失败: {}", t.toString());
-            }
-        }
-        return null;
-    }
-
-    /**
      * 确定性导入 UUID 映射：同一玩家导入同一源女仆，永远得到同一目标 UUID；
      * 不同玩家（多人服分享文件）因玩家 UUID 参与哈希而得到不同 UUID，互不冲突。
      *
@@ -1701,142 +1406,16 @@ public final class MaidTransferService {
         if (recorded != null) {
             return recorded;
         }
-        if (!isUuidOccupied(server, sourceMaidUuid)) {
+        if (!UuidAllocator.isUuidOccupied(server, sourceMaidUuid)) {
             ArchiveImportMap.record(server, sourceMaidUuid, player.getUUID(), sourceMaidUuid);
             return sourceMaidUuid;
         }
-        UUID derived = mapImportUuid(sourceMaidUuid, player.getUUID());
+        UUID derived = UuidAllocator.mapImportUuid(sourceMaidUuid, player.getUUID());
         ArchiveImportMap.record(server, sourceMaidUuid, player.getUUID(), derived);
-        migrateTlmBackups(player, sourceMaidUuid, derived);
+        TlmBackupMigrator.migrate(player, sourceMaidUuid, derived);
         Constants.LOG.info("[maid_file_manager] 原 UUID {} 在本存档被占用，派生新 UUID {} 导入",
                 sourceMaidUuid, derived);
         return derived;
-    }
-
-    /**
-     * 判定 UUID 是否已被占用。只查已加载实体（任意维度）：未加载区块里的实体查不到，
-     * 但那种情况下 addFreshEntity 本身不会因 UUID 冲突失败，按「可用」处理更贴近原生行为。
-     */
-    private static boolean isUuidOccupied(MinecraftServer server, UUID uuid) {
-        if (server == null || uuid == null) {
-            return false;
-        }
-        for (ServerLevel serverLevel : server.getAllLevels()) {
-            if (serverLevel.getEntity(uuid) != null) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-        /**
-     * 派生新 UUID 时把 TLM 自动备份迁到新 UUID 目录（兜底路径，绝大多数导入不会走到）。
-     *
-     * <p>备份 {@code .dat} 是完整的实体存档，<b>里面存着自己的 UUID</b>（IntArray 4 个 int）。
-     * 直接复制会让「新 UUID 目录下的备份」仍然自称旧 UUID——备份列表看着对，但导出 .maid 时
-     * source_maid_uuid 会取到旧值，再次导入又对不上。因此逐份改写 UUID 后再写盘，
-     * 并同步 {@code index.dat}（以女仆 UUID 为键的索引表），最后删除原目录。
-     */
-    private static void migrateTlmBackups(ServerPlayer player, UUID oldUuid, UUID newUuid) {
-        try {
-            MinecraftServer server = player.level().getServer();
-            if (server == null) {
-                return;
-            }
-            Path root = MaidBackupService.backupRoot(server);
-            String owner = player.getUUID().toString();
-            Path ownerDir = root.resolve(owner);
-            Path oldDir = ownerDir.resolve(oldUuid.toString());
-            if (!Files.isDirectory(oldDir)) {
-                return;
-            }
-            Path newDir = ownerDir.resolve(newUuid.toString());
-            Files.createDirectories(newDir);
-            int[] newUuidArray = uuidToIntArray(newUuid);
-            int copied = 0;
-            try (var stream = Files.list(oldDir)) {
-                for (Path p : stream.toList()) {
-                    if (!Files.isRegularFile(p)) {
-                        continue;
-                    }
-                    CompoundTag dat = MaidFileIo.readCompressedNbt(p);
-                    if (dat == null) {
-                        continue;
-                    }
-                    dat.putIntArray("UUID", newUuidArray);
-                    net.minecraft.nbt.NbtIo.writeCompressed(dat, newDir.resolve(p.getFileName().toString()).toFile());
-                    copied++;
-                }
-            }
-            rewriteBackupIndex(ownerDir.resolve("index.dat"), oldUuid, newUuid);
-            deleteRecursively(oldDir);
-            Constants.LOG.info("[maid_file_manager] 已把 TLM 备份从 {} 迁到 {}（{} 个文件，已改写 UUID 并删除原目录）",
-                    oldUuid, newUuid, copied);
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] 迁移 TLM 备份失败（不影响导入）: {}", t.toString());
-        }
-    }
-
-    /** UUID → Minecraft 实体 NBT 里的 IntArray 形态（高/低 64 位各拆成两个 int） */
-    private static int[] uuidToIntArray(UUID uuid) {
-        long msb = uuid.getMostSignificantBits();
-        long lsb = uuid.getLeastSignificantBits();
-        return new int[]{(int) (msb >> 32), (int) msb, (int) (lsb >> 32), (int) lsb};
-    }
-
-        /** 把 index.dat 里以旧 UUID 为键的条目改名到新 UUID（TLM 备份列表的索引表） */
-    private static void rewriteBackupIndex(Path indexFile, UUID oldUuid, UUID newUuid) {
-        try {
-            if (!Files.isRegularFile(indexFile)) {
-                return;
-            }
-            CompoundTag index = MaidFileIo.readCompressedNbt(indexFile);
-            if (index == null || !index.contains(oldUuid.toString())) {
-                return;
-            }
-            CompoundTag entry = index.getCompound(oldUuid.toString()).copy();
-            index.remove(oldUuid.toString());
-            index.put(newUuid.toString(), entry);
-            net.minecraft.nbt.NbtIo.writeCompressed(index, indexFile.toFile());
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] 更新备份索引失败（残留不影响功能）: {}", t.toString());
-        }
-    }
-
-    /** 递归删除目录（失败只告警：保留残留比删错文件安全） */
-    private static void deleteRecursively(Path dir) {
-        if (!Files.isDirectory(dir)) {
-            return;
-        }
-        try (var stream = Files.walk(dir)) {
-            for (Path p : stream.sorted(java.util.Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(p);
-            }
-        } catch (Throwable t) {
-            Constants.LOG.warn("[maid_file_manager] 清理旧备份目录失败（残留不影响功能）: {}", t.toString());
-        }
-    }
-    private static UUID mapImportUuid(UUID sourceMaidUuid, UUID importerPlayerUuid) {
-        String name = "maid_file_manager|import-v1|" + sourceMaidUuid + "|" + importerPlayerUuid;
-        return UUID.nameUUIDFromBytes(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-    }
-
-    /**
-     * 判定指定 UUID 在已加载世界（任意维度）中是否已有女仆实体。
-     * 仅供 addFreshEntity 失败后的原因细分：同 UUID 实体只有处在已加载区块时才会导致原生拒绝，
-     * 未加载区块 / 魂符中的实体查不到也不应影响判定（那些场景导入本就成功）。
-     * server 为 null 时返回 false，使调用方落回通用失败文案。
-     */
-    private static boolean isLoadedMaidWithUuid(MinecraftServer server, UUID entityId) {
-        if (server == null) {
-            return false;
-        }
-        for (ServerLevel serverLevel : server.getAllLevels()) {
-            if (serverLevel.getEntity(entityId) instanceof EntityMaid) {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
@@ -1966,44 +1545,8 @@ public final class MaidTransferService {
      * <p>判定顺序：总开关 → 硬禁槽位 → 命名空间声明 + 槽位白名单 → OP 禁用清单（∪ 整合包黑名单）
      * → 整合包白名单。任一步不通过即不携带。
      */
-    public static boolean allowCuriosItem(String itemId, String namespace, String slotIdentifier) {
-        if (!MaidConfigManager.isCarryCurios()) {
-            return false;
-        }
-        if (MaidBaubleCarrierRegistry.isCuriosSlotForbidden(slotIdentifier)) {
-            return false;
-        }
-        if (!MaidBaubleCarrierRegistry.isCuriosItemCarriable(namespace, slotIdentifier)) {
-            return false;
-        }
-        String slotKey = slotIdentifier == null ? "" : slotIdentifier.toLowerCase(java.util.Locale.ROOT);
-        if (MaidConfigManager.getBaubleBlockedNamespaces().contains(namespace)
-                || MaidConfigManager.getBaubleBlockedCuriosSlots().contains(slotKey)) {
-            return false;
-        }
-        Item item = resolveCuriosItem(itemId);
-        if (baubleMatchesList(itemId, item, MaidConfigManager.getBaubleBlockedList())) {
-            return false;
-        }
-        return MaidConfigManager.isBaubleWhitelistPass(itemId, item == null ? null : displayNameOf(item));
-    }
 
     /** 按 id 取物品实例；不存在或解析失败返回 null（调用方按"未命中清单"处理） */
-    private static Item resolveCuriosItem(String itemId) {
-        if (itemId == null || itemId.isEmpty()) {
-            return null;
-        }
-        try {
-            net.minecraft.resources.ResourceLocation key =
-                    net.minecraft.resources.ResourceLocation.tryParse(itemId);
-            if (key != null && net.minecraft.core.registries.BuiltInRegistries.ITEM.containsKey(key)) {
-                return net.minecraft.core.registries.BuiltInRegistries.ITEM.get(key);
-            }
-        } catch (Throwable ignored) {
-            // 解析失败按缺失处理
-        }
-        return null;
-    }
 
     /**
      * 取出本批次被裁剪的 Curios 饰品统计，生成一条面向玩家的提示；无丢弃时返回 {@code null}。
@@ -2011,33 +1554,8 @@ public final class MaidTransferService {
      * <p>调用即清零（见 {@link CuriosBaubleFilter#takeBatch()}），因此每个导出/导入流程结束点
      * 只需调用一次，不会跨批次重复提示。
      */
-    public static Component curiosDropTip() {
-        CuriosBaubleFilter.Stats stats = CuriosBaubleFilter.takeBatch();
-        if (!stats.hasDrops()) {
-            return null;
-        }
-        net.minecraft.network.chat.MutableComponent tip =
-                Component.translatable("maid_file_manager.export.curios.dropped",
-                        stats.dropped(), displayNamesText(stats));
-        if (stats.forbiddenItems() > 0) {
-            tip.append(Component.translatable("maid_file_manager.export.curios.forbidden",
-                    stats.forbiddenSlots(), stats.forbiddenItems()));
-        }
-        if (stats.missingItems() > 0) {
-            tip.append(Component.translatable("maid_file_manager.curios.missing", stats.missingItems()));
-        }
-        if (stats.dropped() > 0) {
-            tip.append(Component.translatable("maid_file_manager.bauble.notice"));
-        }
-        return tip;
-    }
 
     /** 把「命名空间:件数」改写成「模组显示名:件数」，让玩家一眼看出是哪个模组（取不到显示名时退化为 modId） */
-    private static String displayNamesText(CuriosBaubleFilter.Stats stats) {
-        return stats.sortedNamespaces().entrySet().stream()
-                .map(e -> Services.PLATFORM.get().getModDisplayName(e.getKey()) + ":" + e.getValue())
-                .collect(java.util.stream.Collectors.joining(", "));
-    }
     public static Component buildBatchSummary(List<ImportResult> results) {
         int ok = 0;
         int untamed = 0;
@@ -2117,26 +1635,4 @@ public final class MaidTransferService {
      * 单文件导入通道的展示文案：在结果消息后追加饰品逐件处理说明（最多 5 条，超出只报数量）。
      * 备注为空时原样返回结果消息，不加噪声。
      */
-    public static Component withBaubleDetails(ImportResult result) {
-        List<Component> notes = result.baubleNotes();
-        if (notes == null || notes.isEmpty()) {
-            return result.message();
-        }
-        net.minecraft.network.chat.MutableComponent out =
-                result.message().copy();
-        net.minecraft.network.chat.MutableComponent detail = Component.translatable("maid_file_manager.import.bauble_details");
-        int shown = Math.min(notes.size(), 5);
-        for (int i = 0; i < shown; i++) {
-            if (i > 0) {
-                    detail.append(Component.translatable("maid_file_manager.list_separator.newline"));
-            }
-            detail.append(notes.get(i));
-        }
-        if (notes.size() > shown) {
-            detail.append(Component.translatable(
-                    "maid_file_manager.import.bauble.more", notes.size() - shown));
-        }
-        out.append(detail);
-        return out;
-    }
 }
