@@ -753,14 +753,13 @@ public final class MaidTransferService {
         }
         // ===== 事务提交点之后 =====
         // addFreshEntity 已成功，实体确实进入世界，此时才把「本次导入的结果」写盘。
-        // 顺序理由：幂等记录与 TLM 备份迁移都不可逆（后者会删除原 UUID 目录），
-        // 若在提交点之前执行，导入失败时会留下一个指向不存在实体的记录，
-        // 并且把原女仆的备份目录移走。
+        // 顺序理由：幂等记录不可逆；备份复制虽可重做，但与它一起放在提交点之后更清楚——
+        // 若在提交点之前执行，导入失败时会留下一个指向不存在实体的记录。
         if (uuidDecision.commitNeeded()) {
             MinecraftServer importServer = player.level().getServer();
             ArchiveImportMap.record(importServer, sourceMaidUuid, player.getUUID(), mappedEntityUuid);
             if (!mappedEntityUuid.equals(sourceMaidUuid)) {
-                TlmBackupMigrator.migrate(player, sourceMaidUuid, mappedEntityUuid);
+                TlmBackupCopier.copyBackups(player, sourceMaidUuid, mappedEntityUuid);
                 Constants.LOG.info("[maid_file_manager] 原 UUID {} 在本存档被占用，已派生新 UUID {} 导入",
                         sourceMaidUuid, mappedEntityUuid);
             }
