@@ -304,46 +304,15 @@ public class MaidFileModFabric implements ModInitializer {
 
         // 请求女仆档案：非本人直接拒绝（不返回任何只读数据），本人则回发档案视图
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_MAID_PROFILE, (server, player, buf) -> {
-            // 频次限制：这类请求在主线程同步跑，循环发包能把服务器卡死（不需 OP）
-            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "maid_profile", 1000L)) {
-                return;
-            }
-            int entityId = buf.readInt();
-            Entity e = player.level().getEntity(entityId);
-            if (!(e instanceof EntityMaid maid) || !maid.isOwnedBy(player)) {
-                sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.no_permission"));
-                return;
-            }
-            MaidProfileView view = MaidProfileService.buildView(player, maid);
-            if (view == null) {
-                sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.no_permission"));
-                return;
-            }
-            FriendlyByteBuf out = MaidPayload.buffer();
-            MaidProfileCodec.writeMaidProfileView(out, view);
-            ServerPlayNetworking.send(player, MaidPayload.of(MaidFilePackets.ID_MAID_PROFILE, out));
+            int entityId = buf.readVarInt();
+            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestMaidProfile(player, entityId);
         });
 
         // 保存女仆档案：校验归属后写入实体并回执（复用 ID_FEEDBACK）
         registerC2SReceiver(MaidFilePackets.ID_SAVE_MAID_PROFILE, (server, player, buf) -> {
-            // 必须与写端 FabricNetwork.sendSaveMaidProfile 的 writeVarInt 配对。
-            // 原为 readInt（读 4 字节定长），而写端只写了 VarInt（小 entityId 仅 1~2 字节）：
-            // 会把后续档案 NBT 的头部字节一起吃进 entityId，导致查找实体失败、
-            // 保存档案 100% 失败（forge 与 fabric-1.20.1 两端都是 readVarInt）。
             int entityId = buf.readVarInt();
             MaidProfile profile = MaidProfileCodec.readMaidProfile(buf);
-            if (profile == null) {
-                sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.save_failed"));
-                return;
-            }
-            Entity e = player.level().getEntity(entityId);
-            if (!(e instanceof EntityMaid maid) || !maid.isOwnedBy(player)) {
-                sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.no_permission"));
-                return;
-            }
-            // 档案界面保存：背景故事同步写回 TLM AI 人设，保证双向一致
-            MaidProfileService.writeToMaid(maid, profile, true);
-            sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.save_ok"));
+            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.saveMaidProfile(player, entityId, profile);
         });
 
         // 备份管理：服务端按权限过滤后返回可浏览的自动备份列表（OP 见全部玩家，非 OP 仅自己）

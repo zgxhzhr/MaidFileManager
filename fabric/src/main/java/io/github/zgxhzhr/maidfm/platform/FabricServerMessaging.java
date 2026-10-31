@@ -44,4 +44,13 @@ public final class FabricServerMessaging implements ServerMessaging {
                 player, io.github.zgxhzhr.maidfm.network.MaidPayload.of(
                         io.github.zgxhzhr.maidfm.network.MaidFilePackets.ID_MAID_LIST, out));
     }
+
+    @Override
+    public void sendMaidProfile(ServerPlayer player, io.github.zgxhzhr.maidfm.data.MaidProfileView view) {
+        net.minecraft.network.FriendlyByteBuf out = io.github.zgxhzhr.maidfm.network.MaidPayload.buffer();
+        io.github.zgxhzhr.maidfm.network.MaidProfileCodec.writeMaidProfileView(out, view);
+        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(
+                player, io.github.zgxhzhr.maidfm.network.MaidPayload.of(
+                        io.github.zgxhzhr.maidfm.network.MaidFilePackets.ID_MAID_PROFILE, out));
+    }
 }
