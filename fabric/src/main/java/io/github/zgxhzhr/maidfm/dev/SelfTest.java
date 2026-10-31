@@ -354,7 +354,7 @@ public final class SelfTest {
         src.putString("SomethingElse", "keep");      // 未知键 -> 保留
 
         CompoundTag out = NbtMigration.migrate(src, NbtVersion.MC_1_20_1, NbtVersion.MC_1_20_1,
-                null, null, false);
+                null, null, false, true);
 
         check("migrate 返回非 null", () -> out != null);
         check("Health 被裁掉", () -> !out.contains("Health"));
@@ -382,7 +382,7 @@ public final class SelfTest {
         cross.putString("YsmRoamingVars", "roam");   // 漫游数据，与 YSM 换模无关 -> 保留
 
         CompoundTag migrated = NbtMigration.migrate(cross, NbtVersion.MC_1_20_1, NbtVersion.MC_1_21,
-                null, null, false);
+                null, null, false, true);
         check("跨版本 ModelId 改名为 model_id", () -> !migrated.contains("ModelId") && migrated.contains("model_id"));
         check("跨版本 IsYsmModel 清空", () -> !migrated.contains("IsYsmModel"));
         check("跨版本 YsmModelId 清空", () -> !migrated.contains("YsmModelId"));
@@ -395,7 +395,7 @@ public final class SelfTest {
         sameVer.putByte("IsYsmModel", (byte) 1);
         sameVer.putString("YsmModelName", "酒尾狐");
         CompoundTag kept = NbtMigration.migrate(sameVer, NbtVersion.MC_1_20_1, NbtVersion.MC_1_20_1,
-                null, null, false);
+                null, null, false, true);
         check("同版本 YSM 键保留", () -> kept.contains("IsYsmModel") && kept.contains("YsmModelName"));
 
         // 版本未知：只做卫生清理，不做结构改名
@@ -403,13 +403,13 @@ public final class SelfTest {
         unknownVer.putString("ModelId", "m:p");
         unknownVer.putFloat("Health", 1f);
         CompoundTag u = NbtMigration.migrate(unknownVer, NbtVersion.UNKNOWN, NbtVersion.UNKNOWN,
-                null, null, false);
+                null, null, false, true);
         check("版本未知仍做卫生清理", () -> !u.contains("Health"));
         check("版本未知不改名 ModelId", () -> u.contains("ModelId") && !u.contains("model_id"));
 
         // null 输入
         eq("null 输入返回 null", null, NbtMigration.migrate(null, NbtVersion.MC_1_20_1,
-                NbtVersion.MC_1_20_1, null, null, false));
+                NbtVersion.MC_1_20_1, null, null, false, true));
     }
 
     private static void testConfigKeys() {

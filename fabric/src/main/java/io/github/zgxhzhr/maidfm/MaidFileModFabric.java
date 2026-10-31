@@ -295,16 +295,16 @@ public class MaidFileModFabric implements ModInitializer {
     /** 把服务端配置同步给所有在线玩家（OP 改配置后用） */
     public static void broadcastServerConfig(MinecraftServer server) {
         // 遍历逻辑已下沉到 PacketSender.broadcastServerConfig（六端共用一份）
-        io.github.zgxhzhr.maidfm.platform.PacketSender.broadcastServerConfig(server);
+        io.github.zgxhzhr.maidfm.service.PacketSender.broadcastServerConfig(server);
     }
 
     private static void sendFeedback(ServerPlayer player, Component message) {
-        io.github.zgxhzhr.maidfm.platform.PacketSender.sendFeedback(player, message);
+        io.github.zgxhzhr.maidfm.service.PacketSender.sendFeedback(player, message);
     }
 
     /** 批量导入 + 删除源文件：汇总文案 + 逐项 spawned 标志（顺序与请求对齐） */
     private static void sendImportBatchResult(ServerPlayer player, Component summary, List<Boolean> spawned) {
-        io.github.zgxhzhr.maidfm.platform.PacketSender.sendImportBatchResult(player, summary, spawned);
+        io.github.zgxhzhr.maidfm.service.PacketSender.sendImportBatchResult(player, summary, spawned);
     }
 
     /**
