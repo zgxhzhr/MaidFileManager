@@ -47,6 +47,8 @@ dependencies {
 
 jar {
     finalizedBy('reobfJar')
+    // 自检代码（dev 包）只用于构建期验证，不进最终产物
+    exclude 'io/github/zgxhzhr/maidfm/dev/**'
 }
 
 publishMods {
@@ -61,4 +63,20 @@ publishMods {
         minecraftVersions.add('1.20.1')
         displayName = 'Maid File Manager v' + project.version + ' forge 1.20.1'
     }
+}
+
+// ============================================================
+// 离线自检：./gradlew :forge:selfTest
+// 纯 JDK 实现（无 JUnit 制品可用），跑纯函数断言，不启动 Minecraft。
+// 失败时任务失败，可挂到 check/CI 上。
+// ============================================================
+tasks.register('selfTest', JavaExec) {
+    group = 'verification'
+    description = '离线自检：纯函数断言（不启动 Minecraft）'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'io.github.zgxhzhr.maidfm.dev.SelfTest'
+    // 断言失败时进程 exit 1，JavaExec 会据此让任务失败
+    ignoreExitValue = false
+    // 控制台默认不是 UTF-8，中文用例名会乱码；JDK 17 用 file.encoding 即可
+    jvmArgs = ['-Dfile.encoding=UTF-8']
 }
