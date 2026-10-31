@@ -1,5 +1,6 @@
 package io.github.zgxhzhr.maidfm.client;
 
+import io.github.zgxhzhr.maidfm.Constants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -118,7 +119,8 @@ public final class ModelNames {
         java.util.Map<String, String> out = new java.util.LinkedHashMap<>();
         try {
             out.putAll(PACK_NAME_CACHE);
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Constants.LOG.debug("[maid_file_manager] 复制包名缓存失败（已忽略，继续构建其余部分）: {}", t.toString());
         }
         try {
             ensureModelNameTables();
@@ -143,7 +145,8 @@ public final class ModelNames {
                     out.putIfAbsent(modelId, value);
                 }
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Constants.LOG.debug("[maid_file_manager] 构建模型名表时出现异常（已忽略，返回已收集部分）: {}", t.toString());
         }
         return out;
     }

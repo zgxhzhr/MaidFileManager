@@ -173,14 +173,16 @@ public final class MaidTransferService {
                     return s;
                 }
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Constants.LOG.debug("[maid_file_manager] 读 TLM 模型名反射失败（TLM 版本差异，已忽略）: {}", t.toString());
         }
         try {
             String id = maid.getYsmModelId();
             if (id != null && !id.isEmpty()) {
                 return id;
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Constants.LOG.debug("[maid_file_manager] 读 TLM YSM 模型 ID 反射失败（TLM 版本差异，已忽略）: {}", t.toString());
         }
         return null;
     }
@@ -1058,7 +1060,8 @@ public final class MaidTransferService {
                             f.set(persona, value);
                             set = true;
                         }
-                    } catch (Throwable ignored) {
+                    } catch (Throwable t) {
+                        Constants.LOG.debug("[maid_file_manager] 反射设置 persona 失败（该 TLM 版本无此字段，已忽略）: {}", t.toString());
                     }
                 }
                 if (set) forced++;

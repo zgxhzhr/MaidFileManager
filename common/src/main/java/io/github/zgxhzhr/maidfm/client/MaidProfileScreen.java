@@ -258,7 +258,8 @@ public class MaidProfileScreen extends Screen implements IMaidFileNetwork.Client
         // 重扫模型名表：运行中新下载的模型包也要能显示中文名
         try {
             ModelNames.reload();
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Constants.LOG.debug("[maid_file_manager] 重扫模型名失败（已忽略）: {}", t.toString());
         }
         screenClosed = false;
         UiMusicManager.enter(this);

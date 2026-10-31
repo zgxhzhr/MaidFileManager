@@ -275,7 +275,8 @@ public final class PlayerNameResolver {
                 } catch (IllegalArgumentException ignored) {
                 }
             }
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Constants.LOG.debug("[maid_file_manager] 扫描 usercache.json 失败（已忽略，该玩家名不可解析）: {}", t.toString());
         }
     }
 
