@@ -361,8 +361,14 @@ public class MaidFileModFabric implements ModInitializer {
             if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "backup_list", 5000L)) {
                 return;
             }
-            List<IMaidFileNetwork.BackupOwner> owners =
+            io.github.zgxhzhr.maidfm.service.MaidBackupService.ScanResult scanResult =
                     MaidBackupService.scan(server, player.getUUID(), player.hasPermissions(2));
+            List<IMaidFileNetwork.BackupOwner> owners = scanResult.owners();
+            // 扫描被上限/时间预算截断时明确告知：否则玩家会以为「就这么多备份」，
+            // 从而误判某只女仆没有备份。走已有 feedback 通道，不改协议。
+            if (scanResult.truncated()) {
+                sendFeedback(player, Component.translatable("maid_file_manager.server.backup_list_truncated"));
+            }
             // 发送前按接收端解码维度预检：主人组数与总字节均需在上限内，超限只回执提示，
             // 绝不发坏包把客户端断连
             if (owners.size() > MaidFilePackets.MAX_BACKUP_OWNERS) {
