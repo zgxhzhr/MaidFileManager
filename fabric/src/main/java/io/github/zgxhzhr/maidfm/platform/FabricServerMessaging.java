@@ -1,5 +1,6 @@
 package io.github.zgxhzhr.maidfm.platform;
 
+import io.github.zgxhzhr.maidfm.MaidFileModFabric;
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
 import io.github.zgxhzhr.maidfm.platform.services.ServerMessaging;
 
@@ -66,5 +67,18 @@ public final class FabricServerMessaging implements ServerMessaging {
     @Override
     public net.minecraft.server.MinecraftServer serverOf(ServerPlayer player) {
         return player == null ? null : player.server;
+    }
+
+    @Override
+    public void sendExportBatchResult(ServerPlayer player, byte[] encodedPayload) {
+        net.minecraft.network.FriendlyByteBuf out = net.fabricmc.fabric.api.networking.v1.PacketByteBufs.create();
+        out.writeBytes(encodedPayload);
+        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player,
+                io.github.zgxhzhr.maidfm.network.MaidFilePackets.ID_EXPORT_BATCH_RESULT, out);
+    }
+
+    @Override
+    public boolean sendChunkedDownload(ServerPlayer player, String kind, byte[] payload) {
+        return MaidFileModFabric.sendChunkedDownload(player, kind, payload);
     }
 }

@@ -50,6 +50,19 @@ public final class PacketSender {
         }
 
         @Override
+        public void sendExportBatchResult(ServerPlayer player, byte[] encodedPayload) {
+            Constants.LOG.error("[maid_file_manager] ServerMessaging 未加载，导出结果被丢弃（{} 字节）",
+                    encodedPayload.length);
+        }
+
+        @Override
+        public boolean sendChunkedDownload(ServerPlayer player, String kind, byte[] payload) {
+            Constants.LOG.error("[maid_file_manager] ServerMessaging 未加载，分片下发被丢弃（{} 字节）",
+                    payload == null ? 0 : payload.length);
+            return false;
+        }
+
+        @Override
         public boolean hasOpPermission(ServerPlayer player) {
             return false;
         }
@@ -139,5 +152,23 @@ public final class PacketSender {
     /** 把配置广播给玩家所在的全服（自己拿 server，供业务层调用）。 */
     public static void broadcastServerConfigTo(net.minecraft.server.level.ServerPlayer context) {
         broadcastServerConfig(serverOf(context));
+    }
+
+    /** 发送导出结果整包（已编码）。 */
+    public static void sendExportBatchResult(net.minecraft.server.level.ServerPlayer player,
+                                             byte[] encodedPayload) {
+        if (player == null || encodedPayload == null || encodedPayload.length == 0) {
+            return;
+        }
+        messaging().sendExportBatchResult(player, encodedPayload);
+    }
+
+    /** 分片下发；返回 false 表示超总量上限（已回执失败）。 */
+    public static boolean sendChunkedDownload(net.minecraft.server.level.ServerPlayer player,
+                                              String kind, byte[] payload) {
+        if (player == null) {
+            return false;
+        }
+        return messaging().sendChunkedDownload(player, kind, payload);
     }
 }

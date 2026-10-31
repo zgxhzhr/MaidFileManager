@@ -88,4 +88,22 @@ public interface ServerMessaging {
      * 只能走 {@code ((ServerLevel) player.level()).getServer()}。
      */
     net.minecraft.server.MinecraftServer serverOf(ServerPlayer player);
+
+    /**
+     * 发送「导出结果」整包（已编码好的字节，不走分片）。
+     *
+     * <p>收的是已编码字节而不是 List&lt;MaidFileData&gt;：序列化 + 契约预检 + 编码都在 common
+     * 的 ServerPacketHandlers 里做完了，各端只负责把这段字节按自己的网络 API 发出去。
+     */
+    void sendExportBatchResult(ServerPlayer player, byte[] encodedPayload);
+
+    /**
+     * 分片下发（大载荷，超过单包上限时用）。
+     *
+     * <p>分片协议（sessionId / total / index / chunk）在各端实现里，因为它与接收端
+     * ChunkedUploadAssembler 的读法必须严格配对。
+     *
+     * @return true=全部发出；false=超总量上限（已回执失败）
+     */
+    boolean sendChunkedDownload(ServerPlayer player, String kind, byte[] payload);
 }
