@@ -7,6 +7,7 @@ import io.github.zgxhzhr.maidfm.data.ImportResult;
 import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import io.github.zgxhzhr.maidfm.data.MaidProfileView;
+import io.github.zgxhzhr.maidfm.service.BaubleHandler;
 import io.github.zgxhzhr.maidfm.service.MaidProfileService;
 import io.github.zgxhzhr.maidfm.service.MaidTransferService;
 import io.netty.buffer.ByteBuf;
@@ -64,7 +65,7 @@ public final class MaidFilePayloads {
         // Curios 饰品裁剪提示：未声明模组的饰品不会随女仆迁移，必须明确告知发起导出的人。
         // curiosDropTip() 取出即清零，同一批次只提示一次。
         net.minecraft.network.chat.Component curiosTip =
-                io.github.zgxhzhr.maidfm.service.MaidTransferService.curiosDropTip();
+                io.github.zgxhzhr.maidfm.service.BaubleHandler.curiosDropTip();
         if (curiosTip != null) {
             feedback(sp, curiosTip);
         }
@@ -246,8 +247,8 @@ public final class MaidFilePayloads {
                                 MaidConfigManager.isBaubleStripAttributes(),
                                 MaidConfigManager.getBaubleBlockedList());
                         // 单条导入同样要消费 Curios 批次统计（第六轮 N5）。
-                        MaidTransferService.curiosDropTip();
-                        feedback(sp, MaidTransferService.withBaubleDetails(result));
+                        BaubleHandler.curiosDropTip();
+                        feedback(sp, BaubleHandler.withBaubleDetails(result));
                     } catch (Throwable t) {
                         handleError(sp, "IMPORT_FILE", t);
                     }
@@ -418,7 +419,7 @@ public final class MaidFilePayloads {
                                     stripAttributes, blocked));
                         }
                         // 导入路径同样会产生 Curios 批次统计，必须在每次导入结束时消费掉（第六轮 N5）。
-                        MaidTransferService.curiosDropTip();
+                        BaubleHandler.curiosDropTip();
                         Component summary = MaidTransferService.buildBatchSummary(results);
                         if (deleteAfterImport) {
                             // 请求删除源文件：回传逐项 spawned 标志（与请求顺序对齐），客户端只删成功的文件
@@ -645,7 +646,7 @@ public final class MaidFilePayloads {
                         java.util.List<String> values;
                         if (MaidConfigManager.KEY_BAUBLE_BLOCKED_LIST.equals(key)) {
                             // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读
-                            values = MaidTransferService.sanitizeBaubleBlockedList(ids);
+                            values = BaubleHandler.sanitizeBaubleBlockedList(ids);
                         } else if (MaidConfigManager.KEY_BAUBLE_BLOCKED_NAMESPACES.equals(key)
                                 || MaidConfigManager.KEY_BAUBLE_BLOCKED_CURIOS_SLOTS.equals(key)) {
                             // 模组 / 槽位清单：客户端提交可被篡改，服务端按标识符字符集收窄
