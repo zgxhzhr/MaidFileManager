@@ -45,15 +45,15 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     private enum Tab {EXPORT, IMPORT}
 
     /** 全屏深色背景（替代 Minecraft 默认泥土背景） */
-    private static final int SCREEN_BG = 0xFF101010;
+    static final int SCREEN_BG = 0xFF101010;
     /** 主面板颜色（不透明深棕） */
-    private static final int PANEL_BG = 0xFF282018;
-    private static final int PANEL_BORDER = 0xFF8B5A2B;
+    static final int PANEL_BG = 0xFF282018;
+    static final int PANEL_BORDER = 0xFF8B5A2B;
     private static final int LIST_BG = 0xFF1A1510;
     private static final int ROW_HOVER = 0x40FFFFFF;
-    private static final int HEADER_COLOR = 0xFFFFE082;
-    private static final int TEXT_COLOR = 0xFFFFFFFF;
-    private static final int SUBTEXT_COLOR = 0xFFB0B0B0;
+    static final int HEADER_COLOR = 0xFFFFE082;
+    static final int TEXT_COLOR = 0xFFFFFFFF;
+    static final int SUBTEXT_COLOR = 0xFFB0B0B0;
     private static final int ACCENT = 0xFFD0A060;
 
     private static final int MARGIN = 30;
@@ -114,9 +114,9 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     /** OP 统一导出入口按钮（仅 OP 可见；面板左上角小按钮 → 独立确认界面） */
     private Button serverExportTriggerBtn;
     /** 统一导出浏览模式：true = 列表显示所有在线玩家（以各玩家为中心）的女仆 */
-    private boolean serverExportMode;
+    boolean serverExportMode;
     /** 统一导出异步结果正在等待：此期间网络回调 onFeedbackReceived 仅显示聊天栏，不覆盖主界面底部黄字（Fix 截图3「共成功0个」多余黄字） */
-    private long serverExportSuppressFeedbackUntil = 0L;
+    long serverExportSuppressFeedbackUntil = 0L;
     /** 统一导出确认后：等服务端列表回包再全选并提交（否则 owner 映射为空，导出 0 条） */
     /**
      * @deprecated 已废弃：统一导出确认窗不再自动执行导出（改为只进入面板后由用户勾选），
@@ -552,7 +552,7 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
     }
 
     /** 切换统一导出浏览模式（仅 OP 可见入口）：进入后按玩家分组展示所有在线玩家（以各玩家为中心）的女仆 */
-    private void toggleServerExportMode() {
+    void toggleServerExportMode() {
         serverExportMode = !serverExportMode;
         // 进入/退出都重置统一导出状态与勾选（两份 maidList 数据源不同，混用会导错主人）
         serverGroups = new ArrayList<>();
@@ -888,7 +888,17 @@ public class MaidFileManagerScreen extends Screen implements IMaidFileNetwork.Cl
         }
     }
 
-    private void setFeedback(Component msg) {
+    /**
+     * 供同包界面访问的 Minecraft 实例。
+     *
+     * <p>{@code Screen.minecraft} 是 {@code protected}，同包的独立界面类（如
+     * {@link MaidServerExportScreen}）无法直接访问父界面的实例，只能走这个包级入口。
+     */
+    net.minecraft.client.Minecraft getMc() {
+        return this.minecraft;
+    }
+
+    void setFeedback(Component msg) {
         if (msg == null) {
             msg = Component.empty();
         }
@@ -2454,169 +2464,4 @@ setScrollAmount(0);
         if (this.minecraft == null) return;
         this.minecraft.setScreen(new MaidServerExportScreen(this));
     }
-
-    /** 统一导出全员独立确认界面（按需求新增的独立界面；确认后回到主界面，切换到统一导出模式并自动执行导出） */
-    public static class MaidServerExportScreen extends Screen {
-        private final MaidFileManagerScreen parent;
-        /** 确认屏面板的理想高度（内容够用时用它；屏幕不够高时会被 clamp 到 height-16） */
-        private static final int CONFIRM_PANEL_H = 240;
-
-        private final boolean hasPermission;
-
-        public MaidServerExportScreen(MaidFileManagerScreen parent) {
-            super(Component.translatable("maid_file_manager.gui.server_export.confirm_title"));
-            this.parent = parent;
-            this.hasPermission = parent.minecraft != null && parent.minecraft.player != null
-                    && parent.minecraft.player.hasPermissions(2);
-        }
-
-        @Override
-        public void removed() {
-            // 界面背景音乐（试验性功能）：离开界面时释放
-            UiMusicManager.leave(this);
-            super.removed();
-        }
-
-        @Override
-        public void tick() {
-            super.tick();
-            UiMusicManager.tick();
-        }
-
-        @Override
-        protected void init() {
-            UiMusicManager.enter(this);
-            // 两按钮总宽必须装进面板：341 宽时面板只有 325，160×2+20=340 会溢出
-            int btnW = Math.min(160, Math.max(60, (Math.min(380, this.width - 16) - 20 - 24) / 2));
-            int btnH = 20;
-            // 【v4-3Fix 截图2：按钮从 height/2+30 下移到 height/2+96】
-            //   说明文字渲染：标题 y=height/2-70，+26 标题底 + 9行×14 = h/2+82 最后一行文字底，再加 14px 间隙到 h/2+96。
-            // 原为固定加性偏移 height/2+96（按 1080p+GUI scale 2 的说明文字行数推出）。
-            // 1366×768 + GUI scale 4 时逻辑分辨率仅 341×192，height/2+96 = 192 已贴屏幕底边，按钮整体出屏。
-            // 改为按「自适应后的面板底部」定位，与 render() 用同一公式。
-            int panelHForButtons = Math.min(CONFIRM_PANEL_H, this.height - 16);
-            int panelTopForButtons = (this.height - panelHForButtons) / 2;
-            int centerY = panelTopForButtons + panelHForButtons - btnH - 12;
-            int gap = 20;
-            int baseX = this.width / 2 - btnW - gap / 2;
-            // 确认按钮（仅 OP 可用）
-            Button confirmBtn = Button.builder(Component.translatable("maid_file_manager.gui.export.confirm_ok"), b -> onConfirm())
-                    .bounds(baseX, centerY, btnW, btnH).build();
-            confirmBtn.active = hasPermission;
-            addRenderableWidget(confirmBtn);
-            // 取消按钮（所有人都可用）
-            addRenderableWidget(Button.builder(Component.translatable("maid_file_manager.gui.button.cancel_back"), b -> {
-                if (this.minecraft != null) this.minecraft.setScreen(parent);
-            }).bounds(baseX + btnW + gap, centerY, btnW, btnH).build());
-        }
-
-        /** 确认导出：回到主界面 → 切换到统一导出模式 → 主动执行 action 导出逻辑 */
-        private void onConfirm() {
-            if (!hasPermission || this.minecraft == null) return;
-            this.minecraft.setScreen(parent);
-            // 强制切换到统一导出模式（确保切换数据源为在线玩家分组）
-            if (!parent.serverExportMode) parent.toggleServerExportMode();
-            // 关键：此时 maidOwnerByEntityId 还是空的（列表要等服务端回包才有），
-            // 立刻全选+导出会全部落到空玩家名 → 服务端查不到玩家 → 导出 0 条。
-            // 因此只置标志并重新拉列表，真正的全选+导出由 onServerExportListReceived 触发。
-            // 不再置 pendingServerExport：确认只负责进入统一导出面板，
-            // 真正的导出由用户在列表里勾选后点「通过服务端导出选中女仆」触发。
-            // 接上反馈抑制窗口（P2-26）：该字段原先只在声明与 toggle 两处置 0、从未赋正值，
-            // 于是 onFeedbackReceived 里「异步期间只写聊天栏、不覆盖底部黄字」的分支是死的，
-            // 服务端异步回执仍会盖掉主界面刚显示的「请求已发送」。15 秒后自动失效。
-            parent.serverExportSuppressFeedbackUntil = System.currentTimeMillis() + 15_000L;
-            // 不再调 refreshCurrentTab()：上面 toggleServerExportMode() 内部末尾已经发过一次
-            // 统一导出列表请求，这里再发一次会让同一份内容发两个包；后到的回包把底部反馈
-            // 覆盖成「已加载 N 个玩家」，玩家看到「点了确认却显示加载成功」而非「正在导出」。
-            parent.setFeedback(Component.translatable("maid_file_manager.gui.server_export.preparing"));
-        }
-
-        /** 留空打断默认泥土背景 + GUI blur shader（与主界面同一硬约束：不透明、无模糊） */
-        @Override
-        public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        }
-
-        @Override
-        public boolean isPauseScreen() {
-            return false;
-        }
-
-        /** 无阴影居中文字（drawCenteredString 默认带阴影会发虚） */
-        private void drawCenteredNoShadow(GuiGraphics graphics, String text, int centerX, int y, int color) {
-            graphics.drawString(this.font, Component.literal(text),
-                    centerX - this.font.width(text) / 2, y, color, false);
-        }
-
-        @Override
-        public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            int cx = this.width / 2;
-            // 单次绘制：全屏不透明深色底 + 居中面板 + 说明文字（renderBackground 已空实现，无需再盖色）
-            graphics.fill(0, 0, this.width, this.height, SCREEN_BG);
-            int panelW = Math.min(380, this.width - 16);
-            // 面板高度自适应：与 init() 的按钮定位共用同一公式，避免两处不一致
-            int panelH = Math.min(CONFIRM_PANEL_H, this.height - 16);
-            int px = (this.width - panelW) / 2;
-            int py = (this.height - panelH) / 2;
-            graphics.fill(px, py, px + panelW, py + panelH, PANEL_BG);
-            graphics.renderOutline(px, py, panelW, panelH, PANEL_BORDER);
-            drawTextBlock(graphics, cx, py);
-            // 按钮由 super 在面板之上正常绘制一次，禁止全屏盖色+反射重绘
-            super.render(graphics, mouseX, mouseY, partialTick);
-        }
-
-        /** 绘制标题与说明文字（纯函数无副作用） */
-        private void drawTextBlock(GuiGraphics graphics, int cx, int py) {
-            int y = py + 20;
-            drawCenteredNoShadow(graphics,
-                    Component.translatable("maid_file_manager.gui.server_export.confirm_header").getString(),
-                    cx, y, HEADER_COLOR);
-            y += 26;
-            String[] lines;
-            if (!hasPermission) {
-                lines = new String[] {
-                    Component.translatable("maid_file_manager.gui.server_export.no_perm_line1").getString(),
-                    "",
-                    Component.translatable("maid_file_manager.gui.server_export.no_perm_line2").getString(),
-                    "",
-                    Component.translatable("maid_file_manager.gui.server_export.no_perm_line3").getString()
-                };
-            } else {
-                lines = new String[] {
-                    Component.translatable("maid_file_manager.gui.server_export.rule_intro").getString(),
-                    "",
-                    Component.translatable("maid_file_manager.gui.server_export.rule1").getString(),
-                    Component.translatable("maid_file_manager.gui.server_export.rule2").getString(),
-                    Component.translatable("maid_file_manager.gui.server_export.rule3").getString(),
-                    "",
-                    Component.translatable("maid_file_manager.gui.server_export.rule_note").getString(),
-                    "",
-                    Component.translatable("maid_file_manager.gui.server_export.rule_footer").getString()
-                };
-            }
-            int panelWText = Math.min(380, this.width - 16);
-            int textMaxW = panelWText - 32;
-            // 说明文字必须按面板宽度换行：最长中文行 531px、英文约 870px，
-            // 341 宽屏下不换行会大段出屏两侧（原实现直接 drawCenteredNoShadow 整行）。
-            for (String line : lines) {
-                if (line == null || line.isEmpty()) {
-                    y += 14;
-                    continue;
-                }
-                for (net.minecraft.util.FormattedCharSequence seq
-                        : this.font.split(Component.literal(line), textMaxW)) {
-                    graphics.drawString(this.font, seq, cx - this.font.width(seq) / 2, y, TEXT_COLOR, false);
-                    y += 10;
-                }
-            }
-        }
-
-        @Override
-        public boolean shouldCloseOnEsc() { return true; }
-
-        @Override
-        public void onClose() {
-            if (this.minecraft != null) this.minecraft.setScreen(parent);
-        }
-    }
-
 }
