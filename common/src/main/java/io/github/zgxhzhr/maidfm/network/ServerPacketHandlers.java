@@ -10,6 +10,8 @@ import io.github.zgxhzhr.maidfm.data.MaidProfile;
 import io.github.zgxhzhr.maidfm.data.MaidProfileView;
 import io.github.zgxhzhr.maidfm.platform.PacketSender;
 import io.github.zgxhzhr.maidfm.service.BaubleHandler;
+import io.github.zgxhzhr.maidfm.service.MaidBackupService;
+import io.github.zgxhzhr.maidfm.service.MaidServerCommands;
 import io.github.zgxhzhr.maidfm.service.MaidProfileService;
 import io.github.zgxhzhr.maidfm.service.MaidTransferService;
 
@@ -325,5 +327,101 @@ public final class ServerPacketHandlers {
                 exportedIds.size(), player.getName().getString());
         Constants.LOG.debug("[maid_file_manager] EXPORT_BATCH: player={} sent={} removed=0",
                 player.getName().getString(), results.size());
+    }
+
+    // ==================== 列表类请求 ====================
+
+    /**
+     * 处理「OP 统一导出：请求全服玩家女仆分组」。
+     *
+     * <p>两级预检必须在分配缓冲/编码之前：组数与总字节。全服女仆聚合可能远超单包上限，
+     * 超限必须回执明确提示，而不是发出坏包把 OP 客户端断连。
+     */
+    public static void requestServerExportList(ServerPlayer player) {
+        if (player == null) {
+            return;
+        }
+        if (!PacketSender.hasOpPermission(player)) {
+            PacketSender.sendFeedback(player,
+                    Component.translatable("maid_file_manager.server.bulk_export_op_only"));
+            return;
+        }
+        java.util.List<IMaidFileNetwork.PlayerMaidGroup> groups =
+                MaidServerCommands.collectOnlinePlayerMaids(PacketSender.serverOf(player));
+        // 组数维度预检：接收端 readPlayerMaidGroups 硬上限 128
+        if (groups.size() > MaidFilePackets.MAX_PLAYER_GROUPS) {
+            PacketSender.sendFeedback(player, Component.translatable(
+                    "maid_file_manager.server.too_many_players",
+                    groups.size(), MaidFilePackets.MAX_PLAYER_GROUPS));
+            return;
+        }
+        // 发送前按真实线格式预检总字节
+        net.minecraft.network.FriendlyByteBuf probe = new net.minecraft.network.FriendlyByteBuf(
+                io.netty.buffer.Unpooled.buffer());
+        int size;
+        try {
+            MaidInfoCodec.writePlayerMaidGroups(probe, groups);
+            size = probe.readableBytes();
+        } finally {
+            probe.release();
+        }
+        if (size > MaidFilePackets.MAX_PACKET_BYTES) {
+            Constants.LOG.warn("[maid_file_manager] 统一导出列表 {} 字节超过单包上限 {}，拒绝发送",
+                    size, MaidFilePackets.MAX_PACKET_BYTES);
+            PacketSender.sendFeedback(player, Component.translatable(
+                    "maid_file_manager.server.list_too_large",
+                    size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024));
+            return;
+        }
+        PacketSender.sendServerExportList(player, groups);
+    }
+
+    /**
+     * 处理「请求可浏览的自动备份列表」。
+     *
+     * <p>权限：OP 可见全部玩家备份，非 OP 仅可见自己名下的。
+     * 扫描被上限/时间预算截断时必须明确告知，否则玩家会以为「就这么多备份」，
+     * 从而误判某只女仆没有备份。
+     */
+    public static void requestBackupList(ServerPlayer player) {
+        if (player == null) {
+            return;
+        }
+        // 频控：这类请求在主线程同步跑，循环发包能把服务器卡死，且不需要 OP 权限
+        if (!RequestThrottle.allow(player.getUUID(), "backup_list", 5000L)) {
+            return;
+        }
+        MaidBackupService.ScanResult scanResult = MaidBackupService.scan(
+                PacketSender.serverOf(player), player.getUUID(), PacketSender.hasOpPermission(player));
+        java.util.List<IMaidFileNetwork.BackupOwner> owners = scanResult.owners();
+        if (scanResult.truncated()) {
+            PacketSender.sendFeedback(player,
+                    Component.translatable("maid_file_manager.server.backup_list_truncated"));
+        }
+        // 接收端解码维度预检：主人组数、总字节均需在上限内
+        if (owners.size() > MaidFilePackets.MAX_BACKUP_OWNERS) {
+            PacketSender.sendFeedback(player, Component.translatable(
+                    "maid_file_manager.server.too_many_backup_owners",
+                    owners.size(), MaidFilePackets.MAX_BACKUP_OWNERS));
+            return;
+        }
+        net.minecraft.network.FriendlyByteBuf probe = new net.minecraft.network.FriendlyByteBuf(
+                io.netty.buffer.Unpooled.buffer());
+        int size;
+        try {
+            MaidBackupCodec.writeBackupOwners(probe, owners);
+            size = probe.readableBytes();
+        } finally {
+            probe.release();
+        }
+        if (size > MaidFilePackets.MAX_PACKET_BYTES) {
+            Constants.LOG.warn("[maid_file_manager] 备份列表 {} 字节超过单包上限 {}，拒绝发送",
+                    size, MaidFilePackets.MAX_PACKET_BYTES);
+            PacketSender.sendFeedback(player, Component.translatable(
+                    "maid_file_manager.server.backup_list_too_large",
+                    size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024));
+            return;
+        }
+        PacketSender.sendBackupList(player, owners);
     }
 }

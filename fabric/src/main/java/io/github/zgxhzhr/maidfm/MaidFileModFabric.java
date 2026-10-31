@@ -180,30 +180,7 @@ public class MaidFileModFabric implements ModInitializer {
 
         // OP 统一导出：返回所有在线玩家（以各玩家为中心）的女仆分组列表
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_SERVER_EXPORT_LIST, (server, player, buf) -> {
-            if (!player.hasPermissions(2)) {
-                sendFeedback(player, Component.translatable("maid_file_manager.server.bulk_export_op_only"));
-                return;
-            }
-            List<IMaidFileNetwork.PlayerMaidGroup> groups = MaidServerCommands.collectOnlinePlayerMaids(server);
-            // 组数维度预检：接收端 readPlayerMaidGroups 硬上限 128，空列表时整包极小，
-            // 只查字节数会在数百在线时放行、于客户端解码端炸包断连，必须先按组数拒绝
-            if (groups.size() > MaidFilePackets.MAX_PLAYER_GROUPS) {
-                sendFeedback(player, Component.translatable("maid_file_manager.server.too_many_players", groups.size(), MaidFilePackets.MAX_PLAYER_GROUPS));
-                return;
-            }
-            FriendlyByteBuf out = PacketByteBufs.create();
-            MaidInfoCodec.writePlayerMaidGroups(out, groups);
-            // 发送前按真实线格式预检总字节：全服女仆聚合可能远超单包上限，
-            // 超限必须回执明确提示而非发出坏包把 OP 客户端断连
-            int size = out.readableBytes();
-            if (size > MaidFilePackets.MAX_PACKET_BYTES) {
-                Constants.LOG.warn("[maid_file_manager] 统一导出列表 {} 字节超过单包上限 {}，拒绝发送",
-                        size, MaidFilePackets.MAX_PACKET_BYTES);
-                sendFeedback(player, Component.translatable("maid_file_manager.server.list_too_large", size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024));
-                out.release();
-                return;
-            }
-            ServerPlayNetworking.send(player, MaidFilePackets.ID_SERVER_EXPORT_LIST, out);
+            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestServerExportList(player);
         });
 
         // OP 统一导出提交：代各玩家导出女仆到服务端磁盘 maid_exports/<玩家名>/
@@ -231,35 +208,7 @@ public class MaidFileModFabric implements ModInitializer {
 
         // 备份管理：服务端按权限过滤后返回可浏览的自动备份列表（OP 可见全部玩家，非 OP 仅自己）
         registerC2SReceiver(MaidFilePackets.ID_REQUEST_BACKUP_LIST, (server, player, buf) -> {
-            // 频次限制：这类请求在主线程同步跑，循环发包能把服务器卡死（不需 OP）
-            if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "backup_list", 5000L)) {
-                return;
-            }
-            io.github.zgxhzhr.maidfm.service.MaidBackupService.ScanResult scanResult =
-                    MaidBackupService.scan(
-                    server, player.getUUID(), player.hasPermissions(2));
-            List<IMaidFileNetwork.BackupOwner> owners = scanResult.owners();
-            // 扫描被上限/时间预算截断时明确告知：否则玩家会以为「就这么多备份」，
-            // 从而误判某只女仆没有备份。走已有 feedback 通道，不改协议。
-            if (scanResult.truncated()) {
-                sendFeedback(player, Component.translatable("maid_file_manager.server.backup_list_truncated"));
-            }
-            // 发送前按接收端解码维度预检：主人组数、总字节均需在上限内，超限只回执提示，绝不发坏包把客户端断连
-            if (owners.size() > MaidFilePackets.MAX_BACKUP_OWNERS) {
-                sendFeedback(player, Component.translatable("maid_file_manager.server.too_many_backup_owners", owners.size(), MaidFilePackets.MAX_BACKUP_OWNERS));
-                return;
-            }
-            FriendlyByteBuf out = PacketByteBufs.create();
-            MaidBackupCodec.writeBackupOwners(out, owners);
-            int size = out.readableBytes();
-            if (size > MaidFilePackets.MAX_PACKET_BYTES) {
-                Constants.LOG.warn("[maid_file_manager] 备份列表 {} 字节超过单包上限 {}，拒绝发送",
-                        size, MaidFilePackets.MAX_PACKET_BYTES);
-                sendFeedback(player, Component.translatable("maid_file_manager.server.backup_list_too_large", size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024));
-                out.release();
-                return;
-            }
-            ServerPlayNetworking.send(player, MaidFilePackets.ID_BACKUP_LIST, out);
+            io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.requestBackupList(player);
         });
         // 客户端上报的「模型 ID → 显示名」映射：合并进服务端汇总表，
         // 备份列表解析模型名时优先查它（拿到别人私有模型中文名的唯一来源）
