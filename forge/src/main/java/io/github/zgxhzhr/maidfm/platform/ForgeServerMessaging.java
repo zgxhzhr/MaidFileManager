@@ -137,4 +137,20 @@ public final class ForgeServerMessaging implements ServerMessaging {
                 player.getName().getString(), payload.length, total);
         return true;
     }
+
+    @Override
+    public void sendServerExportList(ServerPlayer player,
+                                     java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.PlayerMaidGroup> groups) {
+        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        io.github.zgxhzhr.maidfm.network.MaidInfoCodec.writePlayerMaidGroups(buf, groups);
+        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_SERVER_EXPORT_LIST, buf);
+    }
+
+    @Override
+    public void sendBackupList(ServerPlayer player,
+                               java.util.List<io.github.zgxhzhr.maidfm.network.IMaidFileNetwork.BackupOwner> owners) {
+        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        io.github.zgxhzhr.maidfm.network.MaidBackupCodec.writeBackupOwners(buf, owners);
+        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_BACKUP_LIST, buf);
+    }
 }

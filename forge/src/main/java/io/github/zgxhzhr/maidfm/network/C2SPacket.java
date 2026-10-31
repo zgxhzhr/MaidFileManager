@@ -240,33 +240,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     }
 
     /** OP 统一导出：返回所有在线玩家（以各玩家为中心）的女仆分组列表 */
+    /** 业务逻辑已下沉到 {@link ServerPacketHandlers}（六端共用一份）。 */
     private static void handleRequestServerExportList(ServerPlayer player) {
-        if (!player.hasPermissions(2)) {
-            sendFeedback(player, Component.translatable("maid_file_manager.server.bulk_export_op_only"));
-            return;
-        }
-        List<IMaidFileNetwork.PlayerMaidGroup> groups =
-                io.github.zgxhzhr.maidfm.service.MaidServerCommands.collectOnlinePlayerMaids(player.server);
-        // 组数维度预检：接收端 readPlayerMaidGroups 硬上限 128，必须在分配缓冲/编码前拒绝，
-        // 否则数百在线时既可能分配超大缓冲，又会在客户端解码端炸包断连
-        if (groups.size() > MaidFilePackets.MAX_PLAYER_GROUPS) {
-            sendFeedback(player, Component.translatable("maid_file_manager.server.too_many_players", groups.size(), MaidFilePackets.MAX_PLAYER_GROUPS));
-            return;
-        }
-        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        MaidInfoCodec.writePlayerMaidGroups(buf, groups);
-        // 发送前按真实线格式预检总字节：全服女仆聚合可能远超单包上限，
-        // 超限必须回执明确提示而非发出坏包把 OP 客户端断连
-        int size = buf.readableBytes();
-        if (size > MaidFilePackets.MAX_PACKET_BYTES) {
-            Constants.LOG.warn("[maid_file_manager] 统一导出列表 {} 字节超过单包上限 {}，拒绝发送",
-                    size, MaidFilePackets.MAX_PACKET_BYTES);
-            sendFeedback(player, Component.translatable("maid_file_manager.server.list_too_large", size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024));
-            // 未进入发送流程，缓冲由本方法释放；进入 sendToPlayer 后无论成败都由其内部释放
-            buf.release();
-            return;
-        }
-        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_SERVER_EXPORT_LIST, buf);
+        ServerPacketHandlers.requestServerExportList(player);
     }
 
     /** OP 统一导出提交：代各玩家导出女仆到服务端磁盘 maid_exports/<玩家名>/ */
@@ -300,44 +276,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     }
 
     /** 备份管理：请求服务端返回可浏览的自动备份列表（按权限过滤后回发） */
+    /** 业务逻辑已下沉到 {@link ServerPacketHandlers}（六端共用一份）。 */
     private static void handleRequestBackupList(ServerPlayer player) {
-        // 频次限制：同一玩家 1~5 秒内重复请求直接丢弃（这类请求在主线程同步跑，
-        // 循环发包能把服务器卡死，且不需要 OP 权限）
-        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "backup_list", 5000L)) {
-            return;
-        }
-        // 权限：OP 可见全部玩家备份，非 OP 仅可见自己名下的备份
-        io.github.zgxhzhr.maidfm.service.MaidBackupService.ScanResult scanResult =
-                io.github.zgxhzhr.maidfm.service.MaidBackupService.scan(
-                        player.server, player.getUUID(), player.hasPermissions(2));
-        List<IMaidFileNetwork.BackupOwner> owners = scanResult.owners();
-        // 扫描被上限/时间预算截断时明确告知：否则玩家会以为「就这么多备份」，
-        // 从而误判某只女仆没有备份。走已有 feedback 通道，不改协议。
-        if (scanResult.truncated()) {
-            sendFeedback(player, Component.translatable("maid_file_manager.server.backup_list_truncated"));
-        }
-        // 发送前按接收端解码维度预检：主人组数、总字节均需在上限内，
-        // 超限只回执提示，绝不发坏包把客户端断连
-        if (owners.size() > MaidFilePackets.MAX_BACKUP_OWNERS) {
-            sendFeedback(player, Component.translatable("maid_file_manager.server.too_many_backup_owners", owners.size(), MaidFilePackets.MAX_BACKUP_OWNERS));
-            return;
-        }
-        FriendlyByteBuf probe = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        try {
-            MaidBackupCodec.writeBackupOwners(probe, owners);
-            int size = probe.readableBytes();
-            if (size > MaidFilePackets.MAX_PACKET_BYTES) {
-                Constants.LOG.warn("[maid_file_manager] 备份列表 {} 字节超过单包上限 {}，拒绝发送",
-                        size, MaidFilePackets.MAX_PACKET_BYTES);
-                sendFeedback(player, Component.translatable("maid_file_manager.server.backup_list_too_large", size / 1024, MaidFilePackets.MAX_PACKET_BYTES / 1024));
-                return;
-            }
-        } finally {
-            probe.release();
-        }
-        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        MaidBackupCodec.writeBackupOwners(buf, owners);
-        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_BACKUP_LIST, buf);
+        ServerPacketHandlers.requestBackupList(player);
     }
 
     /** 备份管理：请求服务端导出某条备份（校验权限后读取并回传为 .maid 数据） */
