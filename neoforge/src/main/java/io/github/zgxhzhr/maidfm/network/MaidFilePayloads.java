@@ -324,20 +324,17 @@ public final class MaidFilePayloads {
                                 // 删除**新批次**的女仆，而新批次文件可能根本没写成功，构成不可逆数据丢失。
                                 // putIfAbsent 前先清掉已过 TTL 的陈旧登记：TTL 原先只在 ack 到达时判，
                                 // 回执永远不来时该玩家会一直命中 putIfAbsent != null → 「导出并移除」永久失效。
-                                Long prevPendingAt = PENDING_REMOVAL_AT.get(sp.getUUID());
-                                if (prevPendingAt != null
-                                        && System.currentTimeMillis() - prevPendingAt > PENDING_REMOVAL_TTL_MS) {
-                                    PENDING_REMOVAL.remove(sp.getUUID());
-                                    PENDING_REMOVAL_AT.remove(sp.getUUID());
-                                    Constants.LOG.warn("[maid_file_manager] 陈旧待删登记已过 TTL，清掉后重建: player={}",
-                                            sp.getName().getString());
-                                }
-                                if (PENDING_REMOVAL.putIfAbsent(sp.getUUID(), new ArrayList<>(exportedIds)) != null) {
+                                io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.RegisterResult reg =
+                                        io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.register(sp.getUUID(), exportedIds);
+                                if (reg == io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.RegisterResult.BUSY) {
                                     Constants.LOG.warn("[maid_file_manager] 上一笔待删回执未到，本次导出不执行移除: player={}, 本批 {} 个",
                                             sp.getName().getString(), exportedIds.size());
                                     feedback(sp, Component.translatable("maid_file_manager.server.remove_busy"));
                                 } else {
-                                    PENDING_REMOVAL_AT.put(sp.getUUID(), System.currentTimeMillis());
+                                    if (reg == io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.RegisterResult.REGISTERED_AFTER_EXPIRY) {
+                                        Constants.LOG.warn("[maid_file_manager] 陈旧待删登记已过 TTL，清掉后重建: player={}",
+                                                sp.getName().getString());
+                                    }
                                     Constants.LOG.info("[maid_file_manager] 导出并移除：登记待删 {} 个实体，等待客户端写盘回执 player={}",
                                             exportedIds.size(), sp.getName().getString());
                                 }
@@ -1555,79 +1552,9 @@ public final class MaidFilePayloads {
         public void handle(IPayloadContext ctx) {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
-                    handleExportWriteAck(sp, success);
+                    io.github.zgxhzhr.maidfm.service.PendingRemovalRegistry.confirmAndRemove(sp.getUUID(), success, sp);
                 }
             });
         }
-    }
-
-    /** 待删除实体：玩家 UUID → 实体 ID 列表（等客户端写盘回执后才删） */
-    private static final java.util.Map<java.util.UUID, java.util.List<Integer>> PENDING_REMOVAL =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /** 待删登记的写入时刻（毫秒）：客户端回执永远不来时用它判定超时 */
-    private static final java.util.Map<java.util.UUID, Long> PENDING_REMOVAL_AT =
-            new java.util.concurrent.ConcurrentHashMap<>();
-
-    /**
-     * 待删登记存活时长。客户端崩溃/断线导致回执永远不来时不能让登记永久占位，
-     * 否则「导出并移除」会永久失效（女仆一直不删）且玩家无法察觉。
-     */
-    private static final long PENDING_REMOVAL_TTL_MS = 5 * 60 * 1000L;
-
-    /** 玩家断线时清掉其待删登记：回执不可能再来，留着只会阻塞后续导出 */
-    public static void clearPendingRemoval(java.util.UUID playerId) {
-        if (playerId != null) {
-            PENDING_REMOVAL.remove(playerId);
-            PENDING_REMOVAL_AT.remove(playerId);
-        }
-    }
-
-    /** 客户端写盘回执：false 则放弃删除，女仆留在世界里 */
-    private static void handleExportWriteAck(ServerPlayer sp, boolean success) {
-        java.util.List<Integer> ids = PENDING_REMOVAL.remove(sp.getUUID());
-        if (ids == null || ids.isEmpty()) {
-            return;
-        }
-        Long pendingAt = PENDING_REMOVAL_AT.remove(sp.getUUID());
-        if (pendingAt != null && System.currentTimeMillis() - pendingAt > PENDING_REMOVAL_TTL_MS) {
-            Constants.LOG.warn("[maid_file_manager] 待删登记已超时（{} ms），丢弃: player={}",
-                    PENDING_REMOVAL_TTL_MS, sp.getName().getString());
-            return;
-        }
-        if (!success) {
-            Constants.LOG.warn("[maid_file_manager] 客户端写盘失败，已放弃删除女仆（{} 个），player={}",
-                    ids.size(), sp.getName().getString());
-            return;
-        }
-        int removed = 0;
-        for (Integer entityId : ids) {
-            var e = sp.level().getEntity(entityId);
-            if (e == null) {
-                continue;
-            }
-            // 防御性校验：删除不可逆，删前确认「确实是女仆」且「确实归这个玩家」
-            if (!(e instanceof com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid maid)
-                    || !maid.isOwnedBy(sp)) {
-                Constants.LOG.warn("[maid_file_manager] 待删实体校验未通过，跳过: entityId={} player={}",
-                        entityId, sp.getName().getString());
-                continue;
-            }
-            try {
-                MaidTransferService.unregisterMaidWorldData(e);
-                java.util.UUID photoUuid = e.getUUID();
-                e.discard();
-                try {
-                    io.github.zgxhzhr.maidfm.data.MaidPhotoStore.delete(
-                            io.github.zgxhzhr.maidfm.platform.Services.PLATFORM.get().getGameDir(), photoUuid);
-                } catch (Throwable ignored) {
-                }
-                removed++;
-            } catch (Throwable t) {
-                Constants.LOG.warn("[maid_file_manager] 删除实体失败: entityId={} err={}", entityId, t.toString());
-            }
-        }
-        Constants.LOG.info("[maid_file_manager] 导出写盘已确认，删除女仆 {} 个 player={}",
-                removed, sp.getName().getString());
     }
 }
