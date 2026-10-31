@@ -8,6 +8,7 @@ import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
 import io.github.zgxhzhr.maidfm.network.MaidProfileCodec;
 import io.github.zgxhzhr.maidfm.network.MaidBackupCodec;
 import io.github.zgxhzhr.maidfm.network.MaidInfoCodec;
+import io.github.zgxhzhr.maidfm.service.MaidEffectCodec;
 import io.github.zgxhzhr.maidfm.service.UuidAllocator;
 import io.github.zgxhzhr.maidfm.config.ConfigFileIo;
 import io.github.zgxhzhr.maidfm.config.MaidConfigManager;
@@ -18,6 +19,7 @@ import io.github.zgxhzhr.maidfm.data.MaidFileData;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
 
@@ -68,6 +70,7 @@ public final class SelfTest {
         testNbtVersion();
         testPacketCodec();
         testMaidFileCodecs();
+        testEffectCodec();
         testUuidAllocator();
         testNbtMigration();
         testConfigKeys();
@@ -694,6 +697,109 @@ public final class SelfTest {
         eq("ProfileView: profile null 往返", null, rv.profile());
         eq("ProfileView: 饰品空", 0, rv.baubleItems().size());
         eq("ProfileView: ysmModel", true, rv.ysmModel());
+    }
+
+    private static void testEffectCodec() {
+        System.out.println("\n-- service.MaidEffectCodec（药水效果跨版本序列化） --");
+
+        // ==================== getEffectList ====================
+        ListTag sample = new ListTag();
+        CompoundTag e = new CompoundTag();
+        e.putString("forge:id", "minecraft:speed");
+        sample.add(e);
+
+        CompoundTag r1 = new CompoundTag();
+        r1.put("ActiveEffects", sample.copy());
+        eq("getEffectList: 读 ActiveEffects（1.20 键名）", 1, MaidEffectCodec.getEffectList(r1).size());
+
+        CompoundTag r2 = new CompoundTag();
+        r2.put("active_effects", sample.copy());
+        eq("getEffectList: 读 active_effects（1.21 键名）", 1, MaidEffectCodec.getEffectList(r2).size());
+
+        eq("getEffectList: 两个键都没有 -> null", null,
+                MaidEffectCodec.getEffectList(new CompoundTag()));
+
+        // ==================== removeEffectList ====================
+        CompoundTag r3 = new CompoundTag();
+        r3.put("ActiveEffects", sample.copy());
+        r3.put("active_effects", sample.copy());
+        check("removeEffectList: 返回非 null", () -> MaidEffectCodec.removeEffectList(r3) != null);
+        check("removeEffectList: ActiveEffects 已删除", () -> !r3.contains("ActiveEffects"));
+        check("removeEffectList: active_effects 已删除", () -> !r3.contains("active_effects"));
+
+        CompoundTag r4 = new CompoundTag();
+        eq("removeEffectList: 无效果时返回 null", null, MaidEffectCodec.removeEffectList(r4));
+
+        // ==================== buildNormalizedEffects：1.20 Forge 格式 ====================
+        ListTag raw120 = new ListTag();
+        CompoundTag s120 = new CompoundTag();
+        s120.putString("forge:id", "minecraft:speed");
+        s120.putInt("Amplifier", 2);
+        s120.putInt("Duration", 600);
+        s120.putByte("Ambient", (byte) 1);
+        s120.putByte("ShowParticles", (byte) 1);
+        s120.putByte("ShowIcon", (byte) 0);
+        raw120.add(s120);
+
+        ListTag n1 = MaidEffectCodec.buildNormalizedEffects(raw120);
+        eq("buildNormalized: 1.20 格式 -> 1 条", 1, n1.size());
+        CompoundTag n1e = n1.getCompound(0);
+        eq("buildNormalized: id 取自 forge:id", "minecraft:speed", n1e.getString("id"));
+        eq("buildNormalized: amplifier 转小写键", 2, n1e.getInt("amplifier"));
+        eq("buildNormalized: duration 转小写键", 600, n1e.getInt("duration"));
+        eq("buildNormalized: ambient 转小写键", (byte) 1, n1e.getByte("ambient"));
+        eq("buildNormalized: show_particles 转小写键", (byte) 1, n1e.getByte("show_particles"));
+        eq("buildNormalized: show_icon 转小写键", (byte) 0, n1e.getByte("show_icon"));
+        check("buildNormalized: 不再保留 PascalCase 键",
+                () -> !n1e.contains("Amplifier") && !n1e.contains("Duration") && !n1e.contains("Ambient"));
+
+        // ==================== buildNormalizedEffects：1.21 格式 ====================
+        ListTag raw121 = new ListTag();
+        CompoundTag s121 = new CompoundTag();
+        s121.putString("id", "minecraft:regeneration");
+        s121.putInt("amplifier", 1);
+        s121.putInt("duration", 100);
+        s121.putByte("ambient", (byte) 0);
+        s121.putByte("show_particles", (byte) 1);
+        s121.putByte("show_icon", (byte) 1);
+        raw121.add(s121);
+
+        ListTag n2 = MaidEffectCodec.buildNormalizedEffects(raw121);
+        eq("buildNormalized: 1.21 格式 -> 1 条", 1, n2.size());
+        eq("buildNormalized: 1.21 id 保留", "minecraft:regeneration", n2.getCompound(0).getString("id"));
+        eq("buildNormalized: 1.21 amplifier", 1, n2.getCompound(0).getInt("amplifier"));
+
+        // ==================== 边界 ====================
+        ListTag noId = new ListTag();
+        noId.add(new CompoundTag());
+        eq("buildNormalized: 无任何 ID 的条目被跳过",
+                0, MaidEffectCodec.buildNormalizedEffects(noId).size());
+
+        eq("buildNormalized: 空列表 -> 空",
+                0, MaidEffectCodec.buildNormalizedEffects(new ListTag()).size());
+
+        // 1.20 只有 Amplifier 没 ID：同样跳过（不能凭数字 ID 猜，那是跨版本不稳定的路径）
+        ListTag onlyPascal = new ListTag();
+        CompoundTag noId2 = new CompoundTag();
+        noId2.putInt("Amplifier", 3);
+        onlyPascal.add(noId2);
+        eq("buildNormalized: 只有 Amplifier 无 ID -> 跳过",
+                0, MaidEffectCodec.buildNormalizedEffects(onlyPascal).size());
+
+        // ==================== rebuildEffectFromNormalized：失败路径 ====================
+        CompoundTag emptyId = new CompoundTag();
+        emptyId.putString("id", "");
+        eq("rebuild: 空 id -> null", null, MaidEffectCodec.rebuildEffectFromNormalized(emptyId));
+
+        CompoundTag badId = new CompoundTag();
+        badId.putString("id", ":::not-a-valid-id:::");
+        eq("rebuild: 非法 id -> null（不抛异常）", null,
+                MaidEffectCodec.rebuildEffectFromNormalized(badId));
+
+        CompoundTag unknown = new CompoundTag();
+        unknown.putString("id", "somemod:definitely_not_registered_effect");
+        eq("rebuild: 未注册效果 -> null（不抛异常）", null,
+                MaidEffectCodec.rebuildEffectFromNormalized(unknown));
     }
 
     private static void testModelDisplayNames() {
