@@ -60,6 +60,32 @@ public interface MaidMigrationProvider {
      * 该 provider 是否可用（依赖的模组是否已加载）。
      * 默认实现用 {@link #getDependencyModId()} 检测。
      */
+/**
+     * 导入：把数据写回女仆或其关联的外部系统，并可选地向玩家补充说明。
+     *
+     * <p><b>这是一个带默认实现的重载，老 provider 不用改</b>：默认实现直接转调
+     * {@link #importData(EntityMaid, CompoundTag)}，行为与以前完全一致。
+     *
+     * <p><b>什么时候该覆盖它</b>：当你能成功完成迁移、但需要告诉玩家「有些东西没带上」
+     * 或「有些东西我跳过了」时。这类情况不适合抛 {@link MaidMigrationException}
+     * ——那是失败语义，会让玩家以为整只女仆没导入，而实际上女仆已经生成了。
+     *
+     * <p><b>两种异常的分工</b>：
+     * <ul>
+     *   <li>整段迁移失败 → 抛 {@link MaidMigrationException}，玩家看到「迁移失败（你的 message）」</li>
+     *   <li>迁移成功但不完整 → 调 {@code reporter.note(...)}，玩家看到「成功」+ 你写的说明</li>
+     * </ul>
+     *
+     * <p>框架只调用这个三参版本；只实现了二参版本的 provider 会走下面的默认实现。
+     *
+     * @param maid     刚导入生成的女仆实体（已加入世界，UUID 已确定）
+     * @param data     该 provider 在导出时返回的 CompoundTag
+     * @param reporter 用于报告「成功但有缺项」的回调，不会为 null
+     */
+    default void importData(EntityMaid maid, CompoundTag data, MigrationReporter reporter) {
+        importData(maid, data);
+    }
+
     default boolean isAvailable() {
         String dep = getDependencyModId();
         return dep == null || dep.isEmpty() || Services.PLATFORM.get().isModLoaded(dep);

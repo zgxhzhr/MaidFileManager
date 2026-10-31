@@ -918,7 +918,13 @@ public final class MaidTransferService {
                     continue;
                 }
                 try {
-                    p.importData(maid, extras.getCompoundOrEmpty(key));
+                    // 调三参重载：老 provider 走默认实现，新 provider 可用 reporter 报缺项
+                    p.importData(maid, extras.getCompoundOrEmpty(key), note -> {
+                        if (note != null && !note.isEmpty()) {
+                            migrationNotes.add(Component.translatable(
+                                    "maid_file_manager.import.migration.provider_note", key, note));
+                        }
+                    });
                 } catch (io.github.zgxhzhr.maidfm.spi.MaidMigrationException e) {
                     Constants.LOG.warn("[maid_file_manager] provider {} 迁移失败 code={}: {}",
                             key, e.code(), e.getMessage());
