@@ -239,7 +239,8 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         // 游戏运行中可能刚下载了新模型包：重扫一次，否则新包的女仆名永远显示英文
         try {
             ModelNames.reload();
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Constants.LOG.debug("[maid_file_manager] 重扫模型名失败（新下载的模型包名可能暂缺，已忽略）: {}", t.toString());
         }
         IMaidFileNetwork.ClientHandlerHolder.set(this);
         panelW = Math.min(PANEL_MAX_W, this.width - 16);
@@ -451,7 +452,8 @@ public class MaidBackupBrowserScreen extends Screen implements IMaidFileNetwork.
         try {
             ClientModelNameCache.learn(list);
             ClientModelNameCache.flush();
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
+            Constants.LOG.debug("[maid_file_manager] 写入客户端模型名缓存失败（已忽略，仅影响重启后的名字显示）: {}", t.toString());
         }
         worlds.clear();
         nameRequested.clear();
