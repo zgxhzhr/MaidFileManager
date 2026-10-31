@@ -276,27 +276,10 @@ public final class MaidConfigManager {
         return clientUiMusicVolume;
     }
 
-    /** 设置界面背景音乐开关并落盘 */
+    /** 设置界面背景音乐开关并落盘（供设置界面/调试使用） */
     public static synchronized void setClientUiMusic(boolean value) {
         clientUiMusic = value;
         saveClient();
-    }
-
-    /** 读取浮点配置并按 0..1 钳制 */
-    private static float parseVolume(Properties props, String key, float defaultValue) {
-        try {
-            String raw = props.getProperty(key);
-            if (raw == null || raw.isBlank()) {
-                return defaultValue;
-            }
-            float value = Float.parseFloat(raw.trim());
-            if (Float.isNaN(value) || value < 0F) {
-                return 0F;
-            }
-            return Math.min(value, 1F);
-        } catch (Throwable t) {
-            return defaultValue;
-        }
     }
 
     public static boolean isClientAllowServerExport() {
@@ -367,7 +350,7 @@ public final class MaidConfigManager {
 
     /** OP 维护的「按模组禁用携带」清单（不可变；同时作用于女仆自带饰品栏与 Curios 槽位） */
     public static List<String> getBaubleBlockedNamespaces() {
-        return mergeLists(serverBaubleBlockedNamespaces, baubleImportBlockedNamespaces);
+        return ConfigFileIo.mergeLists(serverBaubleBlockedNamespaces, baubleImportBlockedNamespaces);
     }
 
     /** 整合包按模组禁用清单（只读；用于界面把整合包强制的条目显示为不可取消） */
@@ -388,26 +371,12 @@ public final class MaidConfigManager {
 
     /** OP 维护的「按 Curios 槽位禁用携带」清单（不可变） */
     public static List<String> getBaubleBlockedCuriosSlots() {
-        return mergeLists(serverBaubleBlockedCuriosSlots, baubleImportBlockedCuriosSlots);
+        return ConfigFileIo.mergeLists(serverBaubleBlockedCuriosSlots, baubleImportBlockedCuriosSlots);
     }
 
     /** 整合包按 Curios 槽位禁用清单（只读；用于界面把整合包强制的条目显示为不可取消） */
     public static List<String> getBaubleImportBlockedCuriosSlots() {
         return baubleImportBlockedCuriosSlots;
-    }
-
-    /** 合并两张清单（保持顺序、去重、返回不可变） */
-    private static List<String> mergeLists(List<String> first, List<String> second) {
-        if (second == null || second.isEmpty()) {
-            return first == null ? List.of() : first;
-        }
-        List<String> merged = new ArrayList<>(first == null ? List.of() : first);
-        for (String value : second) {
-            if (value != null && !merged.contains(value)) {
-                merged.add(value);
-            }
-        }
-        return List.copyOf(merged);
     }
 
     /**
@@ -416,7 +385,7 @@ public final class MaidConfigManager {
      * @return 键不认识返回 false
      */
     public static synchronized boolean setServerListConfig(String key, List<String> values) {
-        List<String> cleaned = sanitizeList(values);
+        List<String> cleaned = ConfigFileIo.sanitizeList(values);
         if (KEY_BAUBLE_BLOCKED_LIST.equals(key)) {
             serverBaubleBlockedList = cleaned;
         } else if (KEY_BAUBLE_BLOCKED_NAMESPACES.equals(key)) {
@@ -431,29 +400,6 @@ public final class MaidConfigManager {
             return false;
         }
         return true;
-    }
-
-    /** 清单规范化：去空白、去重、小写（顺序保持） */
-    private static List<String> sanitizeList(List<String> values) {
-        if (values == null || values.isEmpty()) {
-            return List.of();
-        }
-        List<String> out = new ArrayList<>(values.size());
-        for (String v : values) {
-            if (v == null || v.isBlank()) {
-                continue;
-            }
-            String s = v.trim().toLowerCase(java.util.Locale.ROOT);
-            if (!out.contains(s)) {
-                out.add(s);
-            }
-        }
-        return List.copyOf(out);
-    }
-
-    /** 从 properties 读逗号分隔清单并规范化 */
-    private static List<String> parseSanitizedList(Properties props, String key) {
-        return sanitizeList(parseIdList(props, key));
     }
 
     /** 导入判定用的禁用清单（OP 清单 ∪ 整合包黑名单，不可变）；服务端读配置、客户端读登录同步缓存 */
@@ -549,13 +495,13 @@ public final class MaidConfigManager {
         serverAllowInvulnerable = allowInvulnerable;
         serverCarryCurios = carryCurios;
         serverBaubleBlockedNamespaces = List.copyOf(
-                baubleBlockedNamespaces == null ? List.of() : sanitizeList(baubleBlockedNamespaces));
+                baubleBlockedNamespaces == null ? List.of() : ConfigFileIo.sanitizeList(baubleBlockedNamespaces));
         serverBaubleBlockedCuriosSlots = List.copyOf(
-                baubleBlockedCuriosSlots == null ? List.of() : sanitizeList(baubleBlockedCuriosSlots));
+                baubleBlockedCuriosSlots == null ? List.of() : ConfigFileIo.sanitizeList(baubleBlockedCuriosSlots));
         baubleImportBlockedNamespaces = List.copyOf(
-                baubleImportBlockedNamespaces == null ? List.of() : sanitizeList(baubleImportBlockedNamespaces));
+                baubleImportBlockedNamespaces == null ? List.of() : ConfigFileIo.sanitizeList(baubleImportBlockedNamespaces));
         baubleImportBlockedCuriosSlots = List.copyOf(
-                baubleImportBlockedCuriosSlots == null ? List.of() : sanitizeList(baubleImportBlockedCuriosSlots));
+                baubleImportBlockedCuriosSlots == null ? List.of() : ConfigFileIo.sanitizeList(baubleImportBlockedCuriosSlots));
         serverBaubleStripAttributes = baubleStripAttributes;
         serverBaubleBlockedList = List.copyOf(baubleBlockedList == null ? List.of() : baubleBlockedList);
         baubleImportBlacklist = List.copyOf(baubleBlacklist == null ? List.of() : baubleBlacklist);
@@ -647,50 +593,32 @@ public final class MaidConfigManager {
     // ==================== 文件 IO ====================
 
     private static void loadServer() {
-        Properties props = new Properties();
-        try (Reader reader = Files.newBufferedReader(serverConfigFile, StandardCharsets.UTF_8)) {
-            props.load(reader);
-        } catch (IOException ignored) {
-            // 文件不存在时使用默认值
-        } catch (IllegalArgumentException badEscape) {
-            // Properties.load 对手写非法转义（例如反斜杠 u 后面没有 4 位十六进制）抛 IllegalArgumentException（不是 IOException）。
-            // 此前只 catch IOException，异常会一路冒到 init() 的兜底，导致整份服务端配置回退默认值——
-            // 其中含"禁止携带饰品"等管控项，属 fail-open。改为就地记录并保留已成功解析的部分。
-            Constants.LOG.error("[maid_file_manager] 服务端配置存在非法转义，已忽略该文件并保留内置默认值: {}",
-                    badEscape.toString());
-            // 不能用 props = new Properties() 把已解析的部分丢掉：原先注释写「保留已成功解析的部分」
-            // 但代码直接换了个空实例，等于整份回退内置默认值（含饰品管控项，属 fail-open）。
-            // Properties.load 是逐行推进的，抛异常前已读入的条目仍在 props 里，保留它们更安全。
-        }
-        serverAllowClientImport = parse(props, KEY_ALLOW_CLIENT_IMPORT, true);
-        serverAllowBaubles = parse(props, KEY_ALLOW_BAUBLES, true);
-        serverAllowAdvancements = parse(props, KEY_ALLOW_ADVANCEMENTS, true);
-        serverAllowEffects = parse(props, KEY_ALLOW_EFFECTS, true);
-        serverAllowInvulnerable = parse(props, KEY_ALLOW_INVULNERABLE, false);
-        serverBaubleStripAttributes = parse(props, KEY_BAUBLE_STRIP_ATTRIBUTES, false);
-        serverCarryCurios = parse(props, KEY_CARRY_CURIOS, false);
-        serverBaubleBlockedNamespaces = parseSanitizedList(props, KEY_BAUBLE_BLOCKED_NAMESPACES);
-        serverBaubleBlockedCuriosSlots = parseSanitizedList(props, KEY_BAUBLE_BLOCKED_CURIOS_SLOTS);
+        Properties props = ConfigFileIo.load(serverConfigFile, "服务端配置");
+        serverAllowClientImport = ConfigFileIo.parse(props, KEY_ALLOW_CLIENT_IMPORT, true);
+        serverAllowBaubles = ConfigFileIo.parse(props, KEY_ALLOW_BAUBLES, true);
+        serverAllowAdvancements = ConfigFileIo.parse(props, KEY_ALLOW_ADVANCEMENTS, true);
+        serverAllowEffects = ConfigFileIo.parse(props, KEY_ALLOW_EFFECTS, true);
+        serverAllowInvulnerable = ConfigFileIo.parse(props, KEY_ALLOW_INVULNERABLE, false);
+        serverBaubleStripAttributes = ConfigFileIo.parse(props, KEY_BAUBLE_STRIP_ATTRIBUTES, false);
+        serverCarryCurios = ConfigFileIo.parse(props, KEY_CARRY_CURIOS, false);
+        serverBaubleBlockedNamespaces = ConfigFileIo.parseSanitizedList(props, KEY_BAUBLE_BLOCKED_NAMESPACES);
+        serverBaubleBlockedCuriosSlots = ConfigFileIo.parseSanitizedList(props, KEY_BAUBLE_BLOCKED_CURIOS_SLOTS);
         // 与另外两张清单口径对齐：统一走 parseSanitizedList（trim + 去重 + 小写），
         // 否则手写配置里带大写字母的条目永远命中不了，黑名单方向属于"失败开放"。
-        serverBaubleBlockedList = parseSanitizedList(props, KEY_BAUBLE_BLOCKED_LIST);
+        serverBaubleBlockedList = ConfigFileIo.parseSanitizedList(props, KEY_BAUBLE_BLOCKED_LIST);
     }
 
     private static void loadClient() {
-        Properties props = new Properties();
-        try (Reader reader = Files.newBufferedReader(clientConfigFile, StandardCharsets.UTF_8)) {
-            props.load(reader);
-        } catch (IOException ignored) {
-            // 首次运行配置文件尚不存在属正常情况：props 保持为空，下方 parse 全部走默认值（默认拒绝），无需告警
-        }
-        clientAllowServerExport = parse(props, KEY_ALLOW_SERVER_EXPORT, false);
-        clientUiMusic = parse(props, KEY_UI_MUSIC, true);
-        clientUiMusicVolume = parseVolume(props, KEY_UI_MUSIC_VOLUME, 0.15F);
+        // 首次运行配置文件不存在属正常情况：返回空实例，下方 parse 全部走默认值（默认拒绝）
+        Properties props = ConfigFileIo.load(clientConfigFile, "客户端配置");
+        clientAllowServerExport = ConfigFileIo.parse(props, KEY_ALLOW_SERVER_EXPORT, false);
+        clientUiMusic = ConfigFileIo.parse(props, KEY_UI_MUSIC, true);
+        clientUiMusicVolume = ConfigFileIo.parseVolume(props, KEY_UI_MUSIC_VOLUME, 0.15F);
         // 按存档记录的跳过确认：遍历 skip_remove_confirm.<存档标识> 全部装入内存
         clientSkipRemoveConfirmByWorld.clear();
         for (String name : props.stringPropertyNames()) {
             if (name.startsWith(SKIP_REMOVE_CONFIRM_PREFIX) && name.length() > SKIP_REMOVE_CONFIRM_PREFIX.length()
-                    && parse(props, name, false)) {
+                    && ConfigFileIo.parse(props, name, false)) {
                 clientSkipRemoveConfirmByWorld.put(name.substring(SKIP_REMOVE_CONFIRM_PREFIX.length()), Boolean.TRUE);
             }
         }
@@ -717,7 +645,7 @@ public final class MaidConfigManager {
         if (!serverBaubleBlockedList.isEmpty()) {
             props.setProperty(KEY_BAUBLE_BLOCKED_LIST, String.join(",", serverBaubleBlockedList));
         }
-        return store(props, serverConfigFile, "Maid File Manager server config (edited via in-game settings, OP only)");
+        return ConfigFileIo.store(props, serverConfigFile);
     }
 
     /**
@@ -742,12 +670,12 @@ public final class MaidConfigManager {
         }
         try (Reader reader = Files.newBufferedReader(baubleImportConfigFile, StandardCharsets.UTF_8)) {
             JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-            List<String> whitelist = readStringArray(root, "whitelist");
-            List<String> blacklist = readStringArray(root, "blacklist");
+            List<String> whitelist = ConfigFileIo.readStringArray(root, "whitelist");
+            List<String> blacklist = ConfigFileIo.readStringArray(root, "blacklist");
             serverBaubleWhitelist = whitelist;
             baubleImportBlacklist = blacklist;
-            baubleImportBlockedNamespaces = sanitizeList(readStringArray(root, "blocked_namespaces"));
-            baubleImportBlockedCuriosSlots = sanitizeList(readStringArray(root, "blocked_curios_slots"));
+            baubleImportBlockedNamespaces = ConfigFileIo.sanitizeList(ConfigFileIo.readStringArray(root, "blocked_namespaces"));
+            baubleImportBlockedCuriosSlots = ConfigFileIo.sanitizeList(ConfigFileIo.readStringArray(root, "blocked_curios_slots"));
             baubleConfigManaged = true;
             baubleWhitelistEnforced = !whitelist.isEmpty();
             Constants.LOG.info("[maid_file_manager] 已加载整合包饰品导入配置：白名单 {} 项，黑名单 {} 项，"
@@ -766,46 +694,6 @@ public final class MaidConfigManager {
         }
     }
 
-    /**
-     * 读取 JSON 数组字段为去重后的字符串列表。
-     *
-     * <p>字段**缺失**（或显式 null）返回空列表；字段存在但**类型不是数组**则抛
-     * {@link com.google.gson.JsonParseException}，由调用方的 catch 走「失败关闭」。
-     *
-     * <p>区分的理由：`"whitelist": "xxx"` 这类类型笔误若被当成「缺失」，白名单会静默变空
-     * → {@code baubleWhitelistEnforced} 变 false → 管控整体放宽，与文档承诺的
-     * 「字段类型不符 → 失败关闭」正好相反，而且现场只打一条正常的「白名单 0 项」INFO，
-     * 整合包作者根本发现不了。
-     */
-    private static List<String> readStringArray(JsonObject root, String key) {
-        if (root == null || !root.has(key) || root.get(key).isJsonNull()) {
-            return List.of();
-        }
-        if (!root.get(key).isJsonArray()) {
-            throw new com.google.gson.JsonParseException("字段 \"" + key
-                    + "\" 必须是字符串数组，实际是 " + root.get(key).getClass().getSimpleName());
-        }
-        List<String> out = new ArrayList<>();
-        for (JsonElement element : root.getAsJsonArray(key)) {
-            // 只接受 JSON 字符串元素：文档承诺「数字/布尔元素被忽略」，而 isJsonPrimitive 对它们也返回 true，
-            // getAsString() 会把 123 / true 当字符串收下，得到一个永不匹配的「物品 id」。
-            if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
-                continue;
-            }
-            String value = element.getAsString();
-            if (value == null) {
-                continue;
-            }
-            // 与 properties 侧一致：统一小写，避免整合包作者写成首字母大写时静默失效（失败开放）。
-            // 中文显示名不含大小写，转小写无副作用。
-            value = value.trim().toLowerCase(java.util.Locale.ROOT);
-            if (!value.isEmpty() && !out.contains(value)) {
-                out.add(value);
-            }
-        }
-        return List.copyOf(out);
-    }
-
     private static void saveClient() {
         Properties props = new Properties();
         props.setProperty(KEY_ALLOW_SERVER_EXPORT, String.valueOf(clientAllowServerExport));
@@ -815,80 +703,7 @@ public final class MaidConfigManager {
         for (String worldKey : clientSkipRemoveConfirmByWorld.keySet()) {
             props.setProperty(SKIP_REMOVE_CONFIRM_PREFIX + worldKey, String.valueOf(true));
         }
-        store(props, clientConfigFile, "Maid File Manager client config");
+        ConfigFileIo.store(props, clientConfigFile);
     }
 
-    /** 原子写：先写 .tmp 再移动替换，避免写一半崩溃导致配置文件损坏丢失全部设置 */
-    private static boolean store(Properties props, Path file, String comment) {
-        try {
-            if (file.getParent() != null) {
-                Files.createDirectories(file.getParent());
-            }
-            Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            // Properties.store 是「全量重写」：会丢弃文件里原有的手写注释。配置是给整合包作者手改的，
-            // 注释往往是唯一的使用说明，这里先收集原文件的注释行，写新内容前原样回放一遍。
-            java.util.List<String> keptComments = new java.util.ArrayList<>();
-            if (Files.exists(file)) {
-                try {
-                    for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                        String trimmed = line.trim();
-                        if (trimmed.startsWith("#") || trimmed.startsWith("!")) {
-                            // 跳过 Properties.store 自己写的日期行（形如 "#Mon Oct 21 11:01:41 CST 2026"）：
-                            // JDK 的 store0 无论 comment 是否为 null 都会写这一行，不跳过的话它下次会被
-                            // 收集进 keptComments 再回放 → 每次保存 +1 行，注释无限累积（P2-3 只把 +2 降到 +1）。
-                            if (trimmed.startsWith("#")
-                                    && trimmed.matches("^#.*\\d{2}:\\d{2}:\\d{2}.*\\d{4}\\s*$")) {
-                                continue;
-                            }
-                            keptComments.add(line);
-                        }
-                    }
-                } catch (IOException ignored) {
-                    // 读旧注释失败不影响写入，退回纯覆盖行为
-                }
-            }
-            try (Writer writer = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
-                for (String kept : keptComments) {
-                    writer.write(kept);
-                    writer.write(System.lineSeparator());
-                }
-                // 第二个参数传 null：传 comment 会让 Properties.store 自己再写一行 "# comment"，
-                // 而下次保存时那行又被收集进 keptComments 再回放 —— 每次保存 +2 行，注释无限累积。
-                props.store(writer, null);
-            }
-            try {
-                Files.move(tmp, file, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
-                Files.move(tmp, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            }
-            return true;
-        } catch (IOException e) {
-            Constants.LOG.error("[maid_file_manager] 保存配置文件失败: {}", file, e);
-            return false;
-        }
-    }
-
-    private static boolean parse(Properties props, String key, boolean defaultValue) {
-        String value = props.getProperty(key);
-        if (value == null || value.isEmpty()) {
-            return defaultValue;
-        }
-        return value.equalsIgnoreCase("true");
-    }
-
-    /** 解析逗号分隔的 ID 列表；容忍空白与重复，返回不可变列表 */
-    private static List<String> parseIdList(Properties props, String key) {
-        String value = props.getProperty(key);
-        if (value == null || value.isBlank()) {
-            return List.of();
-        }
-        List<String> out = new ArrayList<>();
-        for (String part : value.split(",")) {
-            String id = part.trim();
-            if (!id.isEmpty() && !out.contains(id)) {
-                out.add(id);
-            }
-        }
-        return List.copyOf(out);
-    }
 }
