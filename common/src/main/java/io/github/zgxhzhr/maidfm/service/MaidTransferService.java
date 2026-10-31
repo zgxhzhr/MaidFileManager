@@ -407,18 +407,24 @@ public final class MaidTransferService {
             // 附属模组扩展数据：遍历已注册且可用的 provider
             CompoundTag extras = new CompoundTag();
             for (MaidMigrationProvider p : MaidMigrationRegistry.getAvailable()) {
+                // 先把 id 取到局部变量：getId() 本身也可能抛，放进 try 内，
+                // catch 里只使用这个变量（可能仍为 null）。
+                String providerKey = null;
                 try {
+                    providerKey = p.getId().toString();
                     CompoundTag tag = p.export(maid);
                     if (tag != null && !tag.isEmpty()) {
-                        extras.put(p.getId().toString(), tag);
+                        extras.put(providerKey, tag);
                     }
                 } catch (Throwable t) {
+                    // 不在 catch 里调 p.getId()：它也是第三方实现，可能再抛一次，
+                    // 那样会把「跳过这个附属」升级成「整只女仆导出失败」。
+                    // 与 MaidMigrationRegistry 里的同类约定保持一致。
+                    String shownKey = providerKey == null ? "(unknown)" : providerKey;
                     Constants.LOG.warn("[maid_file_manager] provider {} 导出失败（已跳过）: {}",
-                            p.getId(), t.toString());
-                    // 不能只写日志：玩家会以为整只女仆（含归档）都导出成功了。
-                    // 记进累积器，导出结束点汇总成一条反馈。
+                            shownKey, t.toString());
                     io.github.zgxhzhr.maidfm.data.MigrationNoteCollector.add(Component.translatable(
-                            "maid_file_manager.export.migration.failed", p.getId().toString()));
+                            "maid_file_manager.export.migration.failed", shownKey));
                 }
             }
             if (!extras.isEmpty()) {

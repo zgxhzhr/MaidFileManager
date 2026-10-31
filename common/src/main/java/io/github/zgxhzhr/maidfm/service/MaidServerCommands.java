@@ -66,6 +66,11 @@ public final class MaidServerCommands {
             return 0;
         }
         Path exportRoot = Services.PLATFORM.get().getGameDir().toAbsolutePath().resolve(Constants.MAID_EXPORTS_DIR);
+        // 与 exportMaid / exportBatch 保持一致：清掉上一轮残留。
+        // 这条命令路径以前既不 discard 也不 take，导致 provider 导出失败在这里完全静默，
+        // 而它正是「本版要消灭静默」要覆盖的一条路。
+        io.github.zgxhzhr.maidfm.data.CuriosBaubleFilter.takeBatch();
+        io.github.zgxhzhr.maidfm.data.MigrationNoteCollector.discard();
         int exportedPlayers = 0;
         int skippedPlayers = 0;
         int exportedFiles = 0;
@@ -110,8 +115,27 @@ public final class MaidServerCommands {
         final Component skippedDesc = skippedNames.isEmpty()
                 ? Component.translatable("maid_file_manager.command.none")
                 : Component.literal(String.join(", ", skippedNames));
-        source.sendSuccess(() -> Component.translatable("maid_file_manager.command.exportall.done",
-                fExported, fSkipped, skippedDesc, fFiles, exportRoot.toString()), false);
+        net.minecraft.network.chat.MutableComponent done =
+                Component.translatable("maid_file_manager.command.exportall.done",
+                        fExported, fSkipped, skippedDesc, fFiles, exportRoot.toString());
+        // 附加数据未带上：不再静默
+        List<Component> migrationNotes = io.github.zgxhzhr.maidfm.data.MigrationNoteCollector.take();
+        if (!migrationNotes.isEmpty()) {
+            done.append(Component.literal("。"));
+            done.append(Component.translatable("maid_file_manager.export.migration_details"));
+            int shown = Math.min(migrationNotes.size(), 5);
+            for (int i = 0; i < shown; i++) {
+                if (i > 0) {
+                    done.append(Component.translatable("maid_file_manager.list_separator.newline"));
+                }
+                done.append(migrationNotes.get(i));
+            }
+            if (migrationNotes.size() > shown) {
+                done.append(Component.translatable(
+                        "maid_file_manager.export.migration.more", migrationNotes.size() - shown));
+            }
+        }
+        source.sendSuccess(() -> done, false);
         return 1;
     }
 
