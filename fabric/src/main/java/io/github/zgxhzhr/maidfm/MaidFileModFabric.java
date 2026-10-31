@@ -539,18 +539,12 @@ public class MaidFileModFabric implements ModInitializer {
     }
 
     private static void sendFeedback(ServerPlayer player, Component message) {
-        FriendlyByteBuf out = MaidPayload.buffer();
-        // 与 NeoForge 版 FeedbackPayload 相同的线格式：Component 序列化为 JSON 后 writeUtf(32767)
-        out.writeUtf(Component.Serializer.toJson(message, RegistryAccess.EMPTY), 32767);
-        ServerPlayNetworking.send(player, MaidPayload.of(MaidFilePackets.ID_FEEDBACK, out));
+        io.github.zgxhzhr.maidfm.platform.PacketSender.sendFeedback(player, message);
     }
 
     /** 批量导入 + 删除源文件：汇总文案 + 逐项 spawned 标志（顺序与请求对齐） */
     private static void sendImportBatchResult(ServerPlayer player, Component summary, List<Boolean> spawned) {
-        FriendlyByteBuf out = MaidPayload.buffer();
-        out.writeUtf(Component.Serializer.toJson(summary, RegistryAccess.EMPTY), 32767);
-        MaidFilePackets.writeBooleanList(out, spawned);
-        ServerPlayNetworking.send(player, MaidPayload.of(MaidFilePackets.ID_IMPORT_BATCH_RESULT, out));
+        io.github.zgxhzhr.maidfm.platform.PacketSender.sendImportBatchResult(player, summary, spawned);
     }
 
     /**
