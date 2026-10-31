@@ -823,7 +823,14 @@ public final class MaidTransferService {
                     continue;
                 }
                 try {
-                    p.importData(maid, extras.getCompound(key));
+                    // 调三参重载：老 provider 走默认实现（等价于原来的二参调用），
+                    // 新 provider 可以在这里用 reporter 报「成功但有缺项」
+                    p.importData(maid, extras.getCompound(key), note -> {
+                        if (note != null && !note.isEmpty()) {
+                            migrationNotes.add(Component.translatable(
+                                    "maid_file_manager.import.migration.provider_note", key, note));
+                        }
+                    });
                 } catch (io.github.zgxhzhr.maidfm.spi.MaidMigrationException e) {
                     // 专用异常：可预期的业务失败，message 是写给玩家看的
                     Constants.LOG.warn("[maid_file_manager] provider {} 迁移失败 code={}: {}",

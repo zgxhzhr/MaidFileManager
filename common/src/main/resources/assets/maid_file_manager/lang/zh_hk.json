@@ -271,5 +271,6 @@
   "maid_file_manager.import.migration.more": "（另有 %s 條說明）",
   "maid_file_manager.export.migration.failed": "%s 的資料未能匯出（該模組報錯）。",
   "maid_file_manager.export.migration_details": "。其他模組資料說明：",
-  "maid_file_manager.export.migration.more": "（另有 %s 條說明）"
+  "maid_file_manager.export.migration.more": "（另有 %s 條說明）",
+  "maid_file_manager.import.migration.provider_note": "%s：%s"
 }
