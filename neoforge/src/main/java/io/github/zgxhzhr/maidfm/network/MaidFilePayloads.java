@@ -582,17 +582,7 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
-                        // 服务端配置仅 OP 可改（局域网联机=宿主默认 OP）
-                        if (!sp.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_MODERATOR)) {
-                            feedback(sp, Component.translatable("maid_file_manager.config.fail.no_permission"));
-                            return;
-                        }
-                        // 未知键直接回执失败，不得把旧配置向全服重新广播
-                        if (!MaidConfigManager.setServerConfig(key, value)) {
-                            feedback(sp, Component.translatable("maid_file_manager.server.unknown_config"));
-                            return;
-                        }
-                        broadcastServerConfig(((net.minecraft.server.level.ServerLevel) sp.level()).getServer());
+                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.setServerConfig(sp, key, value);
                     } catch (Throwable t) {
                         handleError(sp, "SET_SERVER_CONFIG", t);
                     }
@@ -628,27 +618,7 @@ public final class MaidFilePayloads {
             ctx.enqueueWork(() -> {
                 if (ctx.player() instanceof ServerPlayer sp) {
                     try {
-                        // 服务端配置仅 OP 可改（局域网联机=宿主默认 OP）
-                        if (!sp.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_MODERATOR)) {
-                            feedback(sp, Component.translatable("maid_file_manager.config.fail.no_permission"));
-                            return;
-                        }
-                                                // 键名区分三类清单：物品 / 模组（命名空间）/ Curios 槽位
-                        java.util.List<String> values;
-                        if (MaidConfigManager.KEY_BAUBLE_BLOCKED_LIST.equals(key)) {
-                            // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读
-                            values = BaubleHandler.sanitizeBaubleBlockedList(ids);
-                        } else if (MaidConfigManager.KEY_BAUBLE_BLOCKED_NAMESPACES.equals(key)
-                                || MaidConfigManager.KEY_BAUBLE_BLOCKED_CURIOS_SLOTS.equals(key)) {
-                            // 模组 / 槽位清单：客户端提交可被篡改，服务端按标识符字符集收窄
-                            values = MaidTransferService.sanitizeIdentifierList(ids);
-                        } else {
-                            Constants.LOG.warn("[maid_file_manager] SET_SERVER_LIST_CONFIG rejected (unknown key): {}",
-                                    key);
-                            return;
-                        }
-                        MaidConfigManager.setServerListConfig(key, values);
-                        broadcastServerConfig(((net.minecraft.server.level.ServerLevel) sp.level()).getServer());
+                        io.github.zgxhzhr.maidfm.network.ServerPacketHandlers.setServerListConfig(sp, key, ids);
                     } catch (Throwable t) {
                         handleError(sp, "SET_SERVER_BAUBLE_BLOCKED_LIST", t);
                     }
@@ -984,12 +954,8 @@ public final class MaidFilePayloads {
 
     /** 把服务端配置同步给所有在线玩家（OP 改配置后用） */
     public static void broadcastServerConfig(MinecraftServer server) {
-        if (server == null) {
-            return;
-        }
-        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
-            sendServerConfig(p);
-        }
+        // 遍历逻辑已下沉到 PacketSender.broadcastServerConfig（六端共用一份）
+        io.github.zgxhzhr.maidfm.platform.PacketSender.broadcastServerConfig(server);
     }
 
     public record MaidListPayload(java.util.List<io.github.zgxhzhr.maidfm.data.MaidInfo> list)

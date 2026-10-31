@@ -39,4 +39,21 @@ public final class NeoForgeServerMessaging implements ServerMessaging {
         net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
                 player, new io.github.zgxhzhr.maidfm.network.MaidFilePayloads.MaidProfilePayload(view));
     }
+
+    @Override
+    public void sendServerConfig(ServerPlayer player) {
+        io.github.zgxhzhr.maidfm.network.MaidFilePayloads.sendServerConfig(player);
+    }
+
+    @Override
+    public boolean hasOpPermission(ServerPlayer player) {
+        return player != null && player.permissions()
+                .hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_MODERATOR);
+    }
+
+    @Override
+    public net.minecraft.server.MinecraftServer serverOf(ServerPlayer player) {
+        return player == null ? null
+                : ((net.minecraft.server.level.ServerLevel) player.level()).getServer();
+    }
 }
