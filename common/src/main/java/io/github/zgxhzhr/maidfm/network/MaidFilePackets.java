@@ -222,6 +222,46 @@ public final class MaidFilePackets {
         }
     }
 
+    /**
+     * 用**与导入侧完全同口径**的配额检查一批导出 blob。
+     *
+     * <p><b>为什么需要</b>：导出侧手上只有压缩后的字节数，而导入侧的 4 MiB 是解压后的
+     * {@code NbtAccounter} 配额。两个口径不同，导致「压缩后几百 KB、解压后超 4 MiB」的档案
+     * 检测不到——会安静地「导出成功」，到导入时才读不出来。
+     *
+     * <p>这里直接解压并用同一个 NbtAccounter 读一遍：超配额时 NbtAccounter 会抛
+     * RuntimeException，据此判定。代价是每只女仆多一次 NBT 解析；导出是低频操作，换准确度值得。
+     *
+     * @return 超配额的文件下标（空列表 = 全部合规）
+     */
+    public static List<Integer> findOverQuotaBlobs(List<byte[]> blobs) {
+        List<Integer> over = new ArrayList<>();
+        if (blobs == null) {
+            return over;
+        }
+        for (int i = 0; i < blobs.size(); i++) {
+            byte[] one = blobs.get(i);
+            if (one != null && exceedsImportQuota(one)) {
+                over.add(i);
+            }
+        }
+        return over;
+    }
+
+    private static boolean exceedsImportQuota(byte[] gzipBlob) {
+        try (DataInputStream dis = new DataInputStream(
+                new BufferedInputStream(new GZIPInputStream(new ByteArrayInputStream(gzipBlob))))) {
+            NbtIo.read(dis, NbtAccounter.create(MAX_NBT_DECOMPRESSED_BYTES));
+            return false;
+        } catch (RuntimeException e) {
+            // NbtAccounter 超配额时抛 RuntimeException（"Tried to read NBT tag that was too big"）
+            return true;
+        } catch (java.io.IOException e) {
+            // 数据本身损坏：不是配额问题，交给客户端解码时的错误处理
+            return false;
+        }
+    }
+
     /** 将 MaidFileData 写入 FriendlyByteBuf */
     public static void writeMaidFileData(FriendlyByteBuf buf, MaidFileData data) {
         byte[] bytes = serializeMaidFileData(data);
