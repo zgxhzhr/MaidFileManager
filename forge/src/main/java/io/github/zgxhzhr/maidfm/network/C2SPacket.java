@@ -353,43 +353,15 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     }
 
     /** 客户端请求修改服务端配置：先校验 OP 权限，再写文件并同步给所有在线客户端 */
+    /** 业务逻辑已下沉到 {@link ServerPacketHandlers}（六端共用一份）。 */
     private static void handleSetServerConfig(ServerPlayer player, String key, boolean value) {
-        if (!player.hasPermissions(2)) {
-            Constants.LOG.warn("[maid_file_manager] SET_SERVER_CONFIG rejected (no OP): player={} key={}",
-                    player.getName().getString(), key);
-            sendFeedback(player, Component.translatable("maid_file_manager.config.fail.no_permission"));
-            return;
-        }
-        // 未知键直接回执失败，不得把旧配置向全服重新广播
-        if (!io.github.zgxhzhr.maidfm.config.MaidConfigManager.setServerConfig(key, value)) {
-            sendFeedback(player, Component.translatable("maid_file_manager.server.unknown_config"));
-            return;
-        }
-        broadcastServerConfig(player.server);
+        ServerPacketHandlers.setServerConfig(player, key, value);
     }
 
     /** OP 修改自己维护的禁用清单（物品 / 模组 / Curios 槽位）：权限校验 → 收窄写入 → 广播同步 */
+    /** 业务逻辑已下沉到 {@link ServerPacketHandlers}（六端共用一份）。 */
     private static void handleSetServerListConfig(ServerPlayer player, String key, List<String> ids) {
-        if (!player.hasPermissions(2)) {
-            Constants.LOG.warn("[maid_file_manager] SET_SERVER_LIST_CONFIG rejected (no OP): player={}, key={}",
-                    player.getName().getString(), key);
-            sendFeedback(player, Component.translatable("maid_file_manager.config.fail.no_permission"));
-            return;
-        }
-        List<String> values;
-        if (io.github.zgxhzhr.maidfm.config.MaidConfigManager.KEY_BAUBLE_BLOCKED_LIST.equals(key)) {
-            // 只保存 OP 自己维护的禁用项；整合包黑名单由 bauble_import.json 托管、游戏内只读，不在此写入
-            values = BaubleHandler.sanitizeBaubleBlockedList(ids);
-        } else if (io.github.zgxhzhr.maidfm.config.MaidConfigManager.KEY_BAUBLE_BLOCKED_NAMESPACES.equals(key)
-                || io.github.zgxhzhr.maidfm.config.MaidConfigManager.KEY_BAUBLE_BLOCKED_CURIOS_SLOTS.equals(key)) {
-            // 模组 / 槽位清单：客户端提交可被篡改，服务端按标识符字符集收窄
-            values = MaidTransferService.sanitizeIdentifierList(ids);
-        } else {
-            Constants.LOG.warn("[maid_file_manager] SET_SERVER_LIST_CONFIG rejected (unknown key): {}", key);
-            return;
-        }
-        io.github.zgxhzhr.maidfm.config.MaidConfigManager.setServerListConfig(key, values);
-        broadcastServerConfig(player.server);
+        ServerPacketHandlers.setServerListConfig(player, key, ids);
     }
 
     /** OP 统一导出：返回所有在线玩家（以各玩家为中心）的女仆分组列表 */
@@ -558,13 +530,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     }
 
     /** 把服务端配置同步给所有在线玩家（OP 改配置后用） */
+    /** 遍历逻辑已下沉到 {@link io.github.zgxhzhr.maidfm.platform.PacketSender}（六端共用一份）。 */
     public static void broadcastServerConfig(MinecraftServer server) {
-        if (server == null) {
-            return;
-        }
-        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
-            sendServerConfig(p);
-        }
+        io.github.zgxhzhr.maidfm.platform.PacketSender.broadcastServerConfig(server);
     }
 
     /**

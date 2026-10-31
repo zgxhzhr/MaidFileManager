@@ -62,4 +62,30 @@ public interface ServerMessaging {
      * @param view   {@code MaidProfileService.buildView} 的结果
      */
     void sendMaidProfile(ServerPlayer player, io.github.zgxhzhr.maidfm.data.MaidProfileView view);
+
+    /**
+     * 把当前服务端配置推送给一个玩家（登录时 + 配置变更广播时）。
+     *
+     * <p>这里只收「推给谁」，配置内容由各端实现自己从 MaidConfigManager 读出并编码——
+     * 与 sendMaidList 同一考虑：跨版本的编码方式不同，统一它等于改线格式。
+     */
+    void sendServerConfig(ServerPlayer player);
+
+    /**
+     * 该玩家是否有 OP 权限（等级 2）。
+     *
+     * <p>做成平台能力而不是各端自己判：1.20.x/1.21.x 用
+     * {@code player.hasPermissions(2)}，26.1.2 改成
+     * {@code player.permissions().hasPermission(Permissions.COMMANDS_MODERATOR)}。
+     * 这是纯版本差异，业务层不该知道。
+     */
+    boolean hasOpPermission(ServerPlayer player);
+
+    /**
+     * 取玩家所属的服务端实例。
+     *
+     * <p>1.20.x/1.21.x 的 {@code ServerPlayer.server} 是 public 字段，26.1.2 改成 private，
+     * 只能走 {@code ((ServerLevel) player.level()).getServer()}。
+     */
+    net.minecraft.server.MinecraftServer serverOf(ServerPlayer player);
 }
