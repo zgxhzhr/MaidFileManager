@@ -438,43 +438,18 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
      * 请求女仆档案：非本人直接拒绝（不返回任何只读数据），本人则回发档案视图。
      * 归属校验在实体类型判断之外由 {@link MaidProfileService#buildView} 再兜底一次。
      */
+    /** 业务逻辑已下沉到 {@link ServerPacketHandlers}（六端共用一份）。 */
     private static void handleRequestMaidProfile(ServerPlayer player, int entityId) {
-        // 频次限制：同一玩家 1~5 秒内重复请求直接丢弃（这类请求在主线程同步跑，
-        // 循环发包能把服务器卡死，且不需要 OP 权限）
-        if (!io.github.zgxhzhr.maidfm.network.RequestThrottle.allow(player.getUUID(), "maid_profile", 1000L)) {
-            return;
-        }
-        Entity e = player.level().getEntity(entityId);
-        if (!(e instanceof EntityMaid maid) || !maid.isOwnedBy(player)) {
-            sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.no_permission"));
-            return;
-        }
-        MaidProfileView view = MaidProfileService.buildView(player, maid);
-        if (view == null) {
-            sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.no_permission"));
-            return;
-        }
-        FriendlyByteBuf out = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
-        MaidProfileCodec.writeMaidProfileView(out, view);
-        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_MAID_PROFILE, out);
+        ServerPacketHandlers.requestMaidProfile(player, entityId);
     }
 
     /**
      * 保存女仆档案：校验归属后写入实体并回执（复用 ID_FEEDBACK）。
      * 档案界面保存时同步把背景故事写回 TLM AI 人设，保证内存态与存档一致。
      */
+    /** 业务逻辑已下沉到 {@link ServerPacketHandlers}（六端共用一份）。 */
     private static void handleSaveMaidProfile(ServerPlayer player, int entityId, MaidProfile profile) {
-        if (profile == null) {
-            sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.save_failed"));
-            return;
-        }
-        Entity e = player.level().getEntity(entityId);
-        if (!(e instanceof EntityMaid maid) || !maid.isOwnedBy(player)) {
-            sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.no_permission"));
-            return;
-        }
-        MaidProfileService.writeToMaid(maid, profile, true);
-        sendFeedback(player, Component.translatable("gui.maid_file_manager.profile.save_ok"));
+        ServerPacketHandlers.saveMaidProfile(player, entityId, profile);
     }
 
     /** 备份管理：请求服务端返回可浏览的自动备份列表（按权限过滤后回发） */

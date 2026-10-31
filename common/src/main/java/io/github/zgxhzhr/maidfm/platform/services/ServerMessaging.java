@@ -54,4 +54,12 @@ public interface ServerMessaging {
      * @param list   {@code MaidTransferService.listOwnMaids} 的结果
      */
     void sendMaidList(ServerPlayer player, java.util.List<io.github.zgxhzhr.maidfm.data.MaidInfo> list);
+
+    /**
+     * 发送某只女仆的档案视图（客户端档案界面打开时用）。
+     *
+     * @param player 接收者
+     * @param view   {@code MaidProfileService.buildView} 的结果
+     */
+    void sendMaidProfile(ServerPlayer player, io.github.zgxhzhr.maidfm.data.MaidProfileView view);
 }

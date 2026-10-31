@@ -40,4 +40,11 @@ public final class ForgeServerMessaging implements ServerMessaging {
         io.github.zgxhzhr.maidfm.network.MaidInfoCodec.writeMaidInfoList(buf, list);
         ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_MAID_LIST, buf);
     }
+
+    @Override
+    public void sendMaidProfile(ServerPlayer player, io.github.zgxhzhr.maidfm.data.MaidProfileView view) {
+        FriendlyByteBuf buf = new FriendlyByteBuf(io.netty.buffer.Unpooled.buffer());
+        io.github.zgxhzhr.maidfm.network.MaidProfileCodec.writeMaidProfileView(buf, view);
+        ServerNetworkBridge.sendToPlayer(player, MaidFilePackets.ID_MAID_PROFILE, buf);
+    }
 }
