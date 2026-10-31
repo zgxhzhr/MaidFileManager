@@ -219,14 +219,14 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
         }
     }
 
-    /** 发送反馈消息（实现已收敛到 {@link io.github.zgxhzhr.maidfm.platform.PacketSender}） */
+    /** 发送反馈消息（实现已收敛到 {@link io.github.zgxhzhr.maidfm.service.PacketSender}） */
     private static void sendFeedback(ServerPlayer player, Component message) {
-        io.github.zgxhzhr.maidfm.platform.PacketSender.sendFeedback(player, message);
+        io.github.zgxhzhr.maidfm.service.PacketSender.sendFeedback(player, message);
     }
 
     /** 批量导入 + 删除源文件：汇总文案 + 逐项 spawned 标志（顺序与请求对齐） */
     private static void sendImportBatchResult(ServerPlayer player, Component summary, List<Boolean> spawned) {
-        io.github.zgxhzhr.maidfm.platform.PacketSender.sendImportBatchResult(player, summary, spawned);
+        io.github.zgxhzhr.maidfm.service.PacketSender.sendImportBatchResult(player, summary, spawned);
     }
 
     /** 客户端请求修改服务端配置：先校验 OP 权限，再写文件并同步给所有在线客户端 */
@@ -348,9 +348,9 @@ public record C2SPacket(ResourceLocation packetId, FriendlyByteBuf data) {
     }
 
     /** 把服务端配置同步给所有在线玩家（OP 改配置后用） */
-    /** 遍历逻辑已下沉到 {@link io.github.zgxhzhr.maidfm.platform.PacketSender}（六端共用一份）。 */
+    /** 遍历逻辑已下沉到 {@link io.github.zgxhzhr.maidfm.service.PacketSender}（六端共用一份）。 */
     public static void broadcastServerConfig(MinecraftServer server) {
-        io.github.zgxhzhr.maidfm.platform.PacketSender.broadcastServerConfig(server);
+        io.github.zgxhzhr.maidfm.service.PacketSender.broadcastServerConfig(server);
     }
 
     /**

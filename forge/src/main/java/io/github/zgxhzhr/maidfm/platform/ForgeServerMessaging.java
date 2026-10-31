@@ -2,7 +2,7 @@ package io.github.zgxhzhr.maidfm.platform;
 
 import io.github.zgxhzhr.maidfm.network.MaidFilePackets;
 import io.github.zgxhzhr.maidfm.network.ServerNetworkBridge;
-import io.github.zgxhzhr.maidfm.platform.services.ServerMessaging;
+import io.github.zgxhzhr.maidfm.service.ServerMessaging;
 
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;

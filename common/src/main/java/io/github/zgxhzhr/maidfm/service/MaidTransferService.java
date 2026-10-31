@@ -581,7 +581,7 @@ public final class MaidTransferService {
             // 用于给玩家一条明确说明，绝不静默丢弃。
             CuriosBaubleFilter.Stats curiosStats = new CuriosBaubleFilter.Stats();
             CompoundTag migrated = NbtMigration.migrate(originalNbt, sourceVersion, targetVersion, curiosStats,
-                    BaubleHandler::allowCuriosItem, stripAttributes);
+                    BaubleHandler::allowCuriosItem, stripAttributes, MaidConfigManager.isCarryCurios());
             // .maid 是不可信输入（玩家可手工改造）：导出侧已剔除的容器，这里再无条件删一遍，
             // 防注入——否则塞入 HandItems/ArmorItems/equipment/MaidBackpackData 即可凭空获得物品。
             // 饰品不在此列：它走声明制裁剪（CuriosBaubleFilter / extractTlmData）。

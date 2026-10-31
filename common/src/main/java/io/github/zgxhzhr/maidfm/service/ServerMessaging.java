@@ -1,4 +1,4 @@
-package io.github.zgxhzhr.maidfm.platform.services;
+package io.github.zgxhzhr.maidfm.service;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;

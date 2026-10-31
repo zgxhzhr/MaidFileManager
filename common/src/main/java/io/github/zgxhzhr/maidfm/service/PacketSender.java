@@ -1,7 +1,8 @@
-package io.github.zgxhzhr.maidfm.platform;
+package io.github.zgxhzhr.maidfm.service;
 
 import io.github.zgxhzhr.maidfm.Constants;
-import io.github.zgxhzhr.maidfm.platform.services.ServerMessaging;
+import io.github.zgxhzhr.maidfm.platform.Services;
+import io.github.zgxhzhr.maidfm.platform.services.IPlatformHelper;
 
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -19,6 +20,27 @@ import java.util.List;
  * 收敛的是<b>实现</b>与<b>契约</b>，不是调用点。
  */
 public final class PacketSender {
+
+    /**
+     * 消息发送服务的持有者。
+     *
+     * <p>从 {@code Services} 拆出来：Services 只保留纯环境能力（PLATFORM，无出边），
+     * 而这里的接口签名要认识 MaidInfo / MaidProfileView / IMaidFileNetwork.* 等业务类型，
+     * 属于服务层。
+     */
+    private static final Services.ServiceProvider<ServerMessaging> MESSAGING =
+            new Services.ServiceProvider<>();
+
+    static {
+        try {
+            MESSAGING.loadService(ServerMessaging.class,
+                    () -> Services.load(ServerMessaging.class));
+        } catch (Exception e) {
+            // 不致命：下面的 NOOP 兜底，反馈消息会丢但功能仍可运行
+            Constants.LOG.error("[maid_file_manager] 平台服务 ServerMessaging 加载失败，"
+                    + "服务端反馈消息将无法送达客户端", e);
+        }
+    }
 
     /** 服务不可用时的空实现：记录一次错误，避免每调用一次就刷一条日志。 */
     private static final ServerMessaging NOOP = new ServerMessaging() {
@@ -89,7 +111,7 @@ public final class PacketSender {
     }
 
     private static ServerMessaging messaging() {
-        ServerMessaging m = Services.MESSAGING.get();
+        ServerMessaging m = MESSAGING.get();
         return m == null ? NOOP : m;
     }
 
