@@ -140,37 +140,23 @@ public interface IPlatformHelper {
     /**
      * 当前进程是否是「单人/局域网主机」的集成服务器。
      *
-     * <p>用反射调 {@code Minecraft.hasSingleplayerServer()}：common 层不能静态引用客户端类，
-     * 专用服务器上没有客户端类则返回 false（按"非单人"保守处理）。
+     * <p><b>各端应覆盖本方法</b>——正确的判断需要平台自己的运行环境 API（Forge/NeoForge
+     * 的 {@code FMLLoader.getDist()}、Fabric 的 {@code FabricLoader.getEnvironmentType()}）
+     * 先短路专用服务器，再反射 {@code Minecraft.getInstance().getSingleplayerServer()}。
+     *
+     * <p>本默认实现<b>只能返回 false</b>：common 层不能静态引用客户端类（专用服务器加载会崩），
+     * 而唯一双端共有的 {@code MinecraftServer} 没有静态的「取当前实例」入口
+     * （{@code getServer()} 在 vanilla 1.20.1 / 1.21.1 与 Forge 补丁里都不存在）。
+     * 早期版本反射它，结果恒抛异常、恒返回 false——即「看起来有用但从不生效」的死代码。
+     *
+     * <p>所以这里显式返回 false 并把决定权交给各端实现，而不是留一段永远失败的反射。
      *
      * <p>用途：集成服务器与客户端之间是 {@code LocalServerConnection} 内存直连，数据不经过
-     * {@code ServerboundCustomPayloadPacket} 序列化，因此 1.20.x 的 32767 字节上限**不生效**。
-     *
-     * <p><b>注意（第五轮审查 P2 3.3-8）</b>：本默认实现反射的是
-     * {@code MinecraftServer.getServer()}，而该方法在 vanilla 1.20.1 / 1.21.1 与 Forge 补丁里
-     * **都不存在** → 反射抛异常 → 恒返回 {@code false}。也就是说它**目前并不能识别单人/局域网主机**，
-     * 一律按「远程服」处理。
-     *
-     * <p>后果是保守方向的：单人世界里 {@code isLegacyPayloadLimit()} 会返回 true，
-     * 于是带照片的档案保存即使没超 32767 也走一次分片上传 —— 多一次往返，不影响正确性，
-     * 也不会丢数据。真要修准需要各平台各自的「当前集成服务器」API（Forge/Neo
-     * {@code ServerLifecycleHooks}、Fabric 的 client-side singleplayer server），属平台层改动。
+     * {@code ServerboundCustomPayloadPacket} 序列化，因此 1.20.x 的 32767 字节上限不生效。
+     * 判断不出来时按「远程服」处理是保守方向：最坏结果是多走一次分片上传，不影响正确性也不丢数据。
      */
     default boolean isSingleplayer() {
-        try {
-            // 必须用**双端共有**的 MinecraftServer 判断，绝不能反射 net.minecraft.client.Minecraft：
-            // 在专用服务器上加载客户端类会被 Forge 的 RuntimeDistCleaner 拦下并刷 ERROR
-            //（实测日志："Attempted to load class net/minecraft/client/Minecraft for invalid dist DEDICATED_SERVER"）。
-            Class<?> serverClass = Class.forName("net.minecraft.server.MinecraftServer");
-            Object server = serverClass.getMethod("getServer").invoke(null);
-            if (server == null) {
-                return false;
-            }
-            Object result = serverClass.getMethod("isSingleplayer").invoke(server);
-            return Boolean.TRUE.equals(result);
-        } catch (Throwable t) {
-            return false; // 判断不了按非单人处理（保守：走分片更安全）
-        }
+        return false;
     }
 
 
